@@ -1,0 +1,218 @@
+/**
+ * HUD origin (:7103): static browser-source pages + REST snapshot + WS push.
+ *   GET /            -> HUD page (OBS browser source target)
+ *   GET /api/state   -> current HudRelayState JSON
+ *   WS   /ws         -> server-pushes every new state (retained latest on join)
+ */
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import { WebSocketServer, type WebSocket } from "ws";
+
+import type { HudRelayState } from "@blob-fork/contracts";
+import { logger } from "./logger";
+
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
+};
+
+/** Control-plane handlers the shell UI calls (wired to main-process actions). */
+export interface ShellControls {
+  status(): ShellStatus;
+  startSignIn(): void;
+  listRooms(): Promise<Array<{ roomId: string; roomName: string; roomGame: string }>>;
+  joinRoom(roomId: string): Promise<{ ok: boolean; error?: string }>;
+  leaveRoom(): Promise<{ ok: boolean; error?: string }>;
+  resetNetwork(): Promise<{ ok: boolean; result?: unknown; error?: string }>;
+  toggleOverlay(): Promise<{ on: boolean }>;
+}
+
+export interface ShellStatus {
+  signedIn: boolean;
+  userName: string | null;
+  room: { roomId: string; roomName: string } | null;
+  connecting: boolean;
+  overlayRequested: boolean;
+  runtimeConnected: boolean;
+  live: {
+    sessionPhase: string;
+    mapName: string | null;
+    scene: string | null;
+    score: { blue: number; red: number } | null;
+    roundNumber: number | null;
+  } | null;
+}
+
+export class HudServer {
+  private wss: WebSocketServer | null = null;
+  private clients = new Set<WebSocket>();
+  private lastState: HudRelayState | null = null;
+
+  public constructor(
+    private readonly port: number,
+    private readonly publicDir: string,
+    private readonly controls?: ShellControls,
+  ) {}
+
+  public async start(): Promise<void> {
+    const server = http.createServer((req, res) => this.route(req, res));
+    this.wss = new WebSocketServer({ noServer: true });
+    server.on("upgrade", (req, socket, head) => {
+      const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.port}`);
+      if (url.pathname === "/ws" && this.wss) {
+        this.wss.handleUpgrade(req, socket, head, (ws) => {
+          this.clients.add(ws);
+          ws.send(JSON.stringify(this.lastState ?? { revision: -1 }));
+          ws.on("close", () => this.clients.delete(ws));
+          ws.on("error", () => this.clients.delete(ws));
+        });
+      } else {
+        socket.destroy();
+      }
+    });
+
+    await new Promise<void>((resolve) => {
+      server.listen(this.port, "127.0.0.1", () => resolve());
+    });
+    logger.info("hud-server", "listening", { port: this.port });
+  }
+
+  /** Throttle-free direct push; UI layers coalesce their own animation. */
+  public publish(state: HudRelayState): void {
+    this.lastState = state;
+    const payload = JSON.stringify(state);
+    for (const ws of this.clients) {
+      if (ws.readyState === ws.OPEN) ws.send(payload);
+    }
+  }
+
+  private route(req: http.IncomingMessage, res: http.ServerResponse): void {
+    const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.port}`);
+    const controls = this.controls;
+    const send = (code: number, body: unknown): void => {
+      res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(body));
+    };
+
+    // ---- Shell control plane (local-only; the server binds 127.0.0.1) ----
+    if (controls && req.method === "GET" && url.pathname === "/api/status") {
+      send(200, controls.status());
+      return;
+    }
+    if (controls && req.method === "POST" && url.pathname === "/api/auth/start") {
+      controls.startSignIn();
+      send(200, { ok: true });
+      return;
+    }
+    if (controls && req.method === "GET" && url.pathname === "/api/rooms") {
+      void controls
+        .listRooms()
+        .then((rooms) => send(200, { rooms }))
+        .catch((error) => send(502, { rooms: [], error: String(error) }));
+      return;
+    }
+    if (controls && req.method === "POST" && url.pathname === "/api/room/join") {
+      void this.readBody(req).then((body) => {
+        const roomId = String((body as { roomId?: unknown }).roomId ?? "").trim();
+        if (!roomId) {
+          send(400, { ok: false, error: "roomId required" });
+          return;
+        }
+        void controls
+          .joinRoom(roomId)
+          .then((r) => send(200, r))
+          .catch((error) => send(502, { ok: false, error: String(error) }));
+      });
+      return;
+    }
+    if (controls && req.method === "POST" && url.pathname === "/api/room/leave") {
+      void controls
+        .leaveRoom()
+        .then((r) => send(200, r))
+        .catch((error) => send(502, { ok: false, error: String(error) }));
+      return;
+    }
+    if (controls && req.method === "POST" && url.pathname === "/api/network/reset") {
+      void controls
+        .resetNetwork()
+        .then((r) => send(200, r))
+        .catch((error) => send(502, { ok: false, error: String(error) }));
+      return;
+    }
+    if (controls && req.method === "POST" && url.pathname === "/api/overlay/toggle") {
+      void controls
+        .toggleOverlay()
+        .then((r) => send(200, r))
+        .catch((error) => send(502, { on: false, error: String(error) }));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/state") {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(
+        JSON.stringify(
+          this.lastState ?? {
+            revision: -1,
+            connectedToRuntime: false,
+            game: null,
+            sessionPhase: "idle",
+            matchId: null,
+            mapKey: null,
+            viewerRole: "unknown",
+            roster: [],
+            round: { number: 0, phase: "unknown", phaseStartedAt: null },
+            score: { blue: 0, red: 0 },
+            spike: null,
+            killfeed: [],
+            updatedAt: Date.now(),
+          },
+        ),
+      );
+      return;
+    }
+
+    const rel = url.pathname === "/" ? "/index.html" : url.pathname;
+    const filePath = path.join(this.publicDir, path.normalize(rel).replace(/^([/\\])+/, ""));
+    if (!filePath.startsWith(this.publicDir)) {
+      res.writeHead(403);
+      res.end();
+      return;
+    }
+    fs.readFile(filePath, (error, data) => {
+      if (error) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("not found");
+        return;
+      }
+      res.writeHead(200, {
+        "content-type": MIME[path.extname(filePath)] ?? "application/octet-stream",
+        "cache-control": "no-cache",
+      });
+      res.end(data);
+    });
+  }
+
+  /** Read and parse a JSON request body (size-capped). */
+  private readBody(req: http.IncomingMessage): Promise<unknown> {
+    return new Promise((resolve) => {
+      let data = "";
+      req.on("data", (chunk: Buffer) => {
+        data += chunk.toString();
+        if (data.length > 64 * 1024) req.destroy();
+      });
+      req.on("end", () => {
+        try {
+          resolve(JSON.parse(data || "{}"));
+        } catch {
+          resolve({});
+        }
+      });
+      req.on("error", () => resolve({}));
+    });
+  }
+}

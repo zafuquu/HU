@@ -1,0 +1,58 @@
+{
+  "name": "@blob-fork/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Electron replica of BLOB Desktop: PKCE auth -> producer -> Supabase bridge, plus anchored overlay/HUD.",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "npm run build && electron .",
+    "start": "electron .",
+    "pack": "node ../../scripts/pack-desktop.mjs",
+    "ow:start": "npm run build && node ../../scripts/ow-start.mjs",
+    "ow:install": "npx install-ow-electron"
+  },
+  "build": {
+    "appId": "productions.blob.fork",
+    "productName": "Blob Fork",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/main.js",
+      "dist/runtime-server.cjs",
+      "dist/hud-public/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/koffi/**/*",
+      "dist/runtime-server.cjs"
+    ],
+    "extraResources": [
+      { "from": "dist/ow-electron", "to": "ow-electron" },
+      { "from": "dist/gep-provider", "to": "gep-provider" }
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": "x64"
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "Blob-Fork-${version}.exe"
+    }
+  },
+  "dependencies": {
+    "koffi": "^2.8.0"
+  },
+  "devDependencies": {
+    "electron": "31.7.7",
+    "@types/node": "^20.14.9",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.5.4"
+  }
+}

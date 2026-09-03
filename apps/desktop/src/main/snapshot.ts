@@ -1,0 +1,141 @@
+/**
+ * Map projected game state -> the bridge's `game` snapshot shape.
+ * The bridge (server/game-bridge.mjs) reads:
+ *   state.leftTeam / state.rightTeam  -> {gameScore, seriesScore, name}
+ *   state.currentRound.roundNumber
+ * The overlay popout reads snapshot.state.players[].{playerId,name,tagline,agentName,...}
+ */
+import type { HudRelayState } from "@blob-fork/contracts";
+
+export interface GameTeamState {
+  name: string | null;
+  tag?: string | null;
+  score?: number;
+  gameScore?: number;
+  seriesScore?: number;
+  matches_won_this_series?: number;
+}
+
+export interface GamePlayerState {
+  playerId?: string;
+  name?: string;
+  tagline?: string;
+  agentName?: string | null;
+  teamId?: string | null;
+  team?: string | null;
+  isAlive?: boolean;
+  health?: number;
+  armor?: number;
+  abilities?: unknown[];
+  // Live scoreboard detail (passed through when the provider supplies it).
+  weapon?: string | null;
+  credits?: number | null;
+  spentCredits?: number | null;
+  kills?: number | null;
+  deaths?: number | null;
+  assists?: number | null;
+  ultPoints?: number | null;
+  ultMax?: number | null;
+  hasSpike?: boolean | null;
+}
+
+export interface GameSnapshot {
+  gameId?: number;
+  state: {
+    leftTeam: GameTeamState | null;
+    rightTeam: GameTeamState | null;
+    currentRound: { roundNumber: number | null };
+    players: GamePlayerState[];
+    gameScore: { left: number; right: number };
+    gameEvent?: string | null;
+    /** Overlay scene implied by live game data (drives auto scene switching). */
+    scene?: string | null;
+    /** Friendly map name (e.g. "Ascent"). */
+    mapName?: string | null;
+    /** Post-game result (winner + MVP) when a match settles. */
+    match?: {
+      winner: "blue" | "red" | null;
+      mvp: { name: string; teamId: string; kills: number; deaths: number; assists: number } | null;
+    };
+    /** How the last round ended (winner + reason), cleared at next round start. */
+    roundEnd?: { winner: "blue" | "red" | null; reason: string | null } | null;
+  };
+}
+
+const TEAM_NAMES: Record<string, string> = {
+  blue: "Team A",
+  red: "Team B",
+};
+
+/** Build a bridge-compatible snapshot from the projected relay state. */
+export function toGameSnapshot(state: HudRelayState): GameSnapshot {
+  const roundNumber = state.round?.number ?? 0;
+  const leftScore = state.score.blue ?? 0;
+  const rightScore = state.score.red ?? 0;
+
+  const leftTeamBase: GameTeamState = {
+    name: TEAM_NAMES.blue,
+    tag: "B",
+    gameScore: leftScore,
+    seriesScore: 0,
+    score: leftScore,
+  };
+  const rightTeamBase: GameTeamState = {
+    name: TEAM_NAMES.red,
+    tag: "A",
+    gameScore: rightScore,
+    seriesScore: 0,
+    score: rightScore,
+  };
+
+  const players: GamePlayerState[] = (state.roster ?? []).map((p) => {
+    const [name, tagline] = p.displayName.split("#");
+    return {
+      playerId: p.displayName,
+      name: name || p.displayName,
+      tagline: tagline ?? "",
+      agentName: p.agentName ?? null,
+      teamId: p.teamId ?? null,
+      team: p.teamId ?? null,
+      isAlive: p.isAlive ?? true,
+      health: p.health ?? 100,
+      armor: 50,
+      abilities: p.abilities ?? [],
+      weapon: p.weapon ?? null,
+      credits: p.credits ?? null,
+      spentCredits: p.spentCredits ?? null,
+      kills: p.kills ?? null,
+      deaths: p.deaths ?? null,
+      assists: p.assists ?? null,
+      ultPoints: p.ultPoints ?? null,
+      ultMax: p.ultMax ?? null,
+      hasSpike: p.hasSpike ?? null,
+    };
+  });
+
+  // Only publish team blocks when a real match reported players. When idle the
+  // bridge then has nothing to mirror into `live:<room>` and the overlay
+  // renders no fallback teams/scores.
+  const hasRealPlayers = players.length > 0;
+  const leftTeam = hasRealPlayers ? { ...leftTeamBase } : null;
+  const rightTeam = hasRealPlayers ? { ...rightTeamBase } : null;
+
+  return {
+    gameId: 21640,
+    state: {
+      leftTeam,
+      rightTeam,
+      currentRound: { roundNumber: hasRealPlayers && roundNumber > 0 ? roundNumber : null },
+      players,
+      gameScore: { left: hasRealPlayers ? leftScore : 0, right: hasRealPlayers ? rightScore : 0 },
+      gameEvent: state.gameEvent ?? null,
+      scene: state.scene ?? null,
+      mapName: state.mapName ?? null,
+      match: {
+        winner: state.match?.winner ?? null,
+        mvp: state.match?.mvp ?? null,
+      },
+      roundEnd: state.roundEnd ?? null,
+    },
+  };
+}
