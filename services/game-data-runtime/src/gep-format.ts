@@ -24,6 +24,41 @@ const MAP_INTERNAL: Record<string, string> = {
   plummet: "Summit", port: "Icebox", rook: "Corrode", triad: "Haven",
 };
 
+/**
+ * Canonical lowercase map key from ANY upstream spelling:
+ *   - GEP codenames            ("Bonsai", "Foxtrot", "Infinityy")
+ *   - Riot presence map paths  ("/Game/Maps/Infinity/Infinity")
+ *   - already-canonical keys   ("split", "abyss")
+ * Codename table = ValoSpectra's ValorantInternalTranslator.Maps merged with
+ * the fork's own rows. Riot ships the same map under several spellings —
+ * "Infinity"/"Infinityy"/"Infinity_" are all Abyss — so every alias lands on
+ * one canonical key that projection.ts resolves to a display name. Without
+ * this the HUD/site showed raw codenames ("bonsai", "infinity") as if they
+ * were map names.
+ */
+const MAP_KEY_BY_CODE: Record<string, string> = (() => {
+  const table: Record<string, string> = {};
+  for (const [code, display] of Object.entries(MAP_INTERNAL)) {
+    table[code] = display.toLowerCase();
+  }
+  // Aliases observed in the wild that the codename table does not cover.
+  table["infinity"] = "abyss";
+  table["infinityy"] = "abyss";
+  table["ascent-2"] = "ascent";
+  table["sunset2"] = "sunset";
+  return table;
+})();
+
+export const formatMapKey = (raw: unknown): string => {
+  if (typeof raw !== "string") return "";
+  // "/Game/Maps/Bonsai/Bonsai" -> "Bonsai"
+  const seg = raw.split("/").filter(Boolean).pop() ?? "";
+  const key = seg.trim().toLowerCase();
+  if (!key) return "";
+  return MAP_KEY_BY_CODE[key] ?? key;
+};
+
+
 const WEAPON_INTERNAL: Record<string, string> = {
   bounty: "Ghost", deployed: "Classic", sheriff: "Sheriff", vandal: "Vandal",
   phantom: "Phantom", bulldog: "Bulldog", guardian: "Guardian",

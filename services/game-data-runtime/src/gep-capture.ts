@@ -22,7 +22,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-import { formatKill, formatMap, formatPlayer, formatRoster } from "./gep-format";
+import { formatKill, formatMap, formatMapKey, formatPlayer, formatRoster } from "./gep-format";
 import { deriveAppUid, ensureGepPackage, resolveGameDataDir } from "./gep-download";
 import {
   findOverwolfProcesses,
@@ -162,8 +162,10 @@ function factFromInfoUpdate(item: GepItem, emit: ProviderEmit): void {
   const pushInfo = (k: string, v: unknown): void => emit({ kind: "new_info_update", key: k, value: v });
 
   if (low === "map") {
-    const formatted = formatMap(value);
-    if (formatted) pushInfo("map", formatted);
+    // Canonical lowercase key ("split"), not the display name — projection.ts
+    // resolves mapKey -> mapName, and round bookkeeping keys on this value.
+    const mapKey = formatMapKey(value);
+    if (mapKey) pushInfo("map", mapKey);
     return;
   }
   if (low === "scene") {

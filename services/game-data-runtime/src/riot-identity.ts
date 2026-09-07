@@ -25,6 +25,7 @@ import { join } from "node:path";
 import https from "node:https";
 
 import { checkValorantProcess } from "./valorant-detect";
+import { formatMapKey } from "./gep-format";
 
 export type IdentitySink = (fact: { kind: string; key: string; value: unknown }) => void;
 
@@ -632,9 +633,11 @@ export class RiotIdentitySource {
     if (!matchId) {
       if (self?.inGame && gameRunning) {
         if (self.matchMap) {
-          // "/Game/Maps/Canyon/Canyon" -> "canyon" (GEP-style codename)
-          const seg = self.matchMap.split("/").filter(Boolean).pop();
-          if (seg) this.emit({ kind: "new_info_update", key: "map", value: seg.toLowerCase() });
+          // "/Game/Maps/Infinity/Infinity" -> canonical key "abyss" (Abyss).
+          // Raw codenames leaked to the HUD as if they were map names
+          // ("infinity", "bonsai") — they are Riot internal codenames.
+          const mapKey = formatMapKey(self.matchMap);
+          if (mapKey) this.emit({ kind: "new_info_update", key: "map", value: mapKey });
         }
         if (self.scoreAlly != null && self.scoreEnemy != null) {
           this.emit({

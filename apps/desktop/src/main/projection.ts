@@ -116,11 +116,13 @@ export class ValProjectionSession {
       s.matchMvp = null;
     }
     const MAP_NAMES: Record<string, string> = {
+      // Canonical keys (formatMapKey output) -> display names. Codename
+      // aliases included so a stale codename key still resolves.
       ascent: "Ascent", bind: "Bind", haven: "Haven", split: "Split", breeze: "Breeze",
       icebox: "Icebox", pearl: "Pearl", fracture: "Fracture", lotus: "Lotus", sunset: "Sunset",
       abyss: "Abyss", drift: "Drift", piazza: "Piazza", kasbah: "Kasbah", sunset2: "Sunset",
       "ascent-2": "Ascent", glaze: "Glitch", district: "District", summit: "Summit",
-      infinity: "Infinity",
+      infinity: "Abyss", bonsai: "Split", corrode: "Corrode", range: "The Range",
     };
     if (mapKey) {
       s.mapKey = mapKey;
