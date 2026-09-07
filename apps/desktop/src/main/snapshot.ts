@@ -142,7 +142,10 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
         roundPhase: state.round?.phase ?? null,
       },
       players,
-      gameScore: { left: hasRealPlayers ? leftScore : 0, right: hasRealPlayers ? rightScore : 0 },
+      // The score comes from Riot presence and is real even before a roster
+      // exists (GEP/GLZ may be unavailable). Zeroing it here made the bridge
+      // mirror 0-0 for the whole match, so the overlay never saw live scores.
+      gameScore: { left: leftScore, right: rightScore },
       gameEvent: state.gameEvent ?? null,
       scene: state.scene ?? null,
       mapName: state.mapName ?? null,

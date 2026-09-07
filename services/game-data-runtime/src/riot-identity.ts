@@ -317,8 +317,11 @@ function parsePresences(raw: unknown): PresenceEntry[] {
   const presences = (raw as { presences?: unknown[] })?.presences;
   if (!Array.isArray(presences)) return out;
   for (const entry of presences) {
-    const rec = entry as { pid?: string; product?: string; private?: string };
-    const puuid = typeof rec?.pid === "string" ? rec.pid : null;
+    const rec = entry as { pid?: string; puuid?: string; product?: string; private?: string };
+    // `puuid` is the clean player UUID; `pid` is "puuid@cluster.pvp.net".
+    // Prefer puuid — the domain-suffixed pid breaks GLZ player lookups and
+    // selfPuuid matching (they never compare equal to the entitlement subject).
+    const puuid = typeof rec?.puuid === "string" && rec.puuid ? rec.puuid : typeof rec?.pid === "string" ? rec.pid : null;
     const priv = typeof rec?.private === "string" ? rec.private : null;
     if (!puuid || !priv) continue;
     try {
@@ -465,6 +468,13 @@ export class RiotIdentitySource {
    * stays "LIVE" forever after the match.
    */
   private nonIdlePhaseEmitted = false;
+  /**
+   * Consecutive polls that said "no live session" while we believe one is
+   * active. A single miss is normal jitter (tasklist hiccups, LCU presence
+   * churn mid-match) — retiring on the first miss made the HUD flap
+   * live -> idle -> live every few seconds. Retire only after a streak.
+   */
+  private idleStreak = 0;
 
   private emitRoster(roster: RosterPlayer[], withStats: boolean): void {
     for (const player of roster) {
@@ -525,19 +535,49 @@ export class RiotIdentitySource {
     });
   }
 
+  /**
+   * Fresh presence check: does the current presence list still show us (or
+   * anyone) in an active match? Used by the retire-streak in pollMatch.
+   */
+  private async hasLivePresence(): Promise<boolean> {
+    if (!this.ctx) return false;
+    try {
+      const raw = await lcuGet(this.ctx.port, this.ctx.password, "/chat/v4/presences");
+      const presences = parsePresences(raw);
+      const self =
+        presences.find((p) => p.puuid === this.ctx!.selfPuuid) ??
+        presences.find((p) => p.inGame || p.isPregame || p.inProgress) ??
+        null;
+      return !!self && (self.inGame || self.isPregame || self.inProgress);
+    } catch {
+      // Presence read failed: assume the session persists (jitter, not exit).
+      return true;
+    }
+  }
+
+  /** Polls consecutive misses before retiring a live session (~12s at 4s tick). */
+  private static readonly IDLE_STREAK_LIMIT = 3;
+
   private async pollMatch(): Promise<void> {
     if (!this.ctx) return;
     // Presence is only trustworthy while the game process exists. VALORANT
     // closed -> the Riot client keeps serving the stale INGAME presence, so
     // retire the session instead of mirroring frozen map/score to the HUD.
+    // A single miss is jitter; require a streak before retiring.
     const gameRunning = checkValorantProcess().present;
-    if (!gameRunning && this.nonIdlePhaseEmitted) {
-      this.nonIdlePhaseEmitted = false;
-      this.lastMatchId = null;
-      this.lastMatchType = null;
-      this.emit({ kind: "new_info_update", key: "session_phase", value: "idle" });
+    const sessionGone = !gameRunning || !(await this.hasLivePresence());
+    if (sessionGone && this.nonIdlePhaseEmitted) {
+      this.idleStreak += 1;
+      if (this.idleStreak >= RiotIdentitySource.IDLE_STREAK_LIMIT) {
+        this.idleStreak = 0;
+        this.nonIdlePhaseEmitted = false;
+        this.lastMatchId = null;
+        this.lastMatchType = null;
+        this.emit({ kind: "new_info_update", key: "session_phase", value: "idle" });
+      }
       return;
     }
+    this.idleStreak = 0;
     const presences = parsePresences(
       await lcuGet(this.ctx.port, this.ctx.password, "/chat/v4/presences"),
     );
@@ -611,13 +651,10 @@ export class RiotIdentitySource {
         this.emit({ kind: "new_info_update", key: "scene", value: "agent_select" });
         this.emit({ kind: "new_info_update", key: "session_phase", value: "loading" });
         this.nonIdlePhaseEmitted = true;
-      } else if (this.nonIdlePhaseEmitted) {
-        // Game still running but presence no longer reports a match — the
-        // player backed out to the lobby. Retire the session so the HUD does
-        // not freeze on the last match.
-        this.emit({ kind: "new_info_update", key: "session_phase", value: "idle" });
-        this.nonIdlePhaseEmitted = false;
       }
+      // Session retirement (game closed / backed out to lobby) is handled by
+      // the idle-streak guard at the top of pollMatch — do not retire here on
+      // a single missing presence (that made the HUD flap live <-> idle).
       this.lastMatchId = null;
       this.lastMatchType = null;
       return;
