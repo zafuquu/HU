@@ -1,0 +1,545 @@
+@import "tailwindcss" source(none);
+@source "../index.html";
+@source "../src";
+
+/* ===== Design Tokens (from real app.havoc.productions) ===== */
+:root {
+  --background: 220 8% 7%;
+  --background-two: 210 8% 9%;
+  --foreground: 0 0% 91%;
+  --card: 216 12% 8%;
+  --card-foreground: 0 0% 91%;
+  --popover: 216 12% 8%;
+  --popover-foreground: 0, 0%, 91%, 0.8;
+  --primary: 0 0% 91%;
+  --primary-foreground: 216 12% 8%;
+  --secondary: 210 6% 14%;
+  --secondary-foreground: 0 0% 91%;
+  --muted: 210, 7%, 11%, 1;
+  --muted-foreground: 0, 0%, 91%, 0.4;
+  --accent: 0, 0%, 91%, 0.025;
+  --accent-foreground: 0 0% 91%;
+  --destructive: 0 100% 64%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 146 68% 50%;
+  --success-foreground: 0 0% 100%;
+  --border: 210, 4%, 19%, 1;
+  --input: 0, 0%, 91%, 0.102;
+  --ring: 0, 0%, 91%, 0.1;
+  --radius: 0.5rem;
+  --skeleton: 0, 0%, 13%, 0.6;
+  --skeleton-foreground: 0 0% 23%;
+  --havoc-blue: 211 99% 65%;
+}
+
+/* ===== Base Styles ===== */
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  min-height: 100vh;
+  color: hsl(var(--foreground));
+  font-family: SF_Pro, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: hsl(var(--background));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Overlay popout mode: fully transparent so the HUD composites over the game
+   (desktop anchored-transparent window / OBS browser source) */
+html.overlay-popout,
+html.overlay-popout body,
+html.overlay-popout #root {
+  background: transparent !important;
+  overflow: hidden !important;
+}
+
+/* The scene roots paint an opaque 1920x1080 backdrop for the editor preview;
+   in popout/OBS mode only the HUD elements themselves should be visible. */
+html.overlay-popout .hud-stage > div:first-child {
+  background: transparent !important;
+}
+
+/* Disable user-select on everything (like the real site) */
+*, input {
+  user-select: none;
+  outline: none;
+}
+
+/* Allow text selection on inputs */
+input, textarea, [contenteditable] {
+  user-select: text;
+}
+
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
+/* ===== Scrollbar Styling ===== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsla(0, 0%, 91%, 0.15);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsla(0, 0%, 91%, 0.25);
+}
+
+/* ===== HUD Editor: clickable component selection feedback (matches app.havoc.productions) ===== */
+.clickable-component[data-make-transparent="true"]:hover,
+.clickable-component[data-make-transparent="true"].selected {
+  opacity: 0.98999;
+}
+.clickable-component:hover,
+.clickable-component.selected {
+  outline-offset: -2px;
+  outline: 2px solid #3b82f6;
+}
+
+/* ===== Utility Classes ===== */
+.text-muted {
+  color: hsla(var(--muted-foreground));
+}
+
+.bg-card {
+  background: hsl(var(--card));
+}
+
+.bg-secondary {
+  background: hsl(var(--secondary));
+}
+
+.border-default {
+  border-color: hsl(var(--border));
+}
+
+/* Input styling */
+.input-field {
+  background: hsla(var(--input));
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  padding: 0.5rem 0.75rem;
+  color: hsl(var(--foreground));
+  font-size: 0.875rem;
+  transition: border-color 0.15s ease;
+  width: 100%;
+}
+
+.input-field::placeholder {
+  color: hsla(var(--muted-foreground));
+}
+
+.input-field:focus {
+  border-color: hsla(0, 0%, 91%, 0.2);
+}
+
+/* Button base */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border-color: hsl(var(--border));
+}
+
+.btn-secondary:hover {
+  background: hsla(0, 0%, 91%, 0.08);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: hsl(var(--foreground));
+}
+
+.btn-ghost:hover {
+  background: hsla(0, 0%, 91%, 0.05);
+}
+
+.btn-destructive {
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+}
+
+/* Toggle switch */
+.toggle-switch {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: hsla(0, 0%, 91%, 0.15);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.toggle-switch.active {
+  background: hsl(174, 72%, 46%);
+}
+
+.toggle-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+
+.toggle-switch.active::after {
+  transform: translateX(16px);
+}
+
+/* Badge / pill */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.badge-success {
+  background: hsla(146, 68%, 50%, 0.15);
+  color: hsl(var(--success));
+}
+
+/* Squircle avatar */
+.squircle {
+  border-radius: 22%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+/* Upload dropzone */
+.dropzone {
+  border: 2px dashed hsla(0, 0%, 91%, 0.12);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  color: hsla(var(--muted-foreground));
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+  min-height: 120px;
+}
+
+.dropzone:hover {
+  border-color: hsla(0, 0%, 91%, 0.25);
+  background: hsla(0, 0%, 91%, 0.02);
+}
+
+/* Section divider label */
+.section-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsla(var(--muted-foreground));
+  padding: 0 0.75rem;
+}
+
+/* Copy button field */
+.copy-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: hsla(var(--input));
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: hsl(var(--foreground));
+}
+
+.copy-field code {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  color: hsla(var(--muted-foreground));
+}
+
+/* Map tile */
+.map-tile {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  aspect-ratio: 516 / 340;
+}
+
+.map-tile:hover {
+  transform: scale(1.02);
+}
+
+.map-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.map-tile .map-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.75rem;
+  font-family: "Tungsten", "Impact", sans-serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: white;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  text-align: center;
+}
+
+.map-tile.selected {
+  border: 2px solid hsl(var(--havoc-blue));
+}
+
+.map-tile .check-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  background: hsl(var(--havoc-blue));
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Camera card */
+.camera-card {
+  background: hsla(0, 0%, 91%, 0.03);
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.camera-card-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  position: relative;
+}
+
+.camera-card-footer {
+  display: flex;
+  gap: 0;
+}
+
+.camera-card-footer button {
+  flex: 1;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.camera-card-footer button:hover {
+  opacity: 0.8;
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.modal-content {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Save changes bar */
+.save-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: hsl(var(--card));
+  border-top: 1px solid hsl(var(--border));
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 9999;
+}
+
+/* Modal content padding */
+.modal-content {
+  padding: 24px;
+}
+
+/* Fade-in animation for toast */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Agent-select animated background (revealed in its final/animated state) */
+@keyframes hudBgPan {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.hud-anim-bg {
+  background-image:
+    radial-gradient(ellipse at 28% 38%, rgba(255,255,255,0.14), transparent 42%),
+    radial-gradient(ellipse at 72% 62%, rgba(255,255,255,0.10), transparent 42%),
+    radial-gradient(ellipse at center, hsla(0,0%,28%,0.38), transparent 72%);
+  background-size: 160% 160%;
+  animation: hudBgPan 16s ease-in-out infinite;
+}
+
+/* Scene reveal: components render straight into their post-animation state */
+@keyframes hudReveal {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.hud-reveal {
+  animation: hudReveal 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Checkbox accent color */
+input[type="checkbox"] {
+  accent-color: hsl(var(--havoc-blue));
+}
+
+/* Color input cleanup */
+input[type="color"] {
+  -webkit-appearance: none;
+  border: none;
+  padding: 0;
+}
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+
+/* Number input spinner removal */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Real HUD fonts (downloaded from huds.blob.productions) */
+@font-face {
+  font-family: 'Schabo';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/anton/anton-v27-latin-regular.ttf') format('truetype');
+}
+/* ===== HAVOC font kit (free equivalents, OFL) ===== */
+@font-face { font-family: 'Mussels'; src: url('/huds-overlay/fonts/mussels/TT_Mussels_Trial_Thin.otf') format('opentype'); font-weight: 100; }
+@font-face { font-family: 'Mussels'; src: url('/huds-overlay/fonts/mussels/TT_Mussels_Trial_ExtraLight.otf') format('opentype'); font-weight: 200; }
+@font-face { font-family: 'Mussels'; src: url('/huds-overlay/fonts/mussels/TT_Mussels_Trial_Light.otf') format('opentype'); font-weight: 300; }
+@font-face { font-family: 'Mussels'; src: url('/huds-overlay/fonts/mussels/TT_Mussels_Trial_Regular.otf') format('opentype'); font-weight: 400; }
+@font-face { font-family: 'Mussels'; src: url('/huds-overlay/fonts/mussels/TT_Mussels_Trial_Medium.otf') format('opentype'); font-weight: 500; }
+@font-face { font-family: 'Mussels'; src: url('/huds-overlay/fonts/mussels/TT_Mussels_Trial_DemiBold.otf') format('opentype'); font-weight: 600; }
+@font-face { font-family: 'Mussels'; src: url('/huds-overlay/fonts/mussels/TT_Mussels_Trial_Bold.otf') format('opentype'); font-weight: 700; }
+@font-face { font-family: 'Mussels'; src: url('/huds-overlay/fonts/mussels/TT_Mussels_Trial_ExtraBold.otf') format('opentype'); font-weight: 800; }
+@font-face { font-family: 'Mussels'; src: url('/huds-overlay/fonts/mussels/TT_Mussels_Trial_Black.otf') format('opentype'); font-weight: 900; }
+@font-face { font-family: 'Insatiable'; src: url('/fonts/insatiable/InsatiableDisplay-BoldCondensed.ttf') format('truetype'); font-weight: 400 900; }
+@font-face { font-family: 'SF_Pro'; src: url('/fonts/nunito/nunito-v32-latin-regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'SF_Pro'; src: url('/fonts/nunito/nunito-v32-latin-600.ttf') format('truetype'); font-weight: 600; }
+@font-face { font-family: 'Barlow Condensed'; src: url('/fonts/barlow-condensed/barlow-condensed-v13-latin-regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'Barlow Condensed'; src: url('/fonts/barlow-condensed/barlow-condensed-v13-latin-500.ttf') format('truetype'); font-weight: 500; }
+@font-face { font-family: 'Barlow Condensed'; src: url('/fonts/barlow-condensed/barlow-condensed-v13-latin-600.ttf') format('truetype'); font-weight: 600; }
+@font-face { font-family: 'Barlow Condensed'; src: url('/fonts/barlow-condensed/barlow-condensed-v13-latin-700.ttf') format('truetype'); font-weight: 700; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('/fonts/barlow-semi-condensed/barlow-semi-condensed-v16-latin-regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('/fonts/barlow-semi-condensed/barlow-semi-condensed-v16-latin-500.ttf') format('truetype'); font-weight: 500; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('/fonts/barlow-semi-condensed/barlow-semi-condensed-v16-latin-600.ttf') format('truetype'); font-weight: 600; }
+@font-face { font-family: 'Barlow Semi Condensed'; src: url('/fonts/barlow-semi-condensed/barlow-semi-condensed-v16-latin-700.ttf') format('truetype'); font-weight: 700; }
+@font-face { font-family: 'Bai Jamjuree'; src: url('/fonts/bai-jamjuree/bai-jamjuree-v13-latin-regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'Bai Jamjuree'; src: url('/fonts/bai-jamjuree/bai-jamjuree-v13-latin-500.ttf') format('truetype'); font-weight: 500; }
+@font-face { font-family: 'Bai Jamjuree'; src: url('/fonts/bai-jamjuree/bai-jamjuree-v13-latin-600.ttf') format('truetype'); font-weight: 600; }
+@font-face { font-family: 'Bai Jamjuree'; src: url('/fonts/bai-jamjuree/bai-jamjuree-v13-latin-700.ttf') format('truetype'); font-weight: 700; }
+@font-face { font-family: 'Unbounded'; src: url('/fonts/unbounded/unbounded-v12-latin-regular.ttf') format('truetype'); font-weight: 400; }
+@font-face { font-family: 'Unbounded'; src: url('/fonts/unbounded/unbounded-v12-latin-600.ttf') format('truetype'); font-weight: 600; }
+@font-face { font-family: 'Unbounded'; src: url('/fonts/unbounded/unbounded-v12-latin-800.ttf') format('truetype'); font-weight: 800; }
+
+@theme {
+  --font-mussels: 'Mussels', 'Saira Condensed', sans-serif;
+  --font-insatiable: 'Insatiable', 'Anton', sans-serif;
+  --font-schabo: 'Schabo', 'Anton', sans-serif;
+  --font-barlowcond: 'Barlow Condensed', sans-serif;
+  --font-barlowsemicond: 'Barlow Semi Condensed', sans-serif;
+  --font-baijam: 'Bai Jamjuree', sans-serif;
+  --font-unbounded: 'Unbounded', sans-serif;
+}
+
+@font-face {
+  font-family: 'Consola';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/huds/fonts/Consola.ttf') format('truetype');
+}

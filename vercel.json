@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "cleanUrls": false,
+  "functions": {
+    "api/**/*.mjs": { "maxDuration": 30 }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Havoc-Build", "value": "v6-marker" }
+      ]
+    }
+  ],
+  "rewrites": [
+    { "source": "/auth/login", "destination": "/api/auth/login" },
+    { "source": "/auth/login-callback", "destination": "/api/auth/login-callback" },
+    { "source": "/((?!api|ping\\.txt|riot\\.txt|assets|fonts\\.css|icons\\.svg|favicon\\.svg|.*\\..*).*)", "destination": "/index.html" }
+  ]
+}

@@ -1,0 +1,2 @@
+import{G as e,K as t}from"./useKitClientHandler-C0Qdfd8s.js";var n=[t.FREE,t.BASIC,t.PRO,t.ENTERPRISE];function r(t){if(t)return n.find(n=>a(e[n].limits.features,t))}function i(t){if(t)return e[t]?.display.title}function a(e,t){if(!t)return!0;if(!e)return!1;let n=e;for(let e of t.split(`.`)){if(!n||typeof n!=`object`)return!1;n=n[e]}return n===!0}function o({features:e,requiredFeature:t}){let n=a(e,t),o=r(t);return{publicUseAllowed:n,requiredPlanTitle:i(o),requiredTier:o}}export{o as n,a as t};
+//# sourceMappingURL=feature-access.config-Nwp3_4MT.js.map

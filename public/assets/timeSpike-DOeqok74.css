@@ -1,0 +1,1 @@
+.custom-spike-blink path{animation:spike-blink var(--spike-blink-speed) infinite alternate}@keyframes spike-blink{0%{fill:#fff}to{fill:#f33}}

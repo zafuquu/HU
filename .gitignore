@@ -1,0 +1,34 @@
+# Ignore everything by default, whitelist the site source (this working copy
+# contains scratch files, logs, screenshots and credentials that must never
+# be committed).
+/*
+!/.gitignore
+!/.env.example
+!/.oxlintrc.json
+!/api
+!/public
+!/src
+!/package.json
+!/package-lock.json
+!/tsconfig.json
+!/tsconfig.app.json
+!/tsconfig.node.json
+!/vite.config.ts
+!/vercel.json
+!/index.html
+!/README.md
+!/README-DEPLOY.md
+!/CAMERA-FEED-GUIDE.md
+
+# safety net
+node_modules
+dist
+.env
+.env.*
+*.log
+*.local
+.DS_Store
+.vercel
+.tmp
+.vite-temp
+HU/

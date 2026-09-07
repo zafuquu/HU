@@ -1,0 +1,2 @@
+function e(e){let t=[{urls:`stun:stun.l.google.com:19302`},{urls:`stun:stun1.l.google.com:19302`}];return e?.turnUrl&&e?.turnUsername&&e?.turnCredential&&(t.push({credential:e.turnCredential,urls:[`${e.turnUrl}?transport=udp`,`${e.turnUrl}?transport=tcp`],username:e.turnUsername}),e.turnsUrl&&t.push({credential:e.turnCredential,urls:e.turnsUrl,username:e.turnUsername})),t}export{e as t};
+//# sourceMappingURL=ice-config-D4bydYKh.js.map

@@ -1,0 +1,2 @@
+import{s as e}from"./useKitClientHandler-C0Qdfd8s.js";import{i as t}from"./previewStateDecoration-B22lvELB.js";function n(n){let r=t(e,n);return{events:{roundWin:{highlightPlayer:r.leftTeam?.players[0]??null,losingTeam:r.rightTeam,roundNumber:r.currentRound?.roundNumber??1,winningSide:r.leftTeam?.side??`attack`,winningTeam:r.leftTeam,winType:`Normal`,winTypeLabel:`Round Win`}},gameState:r}}export{n as t};
+//# sourceMappingURL=valorantPreviewScenario-B6K8kBWh.js.map

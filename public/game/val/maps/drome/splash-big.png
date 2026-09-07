@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="BLOB overlay renderer for broadcast overlays" />
+    <link rel="icon" href="/favicon.ico" />
+    <title>BLOB Overlays</title>
+    <script type="module" crossorigin src="/assets/index-Dtz9BCjw.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-DAXXjFlN.js">
+    <link rel="modulepreload" crossorigin href="/assets/main-CVLfwM0u.js">
+    <link rel="modulepreload" crossorigin href="/assets/useKitClientHandler-C0Qdfd8s.js">
+    <link rel="modulepreload" crossorigin href="/assets/bundle-mjs-B_AA55HL.js">
+    <link rel="modulepreload" crossorigin href="/assets/auto-scaler-DkPHT6PY.js">
+    <link rel="modulepreload" crossorigin href="/assets/color-Se34lC41.js">
+    <link rel="modulepreload" crossorigin href="/assets/tslib.es6-BRiTzF52.js">
+    <link rel="modulepreload" crossorigin href="/assets/src-BtR5vhyy.js">
+    <link rel="modulepreload" crossorigin href="/assets/overlay-mode-provider-Cw-Py3fz.js">
+    <link rel="modulepreload" crossorigin href="/assets/cached-image-BDTbXAa0.js">
+    <link rel="modulepreload" crossorigin href="/assets/room-metadata-provider-BdfRCj3g.js">
+    <link rel="modulepreload" crossorigin href="/assets/post-message-provider-VRt0BN3A.js">
+    <link rel="modulepreload" crossorigin href="/assets/ice-config-D4bydYKh.js">
+    <link rel="modulepreload" crossorigin href="/assets/working-map-history-D11z4RFf.js">
+    <link rel="modulepreload" crossorigin href="/assets/socket-provider-DlEQK1Os.js">
+    <link rel="modulepreload" crossorigin href="/assets/game-data-provider-DLcL7Z8G.js">
+    <link rel="modulepreload" crossorigin href="/assets/ValorantPostgameProvider-DoBwBQHO.js">
+    <link rel="modulepreload" crossorigin href="/assets/useLiveSeriesMapHistory-DxbtaVnv.js">
+    <link rel="modulepreload" crossorigin href="/assets/previewStateDecoration-B22lvELB.js">
+    <link rel="modulepreload" crossorigin href="/assets/valorantPreviewScenario-B6K8kBWh.js">
+    <link rel="modulepreload" crossorigin href="/assets/val-game-provider-Cj02nMq_.js">
+    <link rel="modulepreload" crossorigin href="/assets/utils-DlEW7jYo.js">
+    <link rel="modulepreload" crossorigin href="/assets/commonComps-D5FWaN-A.js">
+    <link rel="modulepreload" crossorigin href="/assets/observer-hud-renderer-BxnByv0j.js">
+    <link rel="modulepreload" crossorigin href="/assets/engine-B66qU-oL.js">
+    <link rel="modulepreload" crossorigin href="/assets/useAdvertisement-qnbpJeP7.js">
+    <link rel="modulepreload" crossorigin href="/assets/kit-store-layout-lW0Brjj4.js">
+    <link rel="stylesheet" crossorigin href="/assets/src-DCDQFWHR.css">
+    <link rel="stylesheet" crossorigin href="/assets/overlay-x1XGuNl0.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-ZH6idnT-.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

@@ -1,0 +1,2 @@
+import{$ as e}from"./useKitClientHandler-C0Qdfd8s.js";import{t}from"./cached-image-BDTbXAa0.js";import{t as n}from"./utils-DlEW7jYo.js";var r=e();function i({className:e,player:i,team:a}){let o=i?.avatar||a?.logo;return(0,r.jsx)(`div`,{className:n(`flex size-full items-center justify-center bg-black/80`,e),children:o&&(0,r.jsx)(t,{alt:``,className:`max-h-[60%] max-w-[60%] rounded-sm object-contain`,src:o})})}export{i as t};
+//# sourceMappingURL=facecam-fallback-DWO8lgmN.js.map

@@ -1,0 +1,152 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HAVOC Overlays</title>
+
+<style>html,body,#root,#huds-havoc-main-overlay{background:#151719 !important}</style>
+<script>
+// Self-contained replica: serve room metadata locally instead of hitting api.havoc.productions
+window.__HAVOC_REPLICA_TICKET__ = [{"result":{"data":{"json":{"overlayId":"val-classic","roomId":"6bd51cf5-8aa9-4a12-8cb6-2618b8e894e2","room":{"game":"VAL","id":"6bd51cf5-8aa9-4a12-8cb6-2618b8e894e2","name":"test","overlayId":"val-classic"},"roomLimits":{"advertisement":false,"features":{"advertisement":false,"branding":{"broadcastKitEditor":true,"overlayPresets":true,"sponsorsComponent":true},"cs":{"customAssets":{"customImages":true,"playerAliases":true,"playerImages":true,"playerWebcams":true},"ingameHud":{"customKillfeed":true,"economyInsight":true,"gameEvents":true,"mapHistory":true,"playercard":true,"roundHistory":true,"scoreline":true,"teamStats":true,"timeouts":true},"overlays":{"instantReplay":true,"intermission":true,"mapBan":true,"matchMvp":true,"postGameStats":true,"startingSoon":true,"teamLineup":true,"teamVictory":true},"transitions":{"replay":true,"stinger":true}},"data":{"analytics":true,"autoDataPopulation":true,"gameEvents":true,"playerAnalytics":true},"mapVetos":true,"overlayEditor":true,"playersAndTeams":true,"production":{"gameStateRecognition":true,"instantReplay":true,"liveInteractions":true,"sceneTimeline":true,"userEvents":true},"rl":{"customAssets":{"customImages":true,"ingameSponsors":true,"playerAliases":true,"playerImages":true,"playerWebcams":true},"ingameHud":{"playerBoost":true,"playercard":true,"popupAnimations":true,"replayHud":true,"scoreline":true},"overlays":{"caster":true,"instantReplay":true,"intermission":true,"mapBan":true,"matchMvp":true,"postGameStats":true,"startingSoon":true,"teamLineup":true,"teamVictory":true},"transitions":{"replay":true,"stinger":true}},"tournamentRanking":true,"val":{"customAssets":{"customImages":true,"playerAliases":true,"playerImages":true,"playerWebcams":true},"ingameHud":{"economyInsight":true,"gameEvents":true,"mapHistory":true,"roundHistory":true,"scoreline":true,"teamStats":true,"timeouts":true,"webcam":true},"overlays":{"agentSelect":true,"instantReplay":true,"intermission":true,"mapBan":true,"matchMvp":true,"postGameStats":true,"startingSoon":true,"teamLineup":true,"teamVictory":true},"transitions":{"replay":true,"stinger":true}},"widgets":true},"maxFileSize":3145728},"expiresAt":"2026-08-15T12:24:21.000Z","realtimeOrigin":"https://socket.havoc.productions","ticket":"eyJhbGciOiJSUzI1NiIsImtpZCI6InJlYWx0aW1lLXByaW1hcnkiLCJ0eXAiOiJKV1QifQ.eyJleHAiOjE3ODY3OTY2NjEsImlhdCI6MTc4Njc5NTc2MSwiaXNzIjoiYmxvYi1hcGkiLCJqdGkiOiIwNTVkYmQwOC1lNzNmLTQyODAtODA2Mi04MDcyY2Q5ZDFhYWUiLCJuYmYiOjE3ODY3OTU3NjEsInN1YiI6InB1YmxpYy1vdmVybGF5OjZiZDUxY2Y1LThhYTktNGExMi04Y2I2LTI2MThiOGU4OTRlMjp2YWwtY2xhc3NpYyIsInR5cGUiOiJyZWFsdGltZS10aWNrZXQiLCJ2ZXIiOjMsImF1ZCI6ImJsb2Itc29ja2V0Iiwia2luZCI6ImxpdmUtb3ZlcmxheSIsIm92ZXJsYXlJZCI6InZhbC1jbGFzc2ljIiwicm9vbUlkIjoiNmJkNTFjZjUtOGFhOS00YTEyLThjYjYtMjYxOGI4ZTg5NGUyIiwic2NvcGVzIjpbImJyb2FkY2FzdDpzdGF0dXMiLCJnYW1lOnZpZXciLCJ3ZWJjYW06dmlldyJdfQ.ZrzG0o1nYLInOgr4bUdirF6urdOZLOZvduYUPXhrBIqqa_8kdxWJbhswIU0Gb6oZaY8frKmFiXgCgTYetAF4-kI0WEhyODKkRNCVaY_wQYehnrRC_u-JQKKQM138qfER-NJAFHw1w0qsIJ0lWlcnCvh1_qvSTDZuKeXQ2L_FdBnYJFPcai1bVWXFE0YZqH4_ApwvsoTmP-eVHm2MVmleLoiSAMBwrhmrCB3hn0WcsWo3-3G-aU5KaLyXT_d0j6isx2i4paBxjbtxrvK0mrv5dLtG4oMXegi2gU-L4TYTQWnsA5xOz_O8I2A6Sk40rZI-KE0xhpzoyq0Oewrq2JUtTA6t3-j6tJ3I7y4-XkLMjUYcBwZ_et8A_BgZqJK1xU2m62C3-mVUj7Mn85APmmB0NYlrps629e88Mz1EzqvEuj0c55J-GOi1t65GWPhdyyyb_JtIQUV7H0ScQnYunCvjzEZ50kex_d4LXjv-oo0l30bPJLgiIH3594wrNCUEik2i"}}}}];
+const ORIG_FETCH = window.fetch.bind(window);
+window.fetch = function (input, init) {
+  const url = typeof input === 'string' ? input : (input && input.url) ? input.url : '';
+  if (url.includes('api.havoc.productions') && url.includes('realtime.publicOverlayAccess')) {
+    const ticket = window.__HAVOC_REPLICA_TICKET__;
+    const data = Array.isArray(ticket) ? ticket : [ticket];
+    return Promise.resolve(new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } }));
+  }
+  return ORIG_FETCH(input, init);
+};
+</script>
+<script type="module" crossorigin="" src="/huds-overlay/assets/index-Dtz9BCjw.js"></script>
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/agent-select-config-CjTsYUZV.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/agent-select-screen-CbNl-QSw.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/auto-scaler-DkPHT6PY.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/bundle-mjs-B_AA55HL.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/buy-round-0DGNOjF9.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/cached-image-BDTbXAa0.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/clickable-component-B_HNB39J.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/color-resolver-b5jqLcyX.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/color-Se34lC41.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/commonComps-D5FWaN-A.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/cubic-bezier-Dl5LGRUs.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/engine-B66qU-oL.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/feature-access.config-Nwp3_4MT.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/game-data-provider-DLcL7Z8G.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/hooks-DGJpd5Ix.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/hud-screen-CohfQM3-.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/ice-config-D4bydYKh.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/index-Dtz9BCjw.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/kit-store-layout-lW0Brjj4.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/main-CVLfwM0u.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/observer-hud-renderer-BxnByv0j.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/overlay-CowMU4w3.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/overlay-mode-provider-Cw-Py3fz.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/player-Ba48j2BO.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/post-game-select-config-D-6Y3gK_.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/post-message-provider-VRt0BN3A.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/previewStateDecoration-B22lvELB.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/reactFastMarquee-Dz5QJGPp.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/rolldown-runtime-DAXXjFlN.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/room-metadata-provider-BdfRCj3g.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/scope-DZo8QbD9.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/screen-access-CbolQXVT.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/socket-provider-DlEQK1Os.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/sponsors-T7zsES5Z.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/src-BtR5vhyy.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/stagger-Bs4Hjy4M.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/target-C_YcZUhV.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/timeout-CWlr5FMt.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/timeSpike-Dk7M5mfv.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/tslib.es6-BRiTzF52.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/use-current-player-facecam-BeGUxM30.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/use-hud-visibility-animation-BcQi_6PX.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/use-player-facecam-35yv64gz.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/use-val-agent-select-replay-view-KTzKyOv9.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/useAdvertisement-qnbpJeP7.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/useKitClientHandler-C0Qdfd8s.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/useLiveSeriesMapHistory-DxbtaVnv.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/utils-DlEW7jYo.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/val-game-provider-Cj02nMq_.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/ValorantPostgameProvider-DoBwBQHO.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/valorantPreviewScenario-B6K8kBWh.js">
+<link rel="modulepreload" crossorigin="" href="/huds-overlay/assets/working-map-history-D11z4RFf.js">
+<link rel="stylesheet" crossorigin="" href="/huds-overlay/assets/agent-select-screen-D4_NUOZy.css">
+<link rel="stylesheet" crossorigin="" href="/huds-overlay/assets/index-ZH6idnT-.css">
+<link rel="stylesheet" crossorigin="" href="/huds-overlay/assets/overlay-x1XGuNl0.css">
+<link rel="stylesheet" crossorigin="" href="/huds-overlay/assets/src-DCDQFWHR.css">
+<link rel="stylesheet" crossorigin="" href="/huds-overlay/assets/timeSpike-DOeqok74.css">
+<style type="text/css">.rfm-marquee-container {
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: row;
+  position: relative;
+  width: var(--width);
+  transform: var(--transform);
+}
+.rfm-marquee-container:hover div {
+  animation-play-state: var(--pause-on-hover);
+}
+.rfm-marquee-container:active div {
+  animation-play-state: var(--pause-on-click);
+}
+
+.rfm-overlay {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+}
+.rfm-overlay::before, .rfm-overlay::after {
+  background: linear-gradient(to right, var(--gradient-color), rgba(255, 255, 255, 0));
+  content: "";
+  height: 100%;
+  position: absolute;
+  width: var(--gradient-width);
+  z-index: 2;
+  pointer-events: none;
+  touch-action: none;
+}
+.rfm-overlay::after {
+  right: 0;
+  top: 0;
+  transform: rotateZ(180deg);
+}
+.rfm-overlay::before {
+  left: 0;
+  top: 0;
+}
+
+.rfm-marquee {
+  flex: 0 0 auto;
+  min-width: var(--min-width);
+  z-index: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  animation: scroll var(--duration) linear var(--delay) var(--iteration-count);
+  animation-play-state: var(--play);
+  animation-delay: var(--delay);
+  animation-direction: var(--direction);
+}
+@keyframes scroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.rfm-initial-child-container {
+  flex: 0 0 auto;
+  display: flex;
+  min-width: auto;
+  flex-direction: row;
+  align-items: center;
+}
+
+.rfm-child {
+  transform: var(--transform);
+}</style>
+</head>
+<body><div id="root"><div class="relative flex size-full items-center justify-center overflow-hidden"><div class="flex h-full flex-col"><div class="relative overflow-hidden h-screen w-screen"><div class="absolute overflow-hidden" style="left:0;top:0;transform:scale(1);transform-origin:left top"><div class="relative h-270 w-480"><div class="relative size-full min-h-full" id="huds-havoc-main-overlay"></div></div></div></div></div></div></div></body></html>

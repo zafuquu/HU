@@ -1,0 +1,2 @@
+function e(e){if(!e)return 0;let t,n,r;if(e.startsWith(`rgb`)){let i=e.match(/\d+(\.\d+)?/g);if(!i||i.length<3)return 0;t=Number.parseInt(i[0],10)/255,n=Number.parseInt(i[1],10)/255,r=Number.parseInt(i[2],10)/255}else{let i=e.replace(`#`,``);t=Number.parseInt(i.substring(0,2),16)/255,n=Number.parseInt(i.substring(2,4),16)/255,r=Number.parseInt(i.substring(4,6),16)/255}return .2126*t+.7152*n+.0722*r}function t({color:t,disabled:n=!1,render:r,threshold:i=.5}){return r(n?!0:e(t)>i)}export{t};
+//# sourceMappingURL=ContrastElement-CSnTSQVX.js.map

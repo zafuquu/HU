@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="blob.productions" />
+    <link rel="icon" href="/favicon.ico" />
+    <title>BLOB – Dashboard</title>
+    <style>
+      html {
+        color-scheme: dark;
+      }
+
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        background: #111214;
+      }
+
+      body {
+        margin: 0;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-CQo-0y-c.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/jsx-runtime-CZcjcDnw.js">
+    <link rel="modulepreload" crossorigin href="/assets/react-DQyofxZ5.js">
+    <link rel="modulepreload" crossorigin href="/assets/trpc-CMflSrzn.js">
+    <link rel="modulepreload" crossorigin href="/assets/react-dom-H44SGmmt.js">
+    <link rel="modulepreload" crossorigin href="/assets/useStore-BNnK0pcG.js">
+    <link rel="modulepreload" crossorigin href="/assets/ClientOnly-DJ3tWxJp.js">
+    <link rel="modulepreload" crossorigin href="/assets/redirect-D3L17tzd.js">
+    <link rel="modulepreload" crossorigin href="/assets/matchContext-TpPmCRW2.js">
+    <link rel="modulepreload" crossorigin href="/assets/Match-DtDHM3Dr.js">
+    <link rel="modulepreload" crossorigin href="/assets/link-Dabco_WL.js">
+    <link rel="modulepreload" crossorigin href="/assets/useParams-BWQeIkma.js">
+    <link rel="modulepreload" crossorigin href="/assets/lazyRouteComponent-DRsxRJXw.js">
+    <link rel="modulepreload" crossorigin href="/assets/schemas-DRujZUTL.js">
+    <link rel="modulepreload" crossorigin href="/assets/games-B8PkereD.js">
+    <link rel="modulepreload" crossorigin href="/assets/main-Rfz0PBrj.js">
+    <link rel="modulepreload" crossorigin href="/assets/players-teams-MAzFtOC6.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-AwKJdm5F.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v4513226cdae34746b4dedf0b4dfa099e1781791509496" integrity="sha512-ZE9pZaUXND66v380QUtch/5sE9tPFh2zg45pR2PB0CVkCtOREv2AJKkSidISWkysEuQ0EH8faUU5du78bx87UQ==" data-cf-beacon='{"version":"2024.11.0","token":"7113ddb764854d6f80e3cdbf3c4ff2d3","r":1}' crossorigin="anonymous"></script>
+</body>
+</html>

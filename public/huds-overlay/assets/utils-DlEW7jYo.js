@@ -1,0 +1,2 @@
+import{n as e,t}from"./bundle-mjs-B_AA55HL.js";function n(...n){return t(e(n))}var r=e=>{let t=Math.max(0,Math.floor(e)),n=Math.floor(t/60),r=t%60;return`${n.toString()}:${r.toString().padStart(2,`0`)}`};export{r as n,n as t};
+//# sourceMappingURL=utils-DlEW7jYo.js.map

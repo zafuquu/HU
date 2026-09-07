@@ -1,0 +1,2 @@
+import{o as e}from"./rolldown-runtime-DAXXjFlN.js";import{et as t}from"./useKitClientHandler-C0Qdfd8s.js";import{r as n}from"./room-metadata-provider-BdfRCj3g.js";var r=e(t(),1);function i(){let{liveSeriesData:e}=n();return(0,r.useMemo)(()=>({completedMapCount:e?.maps.reduce((e,t)=>e+(t.result===void 0?0:1),0)??0}),[e])}export{i as t};
+//# sourceMappingURL=useLiveSeriesProgress-DhADPfxK.js.map

@@ -1,0 +1,2 @@
+var e=({color:e,disabled:t=!1,render:n,threshold:r=.5})=>n(t?!0:(e=>{let t=e?.replace(`#`,``);if(!t)return 0;let n=parseInt(t.substr(0,2),16)/255,r=parseInt(t.substr(2,2),16)/255,i=parseInt(t.substr(4,2),16)/255;return .2126*n+.7152*r+.0722*i})(e)>r);export{e as t};
+//# sourceMappingURL=contrast-element-YzXkUwC-.js.map
