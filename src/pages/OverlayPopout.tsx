@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useAppStore } from '../store/AppContext'
 import { useRealtimeSync } from '../lib/realtimeSync'
@@ -102,15 +102,34 @@ export default function OverlayPopout() {
   }, [liveScores])
 
   // Auto scene switching: the desktop producer publishes the scene its game data
-  // implies (agent-select / buy-round / ingame-hud / post-game / map-interstitial).
+  // implies (agent-select / buy-round / ingame-hud / post-game / map-interstitial),
+  // OR we derive it from the live round phase when no explicit scene was sent.
   // forceScene from bridge control API (#3) takes highest priority.
   const liveScene = liveScores?.snapshot?.state?.scene
   const forceScene = liveScores?.forceScene || null
   const overlayHidden = liveScores?.overlayHidden === true
+  const livePhase = (function () {
+    const st = (liveScores?.snapshot?.state || liveScores?.snapshot || {}) as any
+    return (
+      st.roundPhase ||
+      (st.roundInfo && st.roundInfo.roundPhase) ||
+      st.phase ||
+      (st.currentRound && st.currentRound.roundPhase) ||
+      (st.isAgentSelectPhase === true ? 'game_start' : null) ||
+      null
+    )
+  })()
+  const phaseDerivedScene =
+    livePhase === 'game_end' ? 'post-game'
+    : livePhase === 'shopping' ? 'buy-round'
+    : livePhase === 'game_start' ? 'agent-select'
+    : null
   const sceneKey =
     forceScene ? String(forceScene)
     : liveScene && ['agent-select', 'buy-round', 'ingame-hud', 'post-game', 'map-interstitial'].includes(String(liveScene))
       ? String(liveScene)
+      : phaseDerivedScene
+      ? phaseDerivedScene
       : urlSceneKey
   const [scale, setScale] = useState(1)
   const fullTournamentIdRef = useRef<string | null>(null)
@@ -341,6 +360,23 @@ export default function OverlayPopout() {
   // LIVE snapshot players win over dashboard rosters: only players actually
   // detected in the game (OCR/runtime) are rendered; empty sides stay hidden.
   const snapState = liveScores?.snapshot?.state || liveScores?.snapshot || null
+  // Round clock: the desktop re-publishes roundTimer every second, but the
+  // Supabase realtime path can lag — interpolate locally so the timer always
+  // ticks smoothly between snapshots.
+  const [, tickClock] = useReducer((x: number) => x + 1, 0)
+  useEffect(() => {
+    const t = setInterval(tickClock, 250)
+    return () => clearInterval(t)
+  }, [tickClock])
+  const timerText = (function () {
+    const base = (snapState as any)?.roundTimer
+    if (typeof base !== 'number' || !isFinite(base) || base <= 0) return undefined
+    const elapsed = Math.max(0, Math.floor((Date.now() - ((liveScores as any)?.updatedAt ?? Date.now())) / 1000))
+    const remaining = Math.max(0, Math.floor(base) - elapsed)
+    const m = Math.floor(remaining / 60)
+    const s = remaining % 60
+    return `${m}:${String(s).padStart(2, '0')}`
+  })()
   const snapPlayers = Array.isArray(snapState?.players) ? snapState.players : null
   const mapLivePlayers = (arr: any[]) => arr.map((p: any, idx: number) => ({
     id: p.playerId || p.name || Math.random(),
@@ -354,9 +390,11 @@ export default function OverlayPopout() {
     photoUrl: null,
     avatarUrl: null,
     health: p.health ?? (p.isAlive === false ? 0 : 100),
-    isAlive: p.isAlive ?? (p.health === 0 ? false : true),
-    armor: p.armor ?? 0,
-    armorType: p.armorType ?? (p.armor ? 'Heavy' : 'None'),
+    isAlive: p.isAlive ?? ((p.health ?? 100) === 0 ? false : true),
+    // Real desktop protocol carries shieldType (0 none / 1 light 25 / 2 heavy 50
+    // / 3 enemy-heavy 50 / 4 regen 25) — derive the armor bar values from it.
+    armor: p.armor ?? (p.shieldType === 2 || p.shieldType === 3 ? 50 : p.shieldType === 1 || p.shieldType === 4 ? 25 : 0),
+    armorType: p.armorType ?? (p.shieldType === 2 || p.shieldType === 3 ? 'Heavy' : p.shieldType === 1 || p.shieldType === 4 ? 'Light' : 'None'),
     credits: p.credits ?? p.money ?? 800,
     spent: p.loadoutValue != null ? p.loadoutValue : null,
     weaponName: p.weaponName || p.scoreboardWeaponInternal || p.weapon || null,
@@ -500,6 +538,7 @@ export default function OverlayPopout() {
             seriesScoreRight={seriesRight}
             bestOf={Number(state.matchFormat) || state.bestOf || 3}
             roundText={roundText}
+            timerText={timerText}
             seriesTitleText={state.seriesTitle || ''}
             eventTitleText={state.eventTitle || ''}
             gameSeriesText={state.gameSeries || ''}
