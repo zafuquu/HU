@@ -24,6 +24,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import https from "node:https";
 
+import { checkValorantProcess } from "./valorant-detect";
+
 export type IdentitySink = (fact: { kind: string; key: string; value: unknown }) => void;
 
 /** The original's own agent tables (valorant/identities). */
@@ -454,6 +456,15 @@ export class RiotIdentitySource {
   private lastMatchId: string | null = null;
   private lastMatchType: "core" | "pregame" | null = null;
   private stopped = false;
+  /**
+   * True while we have told the runtime the session is loading/live.
+   * Riot chat presences go STALE when VALORANT exits — the client keeps
+   * reporting the last match's sessionLoopState/map/score (observed live:
+   * "INGAME / Infinity 9-9" with no game process). The runtime must only
+   * trust presence while the game process actually exists; otherwise the HUD
+   * stays "LIVE" forever after the match.
+   */
+  private nonIdlePhaseEmitted = false;
 
   private emitRoster(roster: RosterPlayer[], withStats: boolean): void {
     for (const player of roster) {
@@ -516,6 +527,17 @@ export class RiotIdentitySource {
 
   private async pollMatch(): Promise<void> {
     if (!this.ctx) return;
+    // Presence is only trustworthy while the game process exists. VALORANT
+    // closed -> the Riot client keeps serving the stale INGAME presence, so
+    // retire the session instead of mirroring frozen map/score to the HUD.
+    const gameRunning = checkValorantProcess().present;
+    if (!gameRunning && this.nonIdlePhaseEmitted) {
+      this.nonIdlePhaseEmitted = false;
+      this.lastMatchId = null;
+      this.lastMatchType = null;
+      this.emit({ kind: "new_info_update", key: "session_phase", value: "idle" });
+      return;
+    }
     const presences = parsePresences(
       await lcuGet(this.ctx.port, this.ctx.password, "/chat/v4/presences"),
     );
@@ -568,7 +590,7 @@ export class RiotIdentitySource {
     //    emitting the phase here the runtime stayed on "loading" forever and
     //    the overlay froze on the agent-select scene mid-match.
     if (!matchId) {
-      if (self?.inGame) {
+      if (self?.inGame && gameRunning) {
         if (self.matchMap) {
           // "/Game/Maps/Canyon/Canyon" -> "canyon" (GEP-style codename)
           const seg = self.matchMap.split("/").filter(Boolean).pop();
@@ -584,9 +606,17 @@ export class RiotIdentitySource {
         // INGAME with no resolvable match id: still a live match.
         this.emit({ kind: "new_info_update", key: "scene", value: "ingame_hud" });
         this.emit({ kind: "new_info_update", key: "session_phase", value: "live" });
-      } else if (self?.isPregame) {
+        this.nonIdlePhaseEmitted = true;
+      } else if (self?.isPregame && gameRunning) {
         this.emit({ kind: "new_info_update", key: "scene", value: "agent_select" });
         this.emit({ kind: "new_info_update", key: "session_phase", value: "loading" });
+        this.nonIdlePhaseEmitted = true;
+      } else if (this.nonIdlePhaseEmitted) {
+        // Game still running but presence no longer reports a match — the
+        // player backed out to the lobby. Retire the session so the HUD does
+        // not freeze on the last match.
+        this.emit({ kind: "new_info_update", key: "session_phase", value: "idle" });
+        this.nonIdlePhaseEmitted = false;
       }
       this.lastMatchId = null;
       this.lastMatchType = null;
@@ -617,9 +647,11 @@ export class RiotIdentitySource {
     if (type === "pregame" || self?.isPregame) {
       this.emit({ kind: "new_info_update", key: "scene", value: "agent_select" });
       this.emit({ kind: "new_info_update", key: "session_phase", value: "loading" });
+      this.nonIdlePhaseEmitted = true;
     } else if (type === "core" || self?.inGame) {
       this.emit({ kind: "new_info_update", key: "scene", value: "ingame_hud" });
       this.emit({ kind: "new_info_update", key: "session_phase", value: "live" });
+      this.nonIdlePhaseEmitted = true;
     }
 
     if (matchId !== this.lastMatchId) {
