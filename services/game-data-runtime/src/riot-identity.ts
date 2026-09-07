@@ -470,6 +470,17 @@ export class RiotIdentitySource {
    */
   private nonIdlePhaseEmitted = false;
   /**
+   * Previous poll's presence loop state + scores — used to detect a NEW match
+   * from presence alone: a flip INGAME -> PREGAME (agent select of the next
+   * match) or a score decrease (Riot resets partyOwnerMatchScore to 0-0) both
+   * mean the runtime must reset, otherwise the previous match's score bleeds
+   * into agent select (observed: HUD showing 4-8 "live" while nothing was
+   * happening yet).
+   */
+  private lastLoopInGame: boolean | null = null;
+  private lastScoreAlly: number | null = null;
+  private lastScoreEnemy: number | null = null;
+  /**
    * Consecutive polls that said "no live session" while we believe one is
    * active. A single miss is normal jitter (tasklist hiccups, LCU presence
    * churn mid-match) — retiring on the first miss made the HUD flap
@@ -589,6 +600,21 @@ export class RiotIdentitySource {
       presences.find((p) => p.inGame || p.inProgress) ??
       null;
     if (self) this.ctx.selfPuuid = self.puuid;
+
+    // New-match detection from presence alone (see field docs): agent-select
+    // flip after a live session, or a score decrease vs the previous poll.
+    // Emits match_start, which resets the runtime (score/roster/rounds) so
+    // the previous match's state never bleeds into the next one.
+    const pregameFlip = !!self?.isPregame && this.lastLoopInGame === true;
+    const scoreReset =
+      (this.lastScoreAlly != null && self?.scoreAlly != null && self.scoreAlly < this.lastScoreAlly) ||
+      (this.lastScoreEnemy != null && self?.scoreEnemy != null && self.scoreEnemy < this.lastScoreEnemy);
+    if (pregameFlip || scoreReset) {
+      this.emit({ kind: "new_info_update", key: "match_start", value: true });
+    }
+    this.lastLoopInGame = !!self?.inGame;
+    if (self?.scoreAlly != null) this.lastScoreAlly = self.scoreAlly;
+    if (self?.scoreEnemy != null) this.lastScoreEnemy = self.scoreEnemy;
 
     // 1. Presence with an explicit matchId (OLD format) — direct.
     let matchId = self?.matchId ?? null;

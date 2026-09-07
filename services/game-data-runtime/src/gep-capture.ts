@@ -737,9 +737,12 @@ export class GepProviderSource {
 
   private startAttachLoop(): void {
     this.stopAttachLoop();
-    const initial = setTimeout(() => void this.attachAlreadyRunningGame(), 3_000);
+    // Fast tick: GEP can only hook VALORANT right after the ShooterGame
+    // process spawns (Vanguard hardens it within seconds), so winning the
+    // fresh-spawn race matters. Same-pid ticks are cheap no-ops.
+    const initial = setTimeout(() => void this.attachAlreadyRunningGame(), 2_000);
     initial.unref();
-    this.attachTimer = setInterval(() => void this.attachAlreadyRunningGame(), 10_000);
+    this.attachTimer = setInterval(() => void this.attachAlreadyRunningGame(), 4_000);
     this.attachTimer.unref();
   }
 
@@ -771,9 +774,17 @@ export class GepProviderSource {
       if (!match) return; // not running yet — the loop keeps polling
       const pid = Number(match[1]);
       const now = Date.now();
-      // Healthy = attached to this pid AND data arrived recently. A stale
-      // attachment (connect accepted but no data flowing) is re-attached.
-      const stale = this.attachedPid !== null && now - this.lastGameDataAt > 60_000;
+      // Healthy = attached to this pid AND data arrived recently.
+      //
+      // STALE THRESHOLD MUST EXCEED GEP'S INIT WINDOW. After gep.connect()
+      // resolves, the GEP plugin spends up to 300s initializing (observed:
+      // plugin_status "initializing" for exactly 5:00 before it either
+      // streams or errors). The old 60s threshold declared the attachment
+      // stale mid-init and re-sent connect-game every ~64s, which RESET the
+      // plugin's initialization — an infinite loop where data could never
+      // arrive (observed 06:29-06:59: connect resolved -> 5min -> nothing ->
+      // re-attach). Only re-attach after the full init window plus margin.
+      const stale = this.attachedPid !== null && now - this.lastGameDataAt > 330_000;
       if (this.attachedPid === pid && !stale) return;
       const msg = {
         type: "command",
