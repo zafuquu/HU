@@ -1,4 +1,4 @@
-# BLOB Desktop Replica — Full Data Schema & Sync Sequence
+# HAVOC Desktop Replica — Full Data Schema & Sync Sequence
 
 This document is the authoritative contract that ties the desktop app, the
 game-data (Overwolf GEP) runtime, the bridge, and the website overlay together.
@@ -112,8 +112,8 @@ SSE pipeline.
 
 ## 8. Env grep the desktop honors (matching the original app)
 
-`BLOB_DESKTOP_API_ORIGIN`, `BLOB_DESKTOP_REALTIME_ORIGIN`,
-`BLOB_DESKTOP_LOGIN_ORIGIN`, `BLOB_DESKTOP_OVERLAY_ORIGIN`,
-`BLOB_DESKTOP_SKIP_LOGIN` (bypass), plus fork-specific
-`BLOB_FORK_ROOM_ID`, `BLOB_FORK_SCENARIO` (mock event),
-`BLOB_FORK_SOURCE=overwolf` (use real GEP when available).
+`HAVOC_DESKTOP_API_ORIGIN`, `HAVOC_DESKTOP_REALTIME_ORIGIN`,
+`HAVOC_DESKTOP_LOGIN_ORIGIN`, `HAVOC_DESKTOP_OVERLAY_ORIGIN`,
+`HAVOC_DESKTOP_SKIP_LOGIN` (bypass), plus fork-specific
+`HAVOC_ROOM_ID`, `HAVOC_SCENARIO` (mock event),
+`HAVOC_SOURCE=overwolf` (use real GEP when available).

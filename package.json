@@ -1,8 +1,8 @@
 {
-  "name": "blob-fork",
+  "name": "havoc-unleash",
   "version": "0.1.0",
   "private": true,
-  "description": "Clean-room replication of the BLOB Desktop architecture: local game-data runtime, anchored Valorant overlay, HUD server.",
+  "description": "Clean-room replication of the HAVOC Desktop architecture: local game-data runtime, anchored Valorant overlay, HUD server.",
   "license": "MIT",
   "type": "commonjs",
   "workspaces": [

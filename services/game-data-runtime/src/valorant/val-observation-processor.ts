@@ -5,14 +5,14 @@ import {
   ValorantDataTypes,
 } from "./valorant-shared";
 import { FormattingService } from "./valorant-api";
-import type { BlobGameDataPacket } from "./relay-message";
+import type { HavocGameDataPacket } from "./relay-message";
 import type { GameIdentity } from "./game-identity";
 
 import { DESKTOP_GAME_REGISTRY } from "./desktop-game-registry";
 import { logger } from "./val-logger";
 
 const VALORANT_PROVIDER_GAME_ID = DESKTOP_GAME_REGISTRY.VAL.gameDataRuntime.providerGameId;
-type OwValorantObservation = BlobGameDataPacket & { blob_data_source: "OW" };
+type OwValorantObservation = HavocGameDataPacket & { havoc_data_source: "OW" };
 
 const ROUND_PHASE_SEQUENCE: Readonly<Record<string, number>> = {
   [VALORANT_PRE_SHOPPING_ROUND_PHASE]: 0,
@@ -66,7 +66,7 @@ export class ValObservationProcessor {
       case "kill_feed":
       case "planted_location":
         return {
-          blob_data_source: "OW",
+          havoc_data_source: "OW",
           data: data.value,
           event: data.key,
         };
@@ -206,7 +206,7 @@ export class ValObservationProcessor {
   private toObservation(data: IFormattedValorantData): OwValorantObservation {
     return {
       ...data,
-      blob_data_source: "OW",
+      havoc_data_source: "OW",
     };
   }
 

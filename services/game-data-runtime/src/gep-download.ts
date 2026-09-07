@@ -1,6 +1,6 @@
 /**
- * GEP package downloader — ported from the audited original BLOB runtime
- * (blob-game-data-runtime.exe): fetch Overwolf's public package manifest with
+ * GEP package downloader — ported from the audited original HAVOC runtime
+ * (havoc-game-data-runtime.exe): fetch Overwolf's public package manifest with
  * the `x-owe-dev` dev header (no credentials needed), download the GEP
  * `module.owepk`, extract with tar, and verify `verified_contents.json` hashes.
  *
@@ -17,10 +17,10 @@ const MANIFEST_URL = "https://electronapi.overwolf.com/v2/packages";
 const USER_AGENT = "havoc-game-data-runtime/0.1";
 
 export function resolveGameDataDir(): string {
-  const env = process.env.BLOB_GAME_DATA_DIR?.trim();
+  const env = process.env.HAVOC_GAME_DATA_DIR?.trim();
   if (env) return env;
   const localAppData = process.env.LOCALAPPDATA?.trim();
-  if (!localAppData) throw new Error("LOCALAPPDATA is unavailable; set BLOB_GAME_DATA_DIR");
+  if (!localAppData) throw new Error("LOCALAPPDATA is unavailable; set HAVOC_GAME_DATA_DIR");
   return join(localAppData, "Havoc", "game-data-runtime");
 }
 

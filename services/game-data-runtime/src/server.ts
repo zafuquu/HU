@@ -5,9 +5,9 @@
  *
  * Data sources:
  *  - default: Overwolf GEP provider (real, live Valorant data via the same
- *    Game Events Provider the original BLOB runtime uses). Never invents
+ *    Game Events Provider the original HAVOC runtime uses). Never invents
  *    players: teams stay empty until a real match reports them.
- *  - BLOB_FORK_SOURCE=mock: deterministic mock source (dev only).
+ *  - HAVOC_SOURCE=mock: deterministic mock source (dev only).
  */
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -18,10 +18,11 @@ import {
   GAME_DATA_RUNTIME_PATHS,
   gameDataRuntimeHealthSchema,
   type GameDataRuntimeHealth,
-} from "@blob-fork/contracts";
+} from "@havoc-unleash/contracts";
 
 import { MockValorantSource, ROSTER } from "./mock-source";
 import { GepProviderSource } from "./gep-capture";
+import { SpectraSource } from "./spectra-source";
 import { RiotIdentitySource } from "./riot-identity";
 import { ValRoundEngine, type ValNativeRoundSettlement } from "./val-engine";
 import { checkValorantProcess, getValorantProcessId } from "./valorant-detect";
@@ -30,6 +31,12 @@ const PORT = Number(process.env.PORT ?? 7423);
 const HEARTBEAT_MS = 15_000;
 const SNAP_EVENT = "valorant_session_snapshot";
 const KILLFEED_CAP = 12;
+
+/** Pipeline telemetry — enabled with HAVOC_DEBUG_PIPELINE=1 (no secrets). */
+function pipelineDebug(...args: unknown[]): void {
+  if (process.env.HAVOC_DEBUG_PIPELINE === "1") console.log("[pipeline:runtime]", ...args);
+}
+let pipelineFactCount = 0;
 
 type Frame = Record<string, unknown>;
 
@@ -145,11 +152,15 @@ class RuntimeHub {
   private nextFrameId = 1;
   private readonly source = new MockValorantSource();
   private readonly gep = new GepProviderSource();
+  private readonly spectra = new SpectraSource();
   /** Mock only when explicitly requested; real GEP is the default. */
   private readonly useMock: boolean;
+  /** Spectra bridge mode: connect to a running ValoSpectra Server. */
+  private readonly useSpectra: boolean;
   private revision = 0;
   private matchId: string | null = null;
   private sessionPhase: "idle" | "loading" | "live" = "idle";
+  private currentScene: string | null = null;
   private mapKey: string | null = null;
   private score: { blue: number; red: number } | null = null;
   private errorState: string | null = null;
@@ -164,10 +175,18 @@ class RuntimeHub {
   private killfeed: unknown[] = [];
 
   constructor() {
-    const source = (process.env.BLOB_FORK_SOURCE ?? "").toLowerCase();
+    const source = (process.env.HAVOC_SOURCE ?? "").toLowerCase();
     this.useMock = source === "mock";
+    this.useSpectra = source === "spectra";
     if (this.useMock) {
       this.source.start((fact) => this.acceptFact(fact));
+    } else if (this.useSpectra) {
+      // Spectra bridge: connect to a running ValoSpectra Server via Socket.IO
+      // and transform their wire format into our ProviderFact stream.
+      const started = this.spectra.start((fact) => this.acceptFact(fact));
+      if (!started) {
+        console.warn(`[runtime] Spectra source unavailable: ${this.spectra.health().lastError ?? "unknown"}`);
+      }
     } else {
       // Real GEP capture. If it cannot start we stay idle — never fake data.
       const started = this.gep.start((fact) => this.acceptFact(fact));
@@ -250,7 +269,7 @@ class RuntimeHub {
    * per game session, best-effort, never fatal.
    */
   private boostGamePriority(): void {
-    if (this.priorityBoosted || process.env.BLOB_FORK_BOOST_PRIORITY === "0") return;
+    if (this.priorityBoosted || process.env.HAVOC_BOOST_PRIORITY === "0") return;
     this.priorityBoosted = true;
     try {
       const { execFile } = require("node:child_process") as typeof import("node:child_process");
@@ -283,6 +302,11 @@ class RuntimeHub {
 
   /** Mirror the upstream presence-repair path for authoritative facts. */
   private acceptFact(fact: { kind: string; key: string; value: unknown }): void {
+    pipelineFactCount += 1;
+    if (pipelineFactCount % 50 === 1) {
+      // Boundary telemetry: events received (rate + latest type).
+      pipelineDebug("fact_received", { kind: fact.kind, key: fact.key, total: pipelineFactCount });
+    }
     try {
       if (fact.key === "provider_status") {
         const rec = fact.value as { key?: string; value?: unknown } | null;
@@ -312,13 +336,20 @@ class RuntimeHub {
         this.sessionPhase = "live";
         this.revision += 1;
         this.emitSessionSnapshot();
-      } else if ((fact.key === "scene" || fact.key === "map") && typeof fact.value === "string") {
+      } else if (fact.key === "scene" && typeof fact.value === "string") {
+        this.currentScene = fact.value;
+        this.revision += 1;
+        this.emitSessionSnapshot();
+      } else if (fact.key === "map" && typeof fact.value === "string") {
         if (fact.value !== "loading") {
           this.mapKey = fact.value;
           this.revision += 1;
           this.emitSessionSnapshot();
-        } else if (this.sessionPhase !== "live") {
-          this.sessionPhase = "loading";
+        }
+      } else if (fact.key === "session_phase" && typeof fact.value === "string") {
+        if (fact.value === "loading" || fact.value === "idle" || fact.value === "live") {
+          this.sessionPhase = fact.value;
+          this.revision += 1;
           this.emitSessionSnapshot();
         }
       } else if (fact.key === "scoreboard") {
@@ -453,13 +484,17 @@ class RuntimeHub {
       kind: SNAP_EVENT,
       game: "VAL",
       snapshot: {
-        revision: this.revision,
+        // Bump per frame: the desktop's stream client drops frames whose
+        // revision hasn't increased, and the publisher -> bridge mirror ->
+        // OBS chain depends on every heartbeat frame flowing through.
+        revision: ++this.revision,
         // Bump per frame: downstream (desktop publisher -> bridge mirror) dedupes
         // identical payloads, and liveness indicators need a fresh frame even
         // when no fact changed.
         frameId: this.nextFrameId,
         at: Date.now(),
         sessionPhase: this.sessionPhase,
+        scene: this.currentScene,
         matchId: this.matchId,
         mapKey: this.mapKey,
         score: this.score,
@@ -473,6 +508,8 @@ class RuntimeHub {
   subscribe(res: http.ServerResponse): number {
     const id = this.nextSubscriberId++;
     this.subscribers.set(id, res);
+    // Boundary telemetry: overlay/desktop SSE subscription established.
+    pipelineDebug("sse_subscriber_connected", { subscribers: this.subscribers.size });
     res.write(`event: ${SNAP_EVENT}\n`);
     res.write(`data: ${JSON.stringify(this.snapshotFrame())}\n\n`);
     return id;
@@ -487,6 +524,10 @@ class RuntimeHub {
     this.subscribers.delete(id);
   }
 
+  subscriberCount(): number {
+    return this.subscribers.size;
+  }
+
   broadcast(label: string, frame: Frame): void {
     const payload = (label ? `event: ${label}\n` : "") + `data: ${JSON.stringify(frame)}\n\n`;
     for (const [, res] of this.subscribers) if (!res.writableEnded) res.write(payload);
@@ -495,16 +536,18 @@ class RuntimeHub {
   stop(): void {
     this.source.stop();
     this.gep.stop();
+    this.spectra.stop();
     this.identity.stop();
   }
 
   health(): GameDataRuntimeHealth {
-    const gepHealth = this.useMock
-      ? { state: "unavailable" as const, lastError: "mock source (BLOB_FORK_SOURCE=mock)", providerVersion: null }
+    const gepHealth = this.useMock || this.useSpectra
+      ? { state: "unavailable" as const, lastError: this.useMock ? "mock source (HAVOC_SOURCE=mock)" : "spectra bridge (HAVOC_SOURCE=spectra)", providerVersion: null }
       : this.gep.health();
+    const spectraHealth = this.spectra.health();
     return gameDataRuntimeHealthSchema.parse({
       ok: true,
-      service: "blob-fork-game-data-runtime",
+      service: "havoc-unleash-game-data-runtime",
       supportedGames: ["VAL"],
       capabilities: {
         overwolf: {
@@ -514,7 +557,9 @@ class RuntimeHub {
         },
         valorantApi: this.useMock
           ? { state: "unavailable", lastError: "mock source" }
-          : { state: "ready", lastError: null },
+          : this.useSpectra
+            ? { state: spectraHealth.state === "authenticated" ? "ready" : spectraHealth.state === "error" ? "error" : "starting", lastError: spectraHealth.lastError }
+            : { state: "ready", lastError: null },
       },
       runtimeVersion: "0.1.0-fork",
       uptimeMs: Date.now() - this.bootedAt,
@@ -534,7 +579,7 @@ async function main(): Promise<void> {
     // are diagnosable (the desktop now also respawns + captures stderr).
     process.on("uncaughtException", (error) => {
       try {
-        const dir = process.env.BLOB_GAME_DATA_DIR?.trim() ||
+        const dir = process.env.HAVOC_GAME_DATA_DIR?.trim() ||
           join(process.env.LOCALAPPDATA ?? "", "Havoc", "game-data-runtime");
         mkdirSync(join(dir, "run"), { recursive: true });
         appendFileSync(join(dir, "run", "runtime-crash.log"),
@@ -543,7 +588,7 @@ async function main(): Promise<void> {
     });
     process.on("unhandledRejection", (reason) => {
       try {
-        const dir = process.env.BLOB_GAME_DATA_DIR?.trim() ||
+        const dir = process.env.HAVOC_GAME_DATA_DIR?.trim() ||
           join(process.env.LOCALAPPDATA ?? "", "Havoc", "game-data-runtime");
         mkdirSync(join(dir, "run"), { recursive: true });
         appendFileSync(join(dir, "run", "runtime-crash.log"),
@@ -610,6 +655,16 @@ async function main(): Promise<void> {
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ status: "not_found" }));
   });
+
+  if (process.env.HAVOC_DEBUG_PIPELINE === "1") {
+    setInterval(() => {
+      pipelineDebug("runtime_summary", {
+        sseSubscribers: hub.subscriberCount(),
+        factsLast15s: pipelineFactCount,
+      });
+      pipelineFactCount = 0;
+    }, 15_000).unref();
+  }
 
   server.listen(PORT, "127.0.0.1", () => {
     process.stdout.write(

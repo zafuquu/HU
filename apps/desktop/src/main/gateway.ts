@@ -15,7 +15,7 @@ export class LocalGateway {
   public constructor(
     private readonly port: number,
     private readonly onGsiPost: (payload: unknown) => void,
-    private readonly token: string = process.env.BLOB_FORK_GSI_TOKEN ?? DEFAULT_TOKEN,
+    private readonly token: string = process.env.HAVOC_GSI_TOKEN ?? DEFAULT_TOKEN,
   ) {}
 
   public async start(): Promise<void> {
@@ -57,7 +57,7 @@ export class LocalGateway {
     if (req.method === "GET") {
       if (url.pathname === "/activate") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ ok: true, service: "blob-fork-local-gateway" }));
+        res.end(JSON.stringify({ ok: true, service: "havoc-unleash-local-gateway" }));
         return;
       }
       res.writeHead(404);

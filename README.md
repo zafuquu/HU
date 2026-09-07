@@ -1,6 +1,6 @@
-# blob-fork
+# havoc-unleash
 
-Clean-room replica of the audited BLOB Desktop architecture, self-contained:
+Clean-room replica of the audited HAVOC Desktop architecture, self-contained:
 
 ```
 services/game-data-runtime   :7423  /health + /events SSE
@@ -25,10 +25,10 @@ npm run dev            # runtime child is auto-spawned by the desktop app
 # desktop flags:
 #   --show-hud                 open a normal preview window of the HUD
 # env:
-#   BLOB_FORK_EXTERNAL_RUNTIME=1     attach to an ALREADY-RUNNING runtime
-#   BLOB_FORK_RUNTIME_PORT=7413      e.g. point at a real capture service
-#   BLOB_FORK_GAME_WINDOW_TITLE="VALORANT"
-#   BLOB_FORK_SMOKE_QUIT_MS=8000     headless CI smoke exit
+#   HAVOC_EXTERNAL_RUNTIME=1     attach to an ALREADY-RUNNING runtime
+#   HAVOC_RUNTIME_PORT=7413      e.g. point at a real capture service
+#   HAVOC_GAME_WINDOW_TITLE="VALORANT"
+#   HAVOC_SMOKE_QUIT_MS=8000     headless CI smoke exit
 ```
 
 For OBS: add a browser source -> `http://127.0.0.1:7103/` sized to your canvas.

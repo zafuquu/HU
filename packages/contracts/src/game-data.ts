@@ -1,5 +1,5 @@
 /**
- * Wire protocol shared with the audited blob-game-data-runtime service.
+ * Wire protocol shared with the audited havoc-game-data-runtime service.
  * Every SSE `data:` line carries {at, id, kind, protocolVersion, ...payload}.
  */
 import { z } from "zod";

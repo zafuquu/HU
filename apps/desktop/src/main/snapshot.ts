@@ -5,7 +5,7 @@
  *   state.currentRound.roundNumber
  * The overlay popout reads snapshot.state.players[].{playerId,name,tagline,agentName,...}
  */
-import type { HudRelayState } from "@blob-fork/contracts";
+import type { HudRelayState } from "@havoc-unleash/contracts";
 
 export interface GameTeamState {
   name: string | null;
@@ -44,7 +44,7 @@ export interface GameSnapshot {
   state: {
     leftTeam: GameTeamState | null;
     rightTeam: GameTeamState | null;
-    currentRound: { roundNumber: number | null };
+    currentRound: { roundNumber: number | null; roundPhase?: string | null };
     players: GamePlayerState[];
     gameScore: { left: number; right: number };
     gameEvent?: string | null;
@@ -52,6 +52,18 @@ export interface GameSnapshot {
     scene?: string | null;
     /** Friendly map name (e.g. "Ascent"). */
     mapName?: string | null;
+    /**
+     * Round phase the site popout's gamePhase derivation reads
+     * ("shopping" | "combat" | "end" | "unknown"). Without it the popout can
+     * never leave the InGameHud scene.
+     */
+    roundPhase?: string | null;
+    /** Agent-select signal — the popout maps this to gamePhase "game_start". */
+    isAgentSelectPhase?: boolean;
+    /** Phase start epoch (ms) so overlays can derive a round timer. */
+    phaseStartedAt?: number | null;
+    /** Spike planted flag for the site's SpikeIndicator. */
+    bombPlanted?: boolean;
     /** Post-game result (winner + MVP) when a match settles. */
     match?: {
       winner: "blue" | "red" | null;
@@ -125,12 +137,29 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
     state: {
       leftTeam,
       rightTeam,
-      currentRound: { roundNumber: hasRealPlayers && roundNumber > 0 ? roundNumber : null },
+      currentRound: {
+        roundNumber: hasRealPlayers && roundNumber > 0 ? roundNumber : null,
+        roundPhase: state.round?.phase ?? null,
+      },
       players,
       gameScore: { left: hasRealPlayers ? leftScore : 0, right: hasRealPlayers ? rightScore : 0 },
       gameEvent: state.gameEvent ?? null,
       scene: state.scene ?? null,
       mapName: state.mapName ?? null,
+      // Phase fields the site popout's gamePhase derivation consumes
+      // (OverlayPopout.tsx) — without them the overlay stays on InGameHud.
+      roundPhase: state.round?.phase ?? null,
+      // HudRelayState's sessionPhase enum is idle|loading|live — "loading"
+      // covers pregame. A LIVE session with no round facts yet is real
+      // Valorant's agent select (match_id arrives before round facts).
+      isAgentSelectPhase:
+        state.sessionPhase === "loading" ||
+        (state.sessionPhase === "live" &&
+          (state.round?.number ?? 0) === 0 &&
+          (state.round?.phase ?? "unknown") === "unknown" &&
+          !!state.matchId),
+      phaseStartedAt: state.round?.phaseStartedAt ?? null,
+      bombPlanted: state.spike === "planted",
       match: {
         winner: state.match?.winner ?? null,
         mvp: state.match?.mvp ?? null,

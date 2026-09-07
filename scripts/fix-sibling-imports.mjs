@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const dir = "C:/Users/Ryuho/Projects/blob-fork/services/game-data-runtime/src/valorant";
+const dir = "C:/Users/Ryuho/Projects/havoc-unleash/services/game-data-runtime/src/valorant";
 const rewrites = [
   [/from "\.\/killfeed"/g, 'from "./valorant-killfeed"'],
   [/from "\.\/prices"/g, 'from "./valorant-prices"'],

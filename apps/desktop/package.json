@@ -1,9 +1,9 @@
 {
-  "name": "@blob-fork/desktop",
+  "name": "@havoc-unleash/desktop",
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
-  "description": "Electron replica of BLOB Desktop: PKCE auth -> producer -> Supabase bridge, plus anchored overlay/HUD.",
+  "description": "Electron replica of HAVOC Desktop: PKCE auth -> producer -> Supabase bridge, plus anchored overlay/HUD.",
   "main": "./dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -14,8 +14,8 @@
     "ow:install": "npx install-ow-electron"
   },
   "build": {
-    "appId": "productions.blob.fork",
-    "productName": "Blob Fork",
+    "appId": "app.havocunleash.desktop",
+    "productName": "Havoc Unleash",
     "directories": {
       "output": "release"
     },
@@ -43,7 +43,7 @@
       ]
     },
     "portable": {
-      "artifactName": "Blob-Fork-${version}.exe"
+      "artifactName": "Havoc-Unleash-${version}.exe"
     }
   },
   "dependencies": {

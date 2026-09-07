@@ -6,7 +6,7 @@
  *      `${appBase}/auth/login?client_id=electron&code_challenge=<>state=<>`
  *      (the website → Discord → returns a base64url {identifier,state} token
  *      into the deep link).
- *   2. Electron catches `blob-desktop://auth/callback#token=`.
+ *   2. Electron catches `havoc-desktop://auth/callback#token=`.
  *   3. POST `${bridge}/electron/token` {token,state,code_verifier} → the
  *      bridge verifies PKCE, mints a session cookie + returns {token,user}.
  */
@@ -15,16 +15,16 @@ import { shell } from "electron";
 
 import { logger } from "./logger";
 
-export interface BlobSessionUser {
+export interface HavocSessionUser {
   id: string;
   email: string;
   name: string;
   image: string | null;
 }
 
-export interface BlobSession {
+export interface HavocSession {
   sessionToken: string;
-  user: BlobSessionUser;
+  user: HavocSessionUser;
 }
 
 /** Minimal key/value persistence (safeStorage-encrypted at rest). */
@@ -34,7 +34,7 @@ export interface SessionStore {
   delete(key: string): void;
 }
 
-const SESSION_KEY = "__blobForkSession";
+const SESSION_KEY = "__havocForkSession";
 
 function sha256Base64Url(value: string): string {
   return crypto.createHash("sha256").update(value).digest("base64url");
@@ -77,7 +77,7 @@ export class DesktopAuth {
   }
 
   /** Exchange the one-time identifier the deep link delivered for a real session. */
-  public async completeLogin(rawToken: string, pending: PendingContext): Promise<BlobSession> {
+  public async completeLogin(rawToken: string, pending: PendingContext): Promise<HavocSession> {
     // The website deep-links `#token=<base64url JSON {identifier, state}>`; the
     // bridge looks up `electron-pkce:<identifier>` and verifies state + PKCE.
     let identifier = rawToken;
@@ -110,9 +110,9 @@ export class DesktopAuth {
       const text = await res.text().catch(() => "");
       throw new Error(`token exchange failed (${res.status}): ${text.slice(0, 200)}`);
     }
-    const payload = (await res.json()) as { token?: string; user?: BlobSessionUser };
+    const payload = (await res.json()) as { token?: string; user?: HavocSessionUser };
     if (!payload.token) throw new Error("bridge returned no session token");
-    const session: BlobSession = {
+    const session: HavocSession = {
       sessionToken: payload.token,
       user: payload.user ?? { id: "anonymous", email: "", name: "Session", image: null },
     };
@@ -121,8 +121,8 @@ export class DesktopAuth {
     return session;
   }
 
-  public load(): BlobSession | null {
-    const v = this.store.get(SESSION_KEY) as BlobSession | undefined;
+  public load(): HavocSession | null {
+    const v = this.store.get(SESSION_KEY) as HavocSession | undefined;
     return v && typeof v === "object" && "sessionToken" in v ? v : null;
   }
 

@@ -3,7 +3,7 @@
  * get-window-bounds + place-window-above. Degrades gracefully when koffi or
  * the APIs are unavailable so callers can simply hide the overlay.
  */
-import { MISSING_WINDOW_BOUNDS, type WindowBounds } from "@blob-fork/contracts";
+import { MISSING_WINDOW_BOUNDS, type WindowBounds } from "@havoc-unleash/contracts";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type K = any;

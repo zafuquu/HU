@@ -1,5 +1,5 @@
 {
-  "name": "@blob-fork/game-data-runtime",
+  "name": "@havoc-unleash/game-data-runtime",
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
@@ -11,8 +11,9 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@blob-fork/contracts": "*",
+    "@havoc-unleash/contracts": "*",
     "@overwolf/ow-electron": "^42.7.1",
+    "socket.io-client": "^4.7.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {

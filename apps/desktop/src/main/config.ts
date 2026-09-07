@@ -3,31 +3,31 @@ import path from "node:path";
 import { z } from "zod";
 
 const envSchema = z.object({
-  BLOB_FORK_RUNTIME_PORT: z.coerce.number().int().min(1).max(65535).default(7423),
-  BLOB_FORK_BRIDGE_ORIGIN: z.string().default(""),
-  BLOB_FORK_APP_BASE: z.string().default(""),
+  HAVOC_RUNTIME_PORT: z.coerce.number().int().min(1).max(65535).default(7423),
+  HAVOC_BRIDGE_ORIGIN: z.string().default(""),
+  HAVOC_APP_BASE: z.string().default(""),
   // The exact deep-link protocol the replica website fires on login.
-  BLOB_FORK_DESKTOP_PROTOCOL: z.string().default("havoc-desktop"),
-  BLOB_FORK_ROOM_ID: z.string().default(""),
-  BLOB_FORK_GAME_WINDOW_TITLE: z.string().min(1).default("VALORANT"),
-  BLOB_FORK_GATEWAY_PORT: z.coerce.number().default(7155),
-  BLOB_FORK_HUD_PORT: z.coerce.number().default(7103),
-  BLOB_FORK_ANCHOR_OVERLAY: z.string().default("0"),
-  BLOB_FORK_CONFIG: z.string().default(""),
-  BLOB_FORK_DEV_SESSION: z.string().default(""),
+  HAVOC_DESKTOP_PROTOCOL: z.string().default("havoc-desktop"),
+  HAVOC_ROOM_ID: z.string().default(""),
+  HAVOC_GAME_WINDOW_TITLE: z.string().min(1).default("VALORANT"),
+  HAVOC_GATEWAY_PORT: z.coerce.number().default(7155),
+  HAVOC_HUD_PORT: z.coerce.number().default(7103),
+  HAVOC_ANCHOR_OVERLAY: z.string().default("0"),
+  HAVOC_CONFIG: z.string().default(""),
+  HAVOC_DEV_SESSION: z.string().default(""),
   /** Run the Overwolf GEP provider elevated (UAC), like the original app. */
-  BLOB_FORK_ELEVATE_GEP: z.string().default("1"),
+  HAVOC_ELEVATE_GEP: z.string().default("1"),
   // ---- Havoc/old-fork environment names (take precedence, like the original app) ----
-  BLOB_DESKTOP_API_ORIGIN: z.string().default(""),
-  BLOB_DESKTOP_REALTIME_ORIGIN: z.string().default(""),
-  BLOB_DESKTOP_LOGIN_ORIGIN: z.string().default(""),
-  BLOB_DESKTOP_OVERLAY_ORIGIN: z.string().default(""),
-  BLOB_DESKTOP_SKIP_LOGIN: z.string().default(""),
+  HAVOC_DESKTOP_API_ORIGIN: z.string().default(""),
+  HAVOC_DESKTOP_REALTIME_ORIGIN: z.string().default(""),
+  HAVOC_DESKTOP_LOGIN_ORIGIN: z.string().default(""),
+  HAVOC_DESKTOP_OVERLAY_ORIGIN: z.string().default(""),
+  HAVOC_DESKTOP_SKIP_LOGIN: z.string().default(""),
 });
 
 /** Defaults mirror the old fork's launch-vercel.bat targeting the deployed stack. */
 const HAVOC_DEFAULTS = {
-  bridge: "https://havoc-game-bridge.onrender.com",
+  bridge: "https://hu-bridge.onrender.com",
   app: "https://havocunleashs.vercel.app",
 } as const;
 
@@ -62,39 +62,39 @@ function firstTruthy(...values: (string | undefined)[]): string | undefined {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const p = envSchema.parse(env);
-  const over = readConfigFile(p.BLOB_FORK_CONFIG);
+  const over = readConfigFile(p.HAVOC_CONFIG);
   const bridgeOrigin = firstTruthy(
-    p.BLOB_DESKTOP_API_ORIGIN,
-    p.BLOB_DESKTOP_REALTIME_ORIGIN,
-    p.BLOB_FORK_BRIDGE_ORIGIN,
+    p.HAVOC_DESKTOP_API_ORIGIN,
+    p.HAVOC_DESKTOP_REALTIME_ORIGIN,
+    p.HAVOC_BRIDGE_ORIGIN,
     over.bridgeOrigin,
     HAVOC_DEFAULTS.bridge,
   )!.replace(/\/+$/, "");
   const appBase = firstTruthy(
-    p.BLOB_DESKTOP_LOGIN_ORIGIN,
-    p.BLOB_FORK_APP_BASE,
+    p.HAVOC_DESKTOP_LOGIN_ORIGIN,
+    p.HAVOC_APP_BASE,
     over.appBase,
     HAVOC_DEFAULTS.app,
   )!.replace(/\/+$/, "");
-  const overlayOrigin = firstTruthy(p.BLOB_DESKTOP_OVERLAY_ORIGIN, appBase)!.replace(/\/+$/, "");
-  const roomId = p.BLOB_FORK_ROOM_ID?.trim() || over.roomId?.trim() || "";
+  const overlayOrigin = firstTruthy(p.HAVOC_DESKTOP_OVERLAY_ORIGIN, appBase)!.replace(/\/+$/, "");
+  const roomId = p.HAVOC_ROOM_ID?.trim() || over.roomId?.trim() || "";
   return {
-    runtimeOrigin: `http://127.0.0.1:${p.BLOB_FORK_RUNTIME_PORT}`,
+    runtimeOrigin: `http://127.0.0.1:${p.HAVOC_RUNTIME_PORT}`,
     bridgeOrigin,
     appBase,
     overlayOrigin,
-    desktopProtocol: p.BLOB_FORK_DESKTOP_PROTOCOL,
+    desktopProtocol: p.HAVOC_DESKTOP_PROTOCOL,
     desktopProtocols: [
-      ...new Set([p.BLOB_FORK_DESKTOP_PROTOCOL, "havoc-desktop", "blob-desktop"]),
+      ...new Set([p.HAVOC_DESKTOP_PROTOCOL, "havoc-desktop", "havoc-desktop"]),
     ],
     roomId,
-    gameWindowTitle: p.BLOB_FORK_GAME_WINDOW_TITLE,
-    gatewayPort: p.BLOB_FORK_GATEWAY_PORT,
-    hudPort: p.BLOB_FORK_HUD_PORT,
-    hudOrigin: `http://127.0.0.1:${p.BLOB_FORK_HUD_PORT}`,
-    anchorOverlay: p.BLOB_FORK_ANCHOR_OVERLAY === "1",
-    skipLogin: p.BLOB_DESKTOP_SKIP_LOGIN === "1" || p.BLOB_FORK_DEV_SESSION === "1",
-    elevateGep: p.BLOB_FORK_ELEVATE_GEP !== "0",
+    gameWindowTitle: p.HAVOC_GAME_WINDOW_TITLE,
+    gatewayPort: p.HAVOC_GATEWAY_PORT,
+    hudPort: p.HAVOC_HUD_PORT,
+    hudOrigin: `http://127.0.0.1:${p.HAVOC_HUD_PORT}`,
+    anchorOverlay: p.HAVOC_ANCHOR_OVERLAY === "1",
+    skipLogin: p.HAVOC_DESKTOP_SKIP_LOGIN === "1" || p.HAVOC_DEV_SESSION === "1",
+    elevateGep: p.HAVOC_ELEVATE_GEP !== "0",
   };
 }
 
@@ -106,9 +106,9 @@ function readConfigFile(explicitPath: string): Overrides {
   }
   const localData = process.env.LOCALAPPDATA ?? process.cwd();
   const candidates = [
-    path.join(process.cwd(), "blob-fork.config.json"),
-    path.join(localData, "blob-fork", "config.json"),
-    path.join(localData, "BlobFork", "config.json"),
+    path.join(process.cwd(), "havoc-unleash.config.json"),
+    path.join(localData, "havoc-unleash", "config.json"),
+    path.join(localData, "HavocUnleash", "config.json"),
   ];
   for (const file of candidates) {
     const o = tryRead(file);
@@ -122,9 +122,9 @@ function tryRead(file: string): Overrides | null {
     if (!fs.existsSync(file)) return null;
     const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
     return {
-      appBase: str(raw["BLOB_FORK_APP_BASE"] ?? raw.appBase),
-      bridgeOrigin: str(raw["BLOB_FORK_BRIDGE_ORIGIN"] ?? raw.bridgeOrigin),
-      roomId: str(raw["BLOB_FORK_ROOM_ID"] ?? raw.roomId),
+      appBase: str(raw["HAVOC_APP_BASE"] ?? raw.appBase),
+      bridgeOrigin: str(raw["HAVOC_BRIDGE_ORIGIN"] ?? raw.bridgeOrigin),
+      roomId: str(raw["HAVOC_ROOM_ID"] ?? raw.roomId),
     };
   } catch {
     return null;

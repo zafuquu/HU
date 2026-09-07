@@ -1,6 +1,6 @@
 /**
  * Overwolf GEP -> runtime-fact formatting, ported from the audited original
- * BLOB `FormattingService` (packages/data-schemas/.../valorant/api.ts).
+ * HAVOC `FormattingService` (packages/data-schemas/.../valorant/api.ts).
  * Normalizes Overwolf internal identity keys and shapes them into the keys
  * the fork runtime + desktop projector consume:
  *   kill_feed | scoreboard | roster | round_phase | round_number | map
@@ -42,8 +42,24 @@ function displayName(table: Record<string, string>, raw: unknown): string {
 export const formatAgent = (raw: unknown): string => displayName(AGENT_INTERNAL, raw);
 export const formatMap = (raw: unknown): string => displayName(MAP_INTERNAL, raw);
 export const formatWeapon = (raw: unknown): string => displayName(WEAPON_INTERNAL, raw);
+/**
+ * Overwolf GEP encodes display names as base64 ("U2h1dGVuIERvamkgI0FrdW1h" =
+ * "Shuten Doji #Akuma"). Decode when the string is plausibly base64 AND the
+ * result is printable text; keep the raw value otherwise (roster names often
+ * arrive already decoded).
+ */
+function decodeGepName(raw: string): string {
+  if (raw.length >= 8 && raw.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(raw)) {
+    try {
+      const decoded = Buffer.from(raw, "base64").toString("utf8");
+      if (decoded.length > 0 && !/[\u0000-\u001f\u007f]/.test(decoded)) return decoded;
+    } catch { /* keep raw */ }
+  }
+  return raw;
+}
+
 export function formatName(raw: unknown): { name: string; tagline: string } {
-  const v = typeof raw === "string" ? raw : String(raw ?? "");
+  const v = decodeGepName(typeof raw === "string" ? raw : String(raw ?? ""));
   const idx = v.indexOf(" #");
   if (idx < 0) return { name: v.trim(), tagline: "" };
   return { name: v.slice(0, idx).trim(), tagline: v.slice(idx + 2).trim() };

@@ -9,7 +9,7 @@ import http from "node:http";
 import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 
-import type { HudRelayState } from "@blob-fork/contracts";
+import type { HudRelayState } from "@havoc-unleash/contracts";
 import { logger } from "./logger";
 
 const MIME: Record<string, string> = {
@@ -67,6 +67,7 @@ export class HudServer {
       if (url.pathname === "/ws" && this.wss) {
         this.wss.handleUpgrade(req, socket, head, (ws) => {
           this.clients.add(ws);
+          logger.debug("hud-server", "ws_client_connected", { clients: this.clients.size });
           ws.send(JSON.stringify(this.lastState ?? { revision: -1 }));
           ws.on("close", () => this.clients.delete(ws));
           ws.on("error", () => this.clients.delete(ws));
@@ -85,6 +86,18 @@ export class HudServer {
   /** Throttle-free direct push; UI layers coalesce their own animation. */
   public publish(state: HudRelayState): void {
     this.lastState = state;
+    if (process.env.HAVOC_DEBUG_PIPELINE === "1") {
+      // Boundary telemetry: normalized game state forwarded to the overlay.
+      logger.debug("hud-server", "state_pushed_to_overlay", {
+        wsClients: this.clients.size,
+        revision: state.revision,
+        sessionPhase: state.sessionPhase,
+        scene: state.scene,
+        roster: state.roster?.length ?? 0,
+        round: `${state.round.number}/${state.round.phase}`,
+        score: `${state.score.blue}-${state.score.red}`,
+      });
+    }
     const payload = JSON.stringify(state);
     for (const ws of this.clients) {
       if (ws.readyState === ws.OPEN) ws.send(payload);

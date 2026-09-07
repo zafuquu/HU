@@ -1,6 +1,6 @@
 /**
  * Structured JSONL session logger mirroring the audited layout:
- *   %LOCALAPPDATA%\blob-fork\desktop\logs\app\session_<ts>.jsonl
+ *   %LOCALAPPDATA%\havoc-unleash\desktop\logs\app\session_<ts>.jsonl
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -12,7 +12,7 @@ interface LogRecord {
   event: string;
   level: Level;
   context?: Record<string, unknown>;
-  service: "blob-fork-desktop";
+  service: "havoc-unleash-desktop";
   timestamp: string;
 }
 
@@ -22,7 +22,7 @@ class JsonlLogger {
   private ensureStream(): fs.WriteStream | null {
     if (this.stream) return this.stream;
     try {
-      const base = path.join(process.env.LOCALAPPDATA ?? process.cwd(), "blob-fork", "desktop", "logs", "app");
+      const base = path.join(process.env.LOCALAPPDATA ?? process.cwd(), "havoc-unleash", "desktop", "logs", "app");
       fs.mkdirSync(base, { recursive: true });
       const stamp = new Date()
         .toISOString()
@@ -41,7 +41,7 @@ class JsonlLogger {
       event,
       level,
       ...(context ? { context } : {}),
-      service: "blob-fork-desktop",
+      service: "havoc-unleash-desktop",
       timestamp: new Date().toISOString(),
     };
     const line = JSON.stringify(record);

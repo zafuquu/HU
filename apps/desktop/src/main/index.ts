@@ -1,7 +1,7 @@
 /**
- * Electron entry — BLOB Desktop replica.
+ * Electron entry — HAVOC Desktop replica.
  * Orchestrates the full producer pipeline matching the audited original:
- *   register `blob-desktop://` protocol -> PKCE sign-in -> room access ->
+ *   register `havoc-desktop://` protocol -> PKCE sign-in -> room access ->
  *   producer ticket -> Socket.IO claim -> publish game snapshots to the
  *   bridge -> website reads Supabase + overlay popout windows.
  */
@@ -22,7 +22,7 @@ import {
   createPendingContext,
   extractTokenFromDeepLink,
   overlayPopoutUrl,
-  type BlobSession,
+  type HavocSession,
   type PendingContext,
   type SessionStore,
 } from "./auth";
@@ -42,7 +42,7 @@ let runtimeRespawnTimer: NodeJS.Timeout | null = null;
 let producer: ProducerClient | null = null;
 let auth: DesktopAuth | null = null;
 let pending: PendingContext | null = null;
-let session: BlobSession | null = null;
+let session: HavocSession | null = null;
 let activeRoom: ProducerRoom | null = null;
 let publishTimer: ReturnType<typeof setTimeout> | null = null;
 let lastPublishedPayload = ""; // kept for debugging; publisher no longer dedupes
@@ -198,7 +198,7 @@ function spawnRuntimeIfNeeded(): void {
         PORT: String(new URL(cfg.runtimeOrigin).port),
         ELECTRON_RUN_AS_NODE: "1",
         // Elevated GEP provider (original-style UAC); set "0" in the config to disable.
-        BLOB_FORK_ELEVATE_GEP: cfg.elevateGep ? "1" : "0",
+        HAVOC_ELEVATE_GEP: cfg.elevateGep ? "1" : "0",
       },
       // Capture stderr so runtime crashes are diagnosable (they were invisible
       // with stdio:ignore — the runtime could die silently and take the whole
@@ -234,6 +234,11 @@ function spawnRuntimeIfNeeded(): void {
 
 /* ----------------------------- Publisher loop ----------------------------- */
 
+/** Pipeline telemetry — enabled with HAVOC_DEBUG_PIPELINE=1 (no secrets). */
+function pipelineDebug(event: string, data: Record<string, unknown>): void {
+  if (process.env.HAVOC_DEBUG_PIPELINE === "1") logger.info("pipeline", event, data);
+}
+
 function queuePublish(): void {
   if (publishTimer) return;
   publishTimer = setTimeout(() => {
@@ -243,12 +248,22 @@ function queuePublish(): void {
 }
 
 function publishNow(): void {
-  if (!producer || !activeRoom) return;
-  const snapshot = toGameSnapshot(projection.snapshotValue());
-  // NOTE: no dedupe — the runtime emits a heartbeat frame every 15s even when
-  // no fact changed, and liveness (bridge mirror + OBS "connected" state)
-  // depends on those frames flowing through. The bridge writes at most one
-  // Supabase upsert per frame, so the write rate stays bounded.
+  if (!producer || !activeRoom) {
+    pipelineDebug("publish_skipped", { hasProducer: !!producer, hasRoom: !!activeRoom });
+    return;
+  }
+  const proj = projection.snapshotValue();
+  const snapshot = toGameSnapshot(proj);
+  pipelineDebug("publish_to_bridge", {
+    hudRevision: proj.revision,
+    players: snapshot.state.players.length,
+    scores: snapshot.state.gameScore,
+    roundNumber: snapshot.state.currentRound.roundNumber,
+    roundPhase: snapshot.state.roundPhase ?? null,
+    isAgentSelectPhase: snapshot.state.isAgentSelectPhase ?? null,
+    scene: snapshot.state.scene ?? null,
+    mapName: snapshot.state.mapName ?? null,
+  });
   producer.publishSnapshot(snapshot);
 }
 
@@ -473,7 +488,7 @@ function extractDeepLink(argv: string[], protocols: readonly string[]): string |
   return undefined;
 }
 
-function fakeSession(): import("./auth").BlobSession {
+function fakeSession(): import("./auth").HavocSession {
   return { sessionToken: "dev-session-token", user: { id: "dev", email: "dev@local", name: "Dev", image: null } };
 }
 
@@ -531,7 +546,7 @@ function followGameWindow(): void {
 }
 async function boot(): Promise<void> {
   if (!app.requestSingleInstanceLock()) {
-    console.log("[blob-fork] another instance holds the lock; exiting");
+    console.log("[havoc-unleash] another instance holds the lock; exiting");
     app.exit(0);
     return;
   }
@@ -596,7 +611,7 @@ async function boot(): Promise<void> {
 
   logger.info("app", "bootstrap_completed");
 
-  const smokeMs = Number(process.env.BLOB_FORK_SMOKE_QUIT_MS ?? 0);
+  const smokeMs = Number(process.env.HAVOC_SMOKE_QUIT_MS ?? 0);
   if (smokeMs > 0) {
     setTimeout(() => {
       logger.info("app", "smoke_quit");

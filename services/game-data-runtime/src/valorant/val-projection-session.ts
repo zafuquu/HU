@@ -10,7 +10,7 @@ import type {
   GameProjection,
   GameProjectionEvent,
   ValorantFacts,
-} from "@blob-platform/data-schemas/game-projection";
+} from "@havoc-platform/data-schemas/game-projection";
 import type {
   IFormattedValorantKillfeed,
   IFormattedValorantPlayer,
@@ -23,10 +23,10 @@ import {
   ValorantDataTypes,
   resolveValorantGameMode,
 } from "./valorant-shared";
-import type { GameBindingContext } from "@blob-platform/data-schemas/realtime/game-binding-context";
-import type { GameProjectionAddress } from "@blob-platform/data-schemas/realtime/game-address";
-import type { GameSemanticObservation } from "@blob-platform/data-schemas/realtime/game-semantic-observation";
-import type { SeriesCompetitorId } from "@blob-platform/data-schemas/live-series";
+import type { GameBindingContext } from "@havoc-platform/data-schemas/realtime/game-binding-context";
+import type { GameProjectionAddress } from "@havoc-platform/data-schemas/realtime/game-address";
+import type { GameSemanticObservation } from "@havoc-platform/data-schemas/realtime/game-semantic-observation";
+import type { SeriesCompetitorId } from "@havoc-platform/data-schemas/live-series";
 
 import { logger } from "./val-logger";
 import type { ValorantTimerPauseEvidenceDto } from "@/shared/ipc/contracts/valorant-timer-pause.contract";
@@ -396,9 +396,9 @@ export class ValorantProjectionSession implements GameProjectionSession<ValObser
       (packet.event === ValorantDataTypes.PLAYER_SCOREBOARD ||
         packet.event === ValorantDataTypes.ROUND_INFO ||
         packet.event === ValorantDataTypes.SCORE) &&
-      (packet.blob_data_source === "OCR" || packet.blob_data_source === "OW")
+      (packet.havoc_data_source === "OCR" || packet.havoc_data_source === "OW")
     ) {
-      this.currentGameplaySource = packet.blob_data_source;
+      this.currentGameplaySource = packet.havoc_data_source;
     }
     switch (packet.event) {
       case "planted_location": {
@@ -417,7 +417,7 @@ export class ValorantProjectionSession implements GameProjectionSession<ValObser
           this.gameData.currentRound.roundPhase === EValorantRoundPhase.Shopping,
         );
         if (
-          packet.blob_data_source === "OW" &&
+          packet.havoc_data_source === "OW" &&
           this.gameMode !== "skirmish" &&
           previousRaw &&
           this.sideForStartTeam(next.startTeam) === "attack" &&
@@ -431,10 +431,10 @@ export class ValorantProjectionSession implements GameProjectionSession<ValObser
           next,
         );
         const recovered =
-          packet.blob_data_source === "OW" &&
+          packet.havoc_data_source === "OW" &&
           this.playerCombatAuthority.observeScoreboard(
             next,
-            packet.blob_data_source,
+            packet.havoc_data_source,
             this.gameData.currentRound.roundNumber,
             this.gameData.currentRound.roundPhase,
           );

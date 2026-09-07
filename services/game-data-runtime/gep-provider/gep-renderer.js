@@ -6,7 +6,7 @@
  * needs a live message pump for the native callbacks. Running it here gives
  * the full GepPackage API (getFeatures / setRequiredFeatures / getInfo /
  * game-detected / new-info-update / new-game-event) — exactly what the
- * original BLOB runtime uses.
+ * original HAVOC runtime uses.
  */
 const { ipcRenderer } = require("electron");
 const path = require("path");

@@ -4,7 +4,7 @@
  * Runs under @overwolf/ow-electron's electron.exe (NOT plain node/electron):
  * ow-electron augments `app.overwolf` with the Overwolf Package Manager, which
  * downloads/updates the GEP (Game Events Provider) package exactly like the
- * original BLOB `blob-game-data-runtime.exe` does.
+ * original HAVOC `havoc-game-data-runtime.exe` does.
  *
  * Protocol (stdout, NDJSON, v1 — mirrors the audited original):
  *   {"type":"ready","protocolVersion":1}
@@ -301,7 +301,7 @@ function prepareNativeProviderHost() {
   try {
     const fs = require("node:fs");
     const path = require("node:path");
-    const dataDir = process.env.BLOB_GAME_DATA_DIR?.trim() ||
+    const dataDir = process.env.HAVOC_GAME_DATA_DIR?.trim() ||
       path.join(process.env.LOCALAPPDATA || "", "Havoc", "game-data-runtime");
     const target = path.join(dataDir, "native-provider-host", "node_modules", "@overwolf", "ow-electron", "dist", "electron.exe");
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -321,7 +321,7 @@ function prepareNativeProviderHost() {
 
 /**
  * Direct mode (the original flow): the parent downloaded + verified the GEP
- * module and points us at it via BLOB_GAME_DATA_OVERWOLF_GEP_DIRECTORY.
+ * module and points us at it via HAVOC_GAME_DATA_OVERWOLF_GEP_DIRECTORY.
  *
  * Direct native addon contract (reverse-engineered from Overwolf's GEP plugin,
  * verified live):
@@ -337,12 +337,12 @@ function tryDirectGepInit() {
   // Direct addon is the default (same as the original's "gep.direct-addon").
   // The addon is silent until a game actually launches — breadcrumbs +
   // heartbeat in the debug log prove the pump is alive meanwhile.
-  if (process.env.BLOB_FORK_DISABLE_DIRECT_ADDON === "1") {
+  if (process.env.HAVOC_DISABLE_DIRECT_ADDON === "1") {
     global.__debugLog?.("direct addon disabled by env — using package manager path");
     return false;
   }
   let gepDir =
-    process.env.BLOB_GAME_DATA_OVERWOLF_GEP_DIRECTORY?.trim() ||
+    process.env.HAVOC_GAME_DATA_OVERWOLF_GEP_DIRECTORY?.trim() ||
     (typeof global.__session?.gepDirectory === "string" ? global.__session.gepDirectory.trim() : "");
   global.__activeGepDir = gepDir; // reachable from the whenReady callback
   if (!gepDir) return false;
@@ -403,7 +403,7 @@ function tryDirectGepInit() {
 
     // Game detection: track VALORANT (21640 — same ID the original provider
     // used), forward everything, and auto-connect to a detected game.
-    const trackedGames = (process.env.BLOB_GEP_TRACKED_GAMES?.trim() || "21640")
+    const trackedGames = (process.env.HAVOC_GEP_TRACKED_GAMES?.trim() || "21640")
       .split(",")
       .map((v) => Number(v.trim()))
       .filter((n) => Number.isFinite(n) && n > 0);
@@ -446,7 +446,7 @@ function tryDirectGepInit() {
 function main() {
   // Debug breadcrumbs (the original's provider logged the same lifecycle).
   try {
-    const dataDir = process.env.BLOB_GAME_DATA_DIR?.trim() ||
+    const dataDir = process.env.HAVOC_GAME_DATA_DIR?.trim() ||
       path.join(process.env.LOCALAPPDATA || "", "Havoc", "game-data-runtime");
     const runDir = path.join(dataDir, "run");
     fs.mkdirSync(runDir, { recursive: true });

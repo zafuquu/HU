@@ -129,18 +129,23 @@ function lcuGet(port: string, password: string, endpoint: string, timeoutMs = 40
 
 /** Client version from the newest VALORANT log (the original's "log" source). */
 function readClientVersionFromLogs(): string | null {
-  const base = join(process.env.LOCALAPPDATA ?? "", "VALORANT", "Saved", "Logs", "ShooterGame");
-  try {
-    if (!existsSync(base)) return null;
-    const files = readdirSync(base).filter((f) => f.startsWith("ShooterGame") && f.endsWith(".log"));
-    if (files.length === 0) return null;
-    files.sort((a, b) => b.localeCompare(a));
-    for (const f of files.slice(0, 3)) {
-      const text = readFileSync(join(base, f), "utf8");
-      const m = text.match(/CI server version: ([\w.-]+)/);
-      if (m) return m[1]!;
-    }
-  } catch { /* ignore */ }
+  const candidates = [
+    join(process.env.LOCALAPPDATA ?? "", "VALORANT", "Saved", "Logs"),
+    join(process.env.LOCALAPPDATA ?? "", "VALORANT", "Saved", "Logs", "ShooterGame"),
+  ];
+  for (const base of candidates) {
+    try {
+      if (!existsSync(base)) continue;
+      const files = readdirSync(base).filter((f) => f.startsWith("ShooterGame") && f.endsWith(".log"));
+      if (files.length === 0) continue;
+      files.sort((a, b) => b.localeCompare(a));
+      for (const f of files.slice(0, 3)) {
+        const text = readFileSync(join(base, f), "utf8");
+        const m = text.match(/CI server version: ([\w.-]+)/);
+        if (m) return m[1]!;
+      }
+    } catch { /* try next candidate */ }
+  }
   return null;
 }
 
@@ -181,8 +186,7 @@ async function resolveContext(prev: RiotContext | null): Promise<RiotContext> {
   } catch { /* keep previous */ }
   if (!region) throw new Error("region_missing");
 
-  const clientVersion = readClientVersionFromLogs() ?? prev?.clientVersion ?? "";
-  if (!clientVersion) throw new Error("client_version_missing");
+  const clientVersion = readClientVersionFromLogs() ?? prev?.clientVersion ?? "release-13.05-shipping-11-5350494";
 
   return {
     port,
@@ -249,11 +253,24 @@ interface PresenceEntry {
   puuid: string;
   matchId: string | null;
   inProgress: boolean;
+  /** NEW presence format (Riot client 2024+): no matchId in the havoc —
+   *  loop state, map and team scores instead. */
+  inGame: boolean;
+  isPregame: boolean;
+  matchMap: string | null;
+  scoreAlly: number | null;
+  scoreEnemy: number | null;
 }
 
 /**
- * Decode VALORANT presences. The `private` field is a base64-encoded payload
- * whose middle JWT segment carries {puuid, matchId, gameInProgress...}.
+ * Decode VALORANT presences. TWO wire formats exist:
+ *
+ *  OLD: `private` is a base64 JWT whose middle segment carries
+ *       {puuid, matchId, gameInProgress, product}.
+ *  NEW: `private` is plain base64 JSON with matchPresenceData
+ *       {sessionLoopState, matchMap} and partyOwnerMatchScore* — NO matchId.
+ *       The match id must then come from the GLZ player endpoints
+ *       (/core-game/v1/players/:puuid -> MatchID).
  * Parsing is defensive: any malformed entry is skipped.
  */
 function parsePresences(raw: unknown): PresenceEntry[] {
@@ -261,12 +278,36 @@ function parsePresences(raw: unknown): PresenceEntry[] {
   const presences = (raw as { presences?: unknown[] })?.presences;
   if (!Array.isArray(presences)) return out;
   for (const entry of presences) {
-    const rec = entry as { pid?: string; private?: string };
+    const rec = entry as { pid?: string; product?: string; private?: string };
     const puuid = typeof rec?.pid === "string" ? rec.pid : null;
     const priv = typeof rec?.private === "string" ? rec.private : null;
     if (!puuid || !priv) continue;
     try {
-      const decoded = Buffer.from(priv, "base64").toString("utf8");
+      const decoded = Buffer.from(priv, "base64").toString("utf8").trim();
+      if (decoded.startsWith("{")) {
+        // NEW format: plain JSON.
+        const payload = JSON.parse(decoded) as {
+          sessionLoopState?: string;
+          matchPresenceData?: { sessionLoopState?: string; matchMap?: string };
+          partyOwnerMatchScoreAllyTeam?: number;
+          partyOwnerMatchScoreEnemyTeam?: number;
+        };
+        if ((entry as { product?: string }).product === "valorant") {
+          const loop = payload.matchPresenceData?.sessionLoopState ?? payload.sessionLoopState ?? "";
+          out.push({
+            puuid,
+            matchId: null,
+            inProgress: false,
+            inGame: loop === "INGAME",
+            isPregame: loop === "PREGAME",
+            matchMap: payload.matchPresenceData?.matchMap ?? null,
+            scoreAlly: typeof payload.partyOwnerMatchScoreAllyTeam === "number" ? payload.partyOwnerMatchScoreAllyTeam : null,
+            scoreEnemy: typeof payload.partyOwnerMatchScoreEnemyTeam === "number" ? payload.partyOwnerMatchScoreEnemyTeam : null,
+          });
+        }
+        continue;
+      }
+      // OLD format: JWT — middle segment carries matchId.
       const parts = decoded.split(".");
       if (parts.length < 2) continue;
       const payload = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8")) as {
@@ -279,6 +320,11 @@ function parsePresences(raw: unknown): PresenceEntry[] {
         puuid,
         matchId: typeof payload.matchId === "string" ? payload.matchId : null,
         inProgress: payload.gameInProgress === true,
+        inGame: payload.gameInProgress === true,
+        isPregame: false,
+        matchMap: null,
+        scoreAlly: null,
+        scoreEnemy: null,
       });
     } catch {
       /* malformed presence -> skip */
@@ -372,42 +418,6 @@ export class RiotIdentitySource {
   private lastMatchType: "core" | "pregame" | null = null;
   private stopped = false;
 
-  public constructor(private readonly emit: IdentitySink) {}
-
-  public start(): void {
-    if (this.timer) return;
-    const tick = async (): Promise<void> => {
-      if (this.stopped) return;
-      try {
-        this.ctx = await resolveContext(this.ctx);
-        this.emitSession();
-        await this.pollMatch();
-      } catch {
-        // Client closed / not logged in / mid-restart: reset cached tokens.
-        this.ctx = null;
-        this.lastMatchId = null;
-        this.lastMatchType = null;
-      }
-      this.timer = setTimeout(() => void tick(), 3_000);
-    };
-    void tick();
-  }
-
-  public stop(): void {
-    this.stopped = true;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = null;
-  }
-
-  private emitSession(): void {
-    if (!this.ctx) return;
-    this.emit({
-      kind: "new_info_update",
-      key: "riot_session",
-      value: { region: this.ctx.region, shard: this.ctx.shard, selfPuuid: this.ctx.selfPuuid },
-    });
-  }
-
   private emitRoster(roster: RosterPlayer[], withStats: boolean): void {
     for (const player of roster) {
       this.emit({
@@ -432,15 +442,100 @@ export class RiotIdentitySource {
     }
   }
 
+  public constructor(private readonly emit: IdentitySink) {}
+
+  public start(): void {
+    if (this.timer) return;
+    const tick = async (): Promise<void> => {
+      if (this.stopped) return;
+      try {
+        this.ctx = await resolveContext(this.ctx);
+        this.emitSession();
+        await this.pollMatch();
+      } catch {
+        // Client closed / not logged in / mid-restart: reset cached tokens.
+        this.ctx = null;
+        this.lastMatchId = null;
+      }
+      this.timer = setTimeout(() => void tick(), 4_000);
+    };
+    void tick();
+  }
+
+  public stop(): void {
+    this.stopped = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  private emitSession(): void {
+    if (!this.ctx) return;
+    this.emit({
+      kind: "new_info_update",
+      key: "riot_session",
+      value: { region: this.ctx.region, shard: this.ctx.shard, selfPuuid: this.ctx.selfPuuid },
+    });
+  }
+
   private async pollMatch(): Promise<void> {
     if (!this.ctx) return;
     const presences = parsePresences(
       await lcuGet(this.ctx.port, this.ctx.password, "/chat/v4/presences"),
     );
-    const self = presences.find((p) => p.inProgress && p.matchId) ?? null;
+    // Self = our known puuid; otherwise the first presence actually IN a game
+    // (the desktop machine is the streamer's — that is the match we project).
+    const self =
+      presences.find((p) => p.puuid === this.ctx!.selfPuuid) ??
+      presences.find((p) => p.inGame || p.inProgress) ??
+      null;
     if (self) this.ctx.selfPuuid = self.puuid;
-    const matchId = self?.matchId ?? null;
-    if (!matchId || !self) {
+
+    // 1. Presence with an explicit matchId (OLD format) — direct.
+    let matchId = self?.matchId ?? null;
+    let type: "core" | "pregame" | null = matchId ? "core" : null;
+
+    // 2. NEW format: no matchId in presences — ask GLZ for the player's match.
+    if (!matchId && self) {
+      const puuid = encodeURIComponent(self.puuid);
+      try {
+        const rec = (await glzRequest(this.ctx, `/core-game/v1/players/${puuid}`, "GET")) as {
+          MatchID?: string;
+        };
+        if (typeof rec?.MatchID === "string" && rec.MatchID) {
+          matchId = rec.MatchID;
+          type = "core";
+        }
+      } catch { /* not in a live game */ }
+      if (!matchId) {
+        try {
+          const rec = (await glzRequest(this.ctx, `/pregame/v1/players/${puuid}`, "GET")) as {
+            PregameMatchID?: string;
+          };
+          if (typeof rec?.PregameMatchID === "string" && rec.PregameMatchID) {
+            matchId = rec.PregameMatchID;
+            type = "pregame";
+          }
+        } catch { /* not in agent select */ }
+      }
+    }
+
+    // 3. Presence-derived facts that need no match id at all (NEW format):
+    //    live team score from the party presence + raw map path.
+    if (!matchId) {
+      if (self?.inGame) {
+        if (self.matchMap) {
+          // "/Game/Maps/Canyon/Canyon" -> "canyon" (GEP-style codename)
+          const seg = self.matchMap.split("/").filter(Boolean).pop();
+          if (seg) this.emit({ kind: "new_info_update", key: "map", value: seg.toLowerCase() });
+        }
+        if (self.scoreAlly != null && self.scoreEnemy != null) {
+          this.emit({
+            kind: "new_info_update",
+            key: "match_score",
+            value: { team_0: self.scoreAlly, team_1: self.scoreEnemy },
+          });
+        }
+      }
       this.lastMatchId = null;
       this.lastMatchType = null;
       return;
@@ -449,21 +544,31 @@ export class RiotIdentitySource {
     // Live game first, then agent select. While in a core-game match we poll
     // EVERY tick: the roster facts carry live kills/deaths/assists/score.
     let match: unknown = null;
-    let type: "core" | "pregame" = "core";
     try {
       match = await glzRequest(this.ctx, `/core-game/v1/matches/${encodeURIComponent(matchId)}`, "GET");
     } catch {
-      try {
-        match = await glzRequest(this.ctx, `/pregame/v1/matches/${encodeURIComponent(matchId)}`, "GET");
-        type = "pregame";
-      } catch {
-        return; // match not provisioned on GLZ yet — retry next poll
+      if (type === "pregame") {
+        try {
+          match = await glzRequest(this.ctx, `/pregame/v1/matches/${encodeURIComponent(matchId)}`, "GET");
+        } catch {
+          return; // match not provisioned on GLZ yet — retry next poll
+        }
+      } else {
+        return;
       }
     }
     if (this.stopped) return;
     const roster = parseRoster(match);
     if (roster.length === 0) return;
     const withStats = type === "core";
+
+    if (type === "pregame" || self?.isPregame) {
+      this.emit({ kind: "new_info_update", key: "scene", value: "agent_select" });
+      this.emit({ kind: "new_info_update", key: "session_phase", value: "loading" });
+    } else if (type === "core" || self?.inGame) {
+      this.emit({ kind: "new_info_update", key: "scene", value: "ingame_hud" });
+      this.emit({ kind: "new_info_update", key: "session_phase", value: "live" });
+    }
 
     if (matchId !== this.lastMatchId) {
       // New match: authoritative id + map flip the session to live.
@@ -475,6 +580,14 @@ export class RiotIdentitySource {
       }
     }
     this.emitRoster(roster, withStats);
+    // Presence-derived team score stays live alongside the roster stats.
+    if (self?.inGame && self.scoreAlly != null && self.scoreEnemy != null) {
+      this.emit({
+        kind: "new_info_update",
+        key: "match_score",
+        value: { team_0: self.scoreAlly, team_1: self.scoreEnemy },
+      });
+    }
     this.lastMatchId = matchId;
     this.lastMatchType = type;
   }

@@ -10,7 +10,7 @@ import {
   type StreamFrame,
   type ValorantSessionSnapshot,
   streamFrameSchema,
-} from "@blob-fork/contracts";
+} from "@havoc-unleash/contracts";
 import { logger } from "./logger";
 
 export interface RuntimeClientCallbacks {
@@ -120,13 +120,30 @@ export class GameDataRuntimeClient {
           continue;
         }
         const frame = streamFrameSchema.safeParse(parsedJson);
-        if (!frame.success) continue; // tolerate future kinds
+        if (!frame.success) {
+          // Boundary telemetry: payload/schema validation result.
+          if (process.env.HAVOC_DEBUG_PIPELINE === "1") {
+            logger.debug("pipeline", "runtime_frame_schema_rejected", {
+              kind: (parsedJson as { kind?: unknown })?.kind ?? null,
+            });
+          }
+          continue; // tolerate future kinds
+        }
 
         const msg = frame.data;
         if (!bootstrapped) {
           if (msg.kind !== "valorant_session_snapshot") continue;
           bootstrapped = true;
           acceptedRevision = msg.snapshot.revision;
+          // Boundary telemetry: subscription established + first payload.
+          if (process.env.HAVOC_DEBUG_PIPELINE === "1") {
+            logger.debug("pipeline", "runtime_bootstrap_received", {
+              revision: msg.snapshot.revision,
+              sessionPhase: msg.snapshot.sessionPhase ?? null,
+              matchId: msg.snapshot.matchId ?? null,
+              teams: msg.snapshot.teams?.length ?? null,
+            });
+          }
           this.cb.onSnapshot(msg.snapshot);
           continue;
         }

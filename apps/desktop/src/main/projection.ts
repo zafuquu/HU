@@ -8,13 +8,20 @@ import {
   type HudRelayState,
   type KillfeedEntry,
   type ValorantSessionSnapshot,
-} from "@blob-fork/contracts";
+} from "@havoc-unleash/contracts";
 
 const PHASE_ORDER: Record<string, number> = { shopping: 0, combat: 1, end: 2 };
 
+/** Pipeline telemetry — enabled with HAVOC_DEBUG_PIPELINE=1 (no secrets). */
+function pipelineLog(event: string, data: Record<string, unknown>): void {
+  if (process.env.HAVOC_DEBUG_PIPELINE === "1") {
+    console.log("[pipeline:projection]", event, JSON.stringify(data));
+  }
+}
+
 interface WorkingState {
   revision: number;
-  sessionPhase: "idle" | "loading" | "live";
+  sessionPhase: "idle" | "loading" | "live" | "pregame";
   matchId: string | null;
   mapKey: string | null;
   mapName: string | null;
@@ -480,15 +487,35 @@ export class ValProjectionSession {
   private deriveScene(): "agent-select" | "buy-round" | "ingame-hud" | "post-game" | null {
     const s = this.s;
     if (s.sessionPhase === "idle") return null;
-    if (s.sessionPhase === "loading") return "agent-select";
+    if (s.sessionPhase === "loading" || s.sessionPhase === "pregame") return "agent-select";
     if (s.blue >= 13 || s.red >= 13) return "post-game";
     if (s.roundPhase === "shopping") return "buy-round";
     if (s.roundPhase === "combat" || s.roundPhase === "end") return "ingame-hud";
+    // Pre-round-1 of a real match: the provider emits match_id during agent
+    // select while round facts have not started yet (roundPhase stays
+    // "unknown") — map that to the agent-select scene so the HUD/site stop
+    // showing "-" and the popout renders AgentSelectScene.
+    if (!s.roundPhase || s.roundPhase === "unknown") {
+      return s.matchId ? "agent-select" : null;
+    }
     return null;
   }
 
+  private lastLoggedScene: string | null = null;
+
   private emitChange(): void {
     const state = this.build();
+    // Boundary telemetry: the scene-switch decision (deriveScene output).
+    if (state.scene !== this.lastLoggedScene) {
+      pipelineLog("scene_decision", {
+        scene: state.scene,
+        sessionPhase: state.sessionPhase,
+        round: `${state.round.number}/${state.round.phase}`,
+        score: `${state.score.blue}-${state.score.red}`,
+        roster: state.roster?.length ?? 0,
+      });
+      this.lastLoggedScene = state.scene;
+    }
     for (const fn of this.listeners) {
       try {
         fn(state);

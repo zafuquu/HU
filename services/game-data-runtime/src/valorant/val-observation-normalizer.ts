@@ -24,16 +24,16 @@ import {
 } from "./valorant-shared";
 import { getValorantAgentMaxUltPoints } from "./valorant-agent-ult-points";
 import type { ValorantWeaponInternal } from "./valorant-weapons";
-import type { BlobDataSource } from "./relay-message";
+import type { HavocDataSource } from "./relay-message";
 
 export type ValObservation = {
-  blob_data_source?: BlobDataSource;
+  havoc_data_source?: HavocDataSource;
   data: unknown;
   event: string;
 };
 
 type CandidateValorantPacket = {
-  blob_data_source?: BlobDataSource;
+  havoc_data_source?: HavocDataSource;
   data: unknown;
   event: string;
   killfeedSource?: "declared" | "raw_kill_feed_alias";
@@ -42,7 +42,7 @@ type CandidateValorantPacket = {
 };
 
 type ValorantPacket<TEvent extends string, TData, TMetadata extends object = object> = {
-  blob_data_source?: BlobDataSource;
+  havoc_data_source?: HavocDataSource;
   data: TData;
   event: TEvent;
 } & TMetadata;
@@ -273,7 +273,7 @@ function isOcrPhase(data: unknown): data is IFormattedValorantOCRRoundPhase {
 }
 
 function sourceOf(observation: ValObservation): string | null {
-  const source = observation.blob_data_source?.trim().toUpperCase();
+  const source = observation.havoc_data_source?.trim().toUpperCase();
   return source ? source : null;
 }
 
@@ -409,7 +409,7 @@ export class ValObservationNormalizer {
       if (!payload) return rejected();
       const formatted = formattingService.formatKillfeedData(payload);
       const packets = parsedPacket({
-        blob_data_source: observation.blob_data_source,
+        havoc_data_source: observation.havoc_data_source,
         data: formatted.data,
         event: ValorantDataTypes.KILLFEED,
         killfeedSource: "raw_kill_feed_alias",
@@ -418,7 +418,7 @@ export class ValObservationNormalizer {
     }
 
     const packet: CandidateValorantPacket = {
-      blob_data_source: observation.blob_data_source,
+      havoc_data_source: observation.havoc_data_source,
       data: observation.data,
       event: observation.event,
       ...(observation.event === ValorantDataTypes.KILLFEED

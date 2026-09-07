@@ -70,7 +70,7 @@ async function main() {
   execSync('cmd /c xcopy /E /I /Y "' + hudSrc + '" "' + hudOut + '"', { stdio: 'inherit' });
 
   // 3. Place a starting config for the user to edit.
-  const cfgPath = path.join(appDir, 'blob-fork.config.example.json');
+  const cfgPath = path.join(appDir, 'havoc-unleash.config.example.json');
   if (!existsSync(cfgPath)) {
     const cfg = JSON.stringify(
       {
@@ -89,7 +89,7 @@ async function main() {
   //    first, then the portable single-file exe as a convenience.
   console.log('[pack] packaging win-unpacked (stable exe)...');
   execSync('npx electron-builder --win dir -c.directories.output=release-fresh', { cwd: appDir, stdio: 'inherit', env: { ...process.env } });
-  console.log('[pack] DONE. win-unpacked at apps/desktop/release-fresh/win-unpacked/Blob Fork.exe');
+  console.log('[pack] DONE. win-unpacked at apps/desktop/release-fresh/win-unpacked/Havoc Unleash.exe');
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

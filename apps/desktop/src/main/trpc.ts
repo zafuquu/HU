@@ -26,13 +26,20 @@ interface BatchEnvelope {
 export class TrpcClient {
   public constructor(private readonly origin: string) {}
 
-  private async call<T>(procedure: string, input: unknown): Promise<T> {
-    const batch = { 0: { json: input ?? {} } };
-    const res = await fetch(`${this.origin}/api/trpc/${encodeURIComponent(procedure)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(batch),
-    });
+  private async call<T>(procedure: string, input: unknown, method: "GET" | "POST" = "GET"): Promise<T> {
+    let url = `${this.origin}/api/trpc/${encodeURIComponent(procedure)}?batch=1`;
+    let init: RequestInit;
+    if (method === "GET") {
+      url += `&input=${encodeURIComponent(JSON.stringify({ 0: { json: input ?? {} } }))}`;
+      init = { method: "GET" };
+    } else {
+      init = {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 0: { json: input ?? {} } }),
+      };
+    }
+    const res = await fetch(url, init);
     if (!res.ok) throw new Error(`tRPC ${procedure} HTTP ${res.status}`);
     // The bridge responds with `[{result:{data:{json}}}]` keyed positionally.
     const list = (await res.json()) as TrpcEnvelope[];
@@ -42,7 +49,7 @@ export class TrpcClient {
   }
 
   public desktopRooms(): Promise<RealtimeRoom[]> {
-    return this.call<RealtimeRoom[]>("realtime.desktopRooms", {});
+    return this.call<RealtimeRoom[]>("realtime.desktopRooms", {}, "GET");
   }
 
   public desktopRequestAccess(input: {
@@ -50,7 +57,7 @@ export class TrpcClient {
     roomName?: string;
     roomGame?: string;
   }): Promise<{ requestId: string; status: "accepted" }> {
-    return this.call("realtime.desktopRequestAccess", input);
+    return this.call("realtime.desktopRequestAccess", input, "POST");
   }
 
   public desktopRequestStatus(requestId: string): Promise<{
@@ -61,7 +68,7 @@ export class TrpcClient {
     roomName?: string;
     overlayId?: string | null;
   }> {
-    return this.call("realtime.desktopRequestStatus", { requestId });
+    return this.call("realtime.desktopRequestStatus", { requestId }, "GET");
   }
 
   public desktopProducerTicket(input: {
@@ -69,11 +76,11 @@ export class TrpcClient {
     roomName?: string;
     roomGame?: string;
   }): Promise<{ ticket: string; realtimeOrigin?: string; expiresAt: string }> {
-    return this.call("realtime.desktopProducerTicket", input);
+    return this.call("realtime.desktopProducerTicket", input, "POST");
   }
 
   public getLimitsOfRoom(): Promise<{ specialLimits: unknown }> {
-    return this.call("rooms.getLimitsOfRoom", {});
+    return this.call("rooms.getLimitsOfRoom", {}, "GET");
   }
 
   public async listAndPick(): Promise<RealtimeRoom | null> {

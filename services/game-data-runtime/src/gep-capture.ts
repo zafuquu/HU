@@ -3,8 +3,8 @@
  *
  * Spawns @overwolf/ow-electron's electron.exe running the gep-provider child
  * app (../gep-provider), which uses Overwolf's PackageManager to load the GEP
- * package (the same Game Events Provider data path the original BLOB runtime
- * uses — confirmed by dissecting blob-game-data-runtime.exe).
+ * package (the same Game Events Provider data path the original HAVOC runtime
+ * uses — confirmed by dissecting havoc-game-data-runtime.exe).
  *
  * The child speaks NDJSON protocol v1 on stdout; this module parses it and
  * translates gep.InfoUpdate / gep.GameEvent payloads into the same ProviderFact
@@ -63,7 +63,7 @@ function asarReal(path: string): string {
 /** Locate ow-electron's electron.exe (dev workspace or packaged resources). */
 export function resolveOwElectronPath(): string | null {
   const candidates: string[] = [];
-  const envPath = process.env.BLOB_OW_ELECTRON_PATH?.trim();
+  const envPath = process.env.HAVOC_OW_ELECTRON_PATH?.trim();
   if (envPath) candidates.push(envPath);
 
   // Dev: walk up from the bundle location to the workspace root's node_modules.
@@ -90,7 +90,7 @@ export function resolveOwElectronPath(): string | null {
 /** Locate the gep-provider child app directory. */
 export function resolveProviderDir(): string | null {
   const candidates: string[] = [];
-  const envDir = process.env.BLOB_GEP_PROVIDER_DIR?.trim();
+  const envDir = process.env.HAVOC_GEP_PROVIDER_DIR?.trim();
   if (envDir) candidates.push(envDir);
   candidates.push(join(__dirname, "gep-provider")); // bundled next to runtime-server.cjs
   candidates.push(join(__dirname, "..", "gep-provider")); // dev: dist/../gep-provider
@@ -105,17 +105,43 @@ export function resolveProviderDir(): string | null {
   return null;
 }
 
+/**
+ * GEP delivers values as JSON strings ('{"a":1}'), plain strings, or objects.
+ * Returns the parsed object when the value is (or encodes) one, else null.
+ */
+function parseMaybeJsonObject(value: unknown): Record<string, unknown> | null {
+  if (value != null && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        const parsed: unknown = JSON.parse(trimmed);
+        if (parsed != null && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch { /* fall through to raw handling */ }
+    }
+  }
+  return null;
+}
+
 /** Normalize a GEP score value ({team_0,team_1} | {blue,red} | "a-b") to team_0/team_1. */
 function normalizeScore(value: unknown): { team_0: number; team_1: number } | null {
-  if (typeof value === "string") {
-    const m = value.match(/(\d+)\D+(\d+)/);
-    return m ? { team_0: Number(m[1]), team_1: Number(m[2]) } : null;
-  }
-  if (value != null && typeof value === "object") {
-    const rec = value as Record<string, unknown>;
-    const t0 = Number(rec.team_0 ?? rec.blue);
-    const t1 = Number(rec.team_1 ?? rec.red);
+  const asObject = parseMaybeJsonObject(value);
+  if (asObject) {
+    const t0 = Number(asObject.team_0 ?? asObject.blue);
+    const t1 = Number(asObject.team_1 ?? asObject.red);
     if (Number.isFinite(t0) && Number.isFinite(t1)) return { team_0: t0, team_1: t1 };
+    return null;
+  }
+  if (typeof value === "string") {
+    // Plain "a-b" text scores only — JSON strings were handled above (a digit
+    // regex here would match the "0" inside the key name "team_0" and yield
+    // {0, x} garbage, which is exactly what froze the score at 0-0 in the field).
+    const m = value.match(/(\d+)\s*[-:]\s*(\d+)/);
+    return m ? { team_0: Number(m[1]), team_1: Number(m[2]) } : null;
   }
   return null;
 }
@@ -143,12 +169,25 @@ function factFromInfoUpdate(item: GepItem, emit: ProviderEmit): void {
     pushInfo("match_id", typeof value === "string" ? value : String(value ?? ""));
     return;
   }
-  if (low === "round_phase" || low === "round_report") {
-    pushInfo("round_phase", value);
+  if (low === "round_phase") {
+    // Phase only ever arrives as a plain string; anything else (e.g. a
+    // round_report object relayed under a similar key) must not pollute the
+    // phase stream — it corrupts the round engine and the projector.
+    if (typeof value === "string") pushInfo("round_phase", value);
     return;
   }
-  if (low === "round_number") {
-    pushInfo("round_number", value);
+  if (low === "round_report") {
+    // Per-round damage stats — passthrough under its own key for consumers.
+    const rec = parseMaybeJsonObject(value);
+    if (rec) pushInfo("round_report", rec);
+    return;
+  }
+  // GEP's live round key is "round" (a plain number); "round_number" is kept
+  // for the upstream dialect. Without "round" here the projector never learns
+  // the round number and holds every phase forever (scene stuck on null).
+  if (low === "round" || low === "round_number") {
+    const n = Number(value);
+    if (Number.isFinite(n) && n > 0) pushInfo("round_number", n);
     return;
   }
   if (low === "score" || low === "match_score") {
@@ -163,18 +202,16 @@ function factFromInfoUpdate(item: GepItem, emit: ProviderEmit): void {
   if (category.includes("roster") || low.startsWith("roster")) {
     const items = Array.isArray(value) ? value : [value];
     for (const item2 of items) {
-      if (item2 != null && typeof item2 === "object") {
-        pushInfo("roster", formatRoster(item2 as Record<string, unknown>).value);
-      }
+      const rec = parseMaybeJsonObject(item2);
+      if (rec) pushInfo("roster", formatRoster(rec).value);
     }
     return;
   }
   if (category.includes("scoreboard") || low.startsWith("scoreboard") || category.includes("player")) {
     const items = Array.isArray(value) ? value : [value];
     for (const item2 of items) {
-      if (item2 != null && typeof item2 === "object") {
-        pushInfo("scoreboard", formatPlayer(item2 as Record<string, unknown>).value);
-      }
+      const rec = parseMaybeJsonObject(item2);
+      if (rec) pushInfo("scoreboard", formatPlayer(rec).value);
     }
     return;
   }
@@ -262,7 +299,7 @@ export class GepProviderSource {
   private elevationToken: string | null = null;
 
   public constructor() {
-    this.elevate = process.env.BLOB_FORK_ELEVATE_GEP === "1";
+    this.elevate = process.env.HAVOC_ELEVATE_GEP === "1";
   }
 
   public start(emit: ProviderEmit): boolean {
@@ -347,6 +384,7 @@ export class GepProviderSource {
   public stop(): void {
     this.stopped = true;
     if (this.restartTimer) clearTimeout(this.restartTimer);
+    this.stopAttachLoop();
     this.clearConnectionTimer();
     this.pendingCommand?.reject(new Error("provider stopped"));
     this.pendingCommand = null;
@@ -377,7 +415,7 @@ export class GepProviderSource {
     // The GEP backend validates this uid (Overwolf extension id) before letting
     // the game monitor attach — it MUST be the original's registered id.
     env.OVERWOLF_APP_UID = env.OVERWOLF_APP_UID?.trim() || "mkcfiniehcpkhplpahgeepbdpjophjei";
-    if (gepDir) env.BLOB_GAME_DATA_OVERWOLF_GEP_DIRECTORY = gepDir;
+    if (gepDir) env.HAVOC_GAME_DATA_OVERWOLF_GEP_DIRECTORY = gepDir;
 
     const entry = require("node:path").join(providerDir, "index.js");
     const args = [entry];
@@ -483,8 +521,8 @@ export class GepProviderSource {
       const psEnv: NodeJS.ProcessEnv = { ...process.env };
       delete psEnv.ELECTRON_RUN_AS_NODE;
       psEnv.OVERWOLF_APP_UID = psEnv.OVERWOLF_APP_UID?.trim() || "mkcfiniehcpkhplpahgeepbdpjophjei";
-      if (gepDir) psEnv.BLOB_GAME_DATA_OVERWOLF_GEP_DIRECTORY = gepDir;
-      psEnv.BLOB_GAME_DATA_DIR = psEnv.BLOB_GAME_DATA_DIR?.trim() || resolveGameDataDir();
+      if (gepDir) psEnv.HAVOC_GAME_DATA_OVERWOLF_GEP_DIRECTORY = gepDir;
+      psEnv.HAVOC_GAME_DATA_DIR = psEnv.HAVOC_GAME_DATA_DIR?.trim() || resolveGameDataDir();
 
       const ps = (value: string): string => value.replace(/'/g, "''");
       // Elevated launcher script: stale elevated providers cannot be killed
@@ -611,7 +649,7 @@ export class GepProviderSource {
   }
 
   private consumeStream(chunk: string): void {
-    if (process.env.BLOB_FORK_PROVIDER_DEBUG === "1") {
+    if (process.env.HAVOC_PROVIDER_DEBUG === "1") {
       process.stdout.write(`[provider-parent] recv: ${chunk.slice(0, 300).trim()}\n`);
     }
     this.stdoutBuffer += chunk;
@@ -633,7 +671,7 @@ export class GepProviderSource {
   private logProviderMessage(msg: ProtocolMessage): void {
     try {
       if (!this.providerLogStream) {
-        const dataDir = process.env.BLOB_GAME_DATA_DIR?.trim() ||
+        const dataDir = process.env.HAVOC_GAME_DATA_DIR?.trim() ||
           join(process.env.LOCALAPPDATA ?? "", "Havoc", "game-data-runtime");
         const logsDir = join(dataDir, "logs");
         mkdirSync(logsDir, { recursive: true });
@@ -652,10 +690,34 @@ export class GepProviderSource {
     } catch { /* never break the pipeline on logging */ }
   }
 
+  // Parent-driven attach state — the Overwolf process monitor never fires in
+  // the field, so this is the only attach path: the pid we last sent
+  // connect-game for, and the last time real game data arrived. Together they
+  // drive the re-attach loop below (new pid, late launch, or stale connection
+  // all trigger a fresh connect-game).
+  private attachedPid: number | null = null;
+  private lastGameDataAt = 0;
+  private attachTimer: NodeJS.Timeout | null = null;
+
+  private startAttachLoop(): void {
+    this.stopAttachLoop();
+    const initial = setTimeout(() => void this.attachAlreadyRunningGame(), 3_000);
+    initial.unref();
+    this.attachTimer = setInterval(() => void this.attachAlreadyRunningGame(), 10_000);
+    this.attachTimer.unref();
+  }
+
+  private stopAttachLoop(): void {
+    if (this.attachTimer) {
+      clearInterval(this.attachTimer);
+      this.attachTimer = null;
+    }
+  }
+
   /**
-   * VALORANT was already running when the provider started: the Overwolf
-   * process monitor only fires for games that launch afterwards, so locate
-   * the game process and tell the provider to gep.connect explicitly.
+   * VALORANT attach loop tick: locate the game process and tell the provider
+   * to gep.connect explicitly. Idempotent — sends only when the target pid
+   * changed, nothing is attached, or the current attachment went stale.
    */
   private attachAlreadyRunningGame(): void {
     const exec = (file: string, args: string[]): Promise<string> =>
@@ -670,21 +732,33 @@ export class GepProviderSource {
       "/FI", "IMAGENAME eq VALORANT-Win64-Shipping.exe", "/FO", "CSV", "/NH",
     ]).then((out) => {
       const match = /"VALORANT-Win64-Shipping\.exe","(\d+)"/.exec(out);
-      if (!match) return; // not running — monitor will handle it when it launches
+      if (!match) return; // not running yet — the loop keeps polling
       const pid = Number(match[1]);
+      const now = Date.now();
+      // Healthy = attached to this pid AND data arrived recently. A stale
+      // attachment (connect accepted but no data flowing) is re-attached.
+      const stale = this.attachedPid !== null && now - this.lastGameDataAt > 60_000;
+      if (this.attachedPid === pid && !stale) return;
       const msg = {
         type: "command",
         requestId: randomUUID(),
         name: "connect-game",
         payload: { gameId: 21640, pid, name: "VALORANT" },
       };
-      this.emitProviderStatus("preopened_game_attach", { pid });
+      this.emitProviderStatus("preopened_game_attach", {
+        pid,
+        reattach: this.attachedPid !== null,
+      });
+      this.attachedPid = pid;
+      // Seed the freshness window so the loop does not spam connect-game while
+      // the child settles the connection; real data refreshes it from then on.
+      this.lastGameDataAt = now;
       if (this.hostSocket && !this.hostSocket.destroyed) {
         this.hostSocket.write(JSON.stringify(msg) + "\n");
       } else {
         this.child?.stdin?.write(JSON.stringify(msg) + "\n");
       }
-    }).catch(() => { /* process scan failed — monitor path still active */ });
+    }).catch(() => { /* process scan failed — the loop retries next tick */ });
   }
 
   private scheduleRestart(exe: string, providerDir: string, gepDir?: string): void {
@@ -747,14 +821,16 @@ export class GepProviderSource {
         if (typeof rec?.version === "string" && rec.version) this.providerVersion = rec.version;
         this.emitProviderStatus("provider_ready", msg.payload);
         // The Overwolf process monitor only reports games that LAUNCH after it
-        // starts. If VALORANT is already running, attach explicitly.
-        setTimeout(() => void this.attachAlreadyRunningGame(), 3_000).unref();
+        // starts — and in the field it has never fired at all. Valorant may
+        // already be running, or may launch minutes later: keep polling.
+        this.startAttachLoop();
         return;
       }
       case "game-detected":
         this.emitProviderStatus("game_detected", msg.payload);
         return;
       case "game-exit":
+        this.attachedPid = null;
         this.emitProviderStatus("game_exit", msg.payload);
         return;
       case "elevated-privileges-required":
@@ -783,18 +859,41 @@ export class GepProviderSource {
         factFromInfoDump(msg.payload, this.emit);
         return;
       // Direct-addon stream: payload is an array of raw callback args.
+      // The raw addon emits camelCase callback kinds ("infoUpdate", "newEvent",
+      // "disconnected", ...); kebab/snake names cover the host-relayed and
+      // legacy paths. Every alias MUST land on the same handler — a missing
+      // alias silently drops live game data (root cause of "Valorant never
+      // detected / scenes never switch" in the field).
       case "new_info_update":
-      case "info_update": {
+      case "info_update":
+      case "infoUpdate": {
+        this.lastGameDataAt = Date.now();
         const item = findInfoItem(msg.payload);
         if (item) factFromInfoUpdate(item, this.emit);
         return;
       }
       case "new_game_event":
-      case "game_event": {
+      case "game_event":
+      case "newEvent":
+      case "gameEvent": {
+        this.lastGameDataAt = Date.now();
         const item = findInfoItem(msg.payload);
         if (item) factFromGameEvent(item, this.emit);
         return;
       }
+      case "disconnected": {
+        // The GEP addon lost its game connection. The attach loop re-attaches
+        // on its next tick; surface it for diagnostics.
+        this.attachedPid = null;
+        this.emitProviderStatus("game_connection_lost", msg.payload);
+        return;
+      }
+      case "gameDetected":
+        this.emitProviderStatus("game_detected", msg.payload);
+        return;
+      case "gameExit":
+        this.emitProviderStatus("game_exit", msg.payload);
+        return;
       case "monitor":
       case "connect-attempted":
       case "log":

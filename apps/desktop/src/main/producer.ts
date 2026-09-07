@@ -8,7 +8,7 @@
  *   data:  game-data:fallback { kind:'game-snapshot'|'game-event', ... }
  *
  * The bridge's fallback path writes snapshots into Supabase itself, and its
- * internal WebRTC viewer feeds the same tables over the `blob-overlay-v3-reliable`
+ * internal WebRTC viewer feeds the same tables over the `havoc-overlay-v3-reliable`
  * channel. We send via fallback to stay robust across NAT without a native
  * WebRTC dependency in Electron.
  */
@@ -44,6 +44,7 @@ export class ProducerClient {
   private broadcastSessionId: string | null = null;
   private disposed = false;
   private reauthorizing = false;
+  private warnedDrop = false;
   private currentRoom: ProducerRoom | null = null;
   private ticketRefresher: (() => Promise<string>) | null = null;
 
@@ -132,7 +133,19 @@ export class ProducerClient {
 
   /** Publish the current game snapshot through the bridge fallback path. */
   public publishSnapshot(game: unknown): void {
-    this.socket?.emit("game-data:fallback", { kind: "game-snapshot", game });
+    if (!this.socket || !this.socket.connected) {
+      // Silent drops here looked like "data never reaches the overlay" —
+      // surface the first drop (and recover quietly once reconnected).
+      if (!this.warnedDrop) {
+        this.warnedDrop = true;
+        logger.warn("producer", "publish_dropped_socket_down", {
+          producerSessionId: this.producerSessionId,
+        });
+      }
+      return;
+    }
+    this.warnedDrop = false;
+    this.socket.emit("game-data:fallback", { kind: "game-snapshot", game });
   }
 
   public publishEvent(event: unknown): void {

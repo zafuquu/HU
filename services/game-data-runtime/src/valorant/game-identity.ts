@@ -334,7 +334,7 @@ export type ValorantPregamePlayer = ValorantPregameTeam["players"][number];
 export type ValorantPregameTeam = z.infer<typeof valorantPregameTeamSchema>;
 export type ValorantSessionSnapshot = z.infer<typeof valorantSessionSnapshotSchema>;
 
-/** Game identity tag used across the runtime (recovered from @blob-game-data/contracts usage). */
+/** Game identity tag used across the runtime (recovered from @havoc-game-data/contracts usage). */
 export type GameIdentity = "VAL" | "CS" | "RL";
 
 /** Provider game id for VALORANT (recovered from the original's runtime logs: gameId 21640). */

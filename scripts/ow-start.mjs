@@ -3,7 +3,7 @@
 // REAL GEP REQUIREMENT: Valorant game-events only flow when this binary is
 // launched by the Overwolf client (or with Overwolf running + the app
 // registered as a partner app with Valorant GEP access). Until then this
-// launcher runs the app with BLOB_FORK_SOURCE=overwolf and the runtime
+// launcher runs the app with HAVOC_SOURCE=overwolf and the runtime
 // reports `capabilities.overwolf.state` on its /health endpoint so you can
 // see whether GEP actually bound.
 import { spawn } from "node:child_process";
@@ -36,7 +36,7 @@ const child = spawn(
     stdio: "inherit",
     env: {
       ...process.env,
-      BLOB_FORK_SOURCE: "overwolf",
+      HAVOC_SOURCE: "overwolf",
       ELECTRON_RUN_AS_NODE: "",
     },
   },

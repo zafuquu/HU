@@ -43,12 +43,16 @@ const server = http.createServer((req, res) => {
     return sendJson(res, { session: { id: "dev-mock" }, user: { id: "dev-mock", email: "dev@mock", name: "Mock", image: null } });
   }
   if (pathname === "/health") return sendJson(res, { ok: true });
+  if (pathname === "/received") return sendJson(res, received);
   res.writeHead(404); res.end("not found");
 });
 
 const io = new Server(server, { path: PATH, cors: { origin: "*" } });
 io.use((socket, next) => {
-  next(socket.handshake.auth && socket.handshake.auth.token ? undefined : new Error("unauthorized"));
+  // The desktop producer authenticates with auth:{ticket} (producer.ts);
+  // accept both spellings so the mock mirrors the real bridge.
+  const a = socket.handshake.auth || {};
+  next(a.ticket || a.token ? undefined : new Error("unauthorized"));
 });
 io.on("connection", (socket) => {
   console.log("[mock-bridge] socket connected", socket.id);
@@ -63,7 +67,9 @@ io.on("connection", (socket) => {
   });
   socket.on("game-data:fallback", (msg) => {
     console.log("[mock-bridge] fallback", msg && msg.kind, JSON.stringify(msg && msg.game && msg.game.state && msg.game.state.gameScore));
-    received.push({ kind: msg && msg.kind, score: msg && msg.game && msg.game.state && msg.game.state.gameScore, t: Date.now() });
+    // Record the FULL game snapshot so the E2E harness can assert the exact
+    // contract the site popout consumes (players/teams/roundPhase/scene).
+    received.push({ kind: msg && msg.kind, game: msg && msg.game, t: Date.now() });
   });
   socket.on("game-data:producer:stop", (_p, ack) => { if (typeof ack === "function") ack({ ok: true }); });
 });
@@ -71,6 +77,7 @@ io.on("connection", (socket) => {
 server.listen(PORT, () => {
   console.log("[mock-bridge] ready path=" + PATH + " port=" + PORT);
   setInterval(() => {
-    console.log("[mock-bridge] recv=" + received.length + " last=" + JSON.stringify(received[received.length - 1] && received[received.length - 1].score));
+    const last = received[received.length - 1];
+    console.log("[mock-bridge] recv=" + received.length + " last=" + JSON.stringify(last && last.game && last.game.state && last.game.state.gameScore));
   }, 8000);
 });

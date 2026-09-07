@@ -22,7 +22,7 @@ export const ROSTER = {
 export type ScenarioName = "random" | "ace" | "team-ace" | "clutch" | "flawless";
 
 export function currentScenario(): ScenarioName {
-  const raw = (process.env.BLOB_FORK_SCENARIO ?? process.env.FORK_SCENARIO ?? "").toLowerCase();
+  const raw = (process.env.HAVOC_SCENARIO ?? process.env.FORK_SCENARIO ?? "").toLowerCase();
   return (["ace", "team-ace", "clutch", "flawless"].includes(raw) ? raw : "random") as ScenarioName;
 }
 
@@ -141,6 +141,9 @@ export class MockValorantSource {
   private beginShoppingPhase(): void {
     if (!this.emitFn || !this.state.matchId) return;
     this.pushInfo("scene", this.state.mapKey);
+    // Match identity: flips the runtime session to "live" so the projection
+    // derives overlay scenes (the real provider emits this on match start).
+    this.pushInfo("match_id", this.state.matchId);
     this.pushInfo("match_score", { team_0: this.state.blue, team_1: this.state.red });
     this.pushInfo("round_number", this.state.roundNumber);
     this.pushInfo("round_phase", PHASE_ORDER[this.state.phaseIndex]);
@@ -157,6 +160,9 @@ export class MockValorantSource {
       ROSTER[side].forEach((name, i) => {
         this.pushInfo("scoreboard", {
           name,
+          // Real team index so the runtime groups the roster into Blue/Red
+          // teams instead of the "Unknown" bucket.
+          team: side === "blue" ? 0 : 1,
           weapon: pick(weapons),
           credits: 800 + i * 150,
           spentCredits: i * 100,
