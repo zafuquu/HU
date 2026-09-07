@@ -183,7 +183,7 @@ export default function LiveGame() {
       mapBans: state.mapBans,
       serverCode: state.serverCode,
     }
-    const havoc = new Havoc([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+    const havoc = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(havoc)
     const a = document.createElement('a')
     a.href = url
