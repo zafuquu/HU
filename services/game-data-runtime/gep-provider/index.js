@@ -29,6 +29,19 @@ const PROTOCOL_VERSION = 1;
 /** GEP features relevant to the Valorant HUD (intersected with what the game supports). */
 const FEATURE_RE = /^(game_info|match_info|kill|death|assist|roster|team|score|scoreboard|observing|spike)/i;
 
+/**
+ * Overwolf's documented Valorant feature set (ValoSpectra ships exactly this,
+ * see Spectra-Client setRequiredFeaturesValorant). These three features carry
+ * every fact the HUD needs — roster_*, scoreboard_*, kill_feed, round_phase,
+ * round_number, match_score, scene, map, game_mode, match_id, player_*.
+ *
+ * Requesting the full getFeatures() list instead can make GEP reject the whole
+ * registration (one unsupported name fails the call), which shows up as a HUD
+ * that never receives data. Prefer the known-good set and only fall back to a
+ * filtered discovery list when the game reports something narrower.
+ */
+const VALORANT_FEATURES = ["game_info", "match_info", "me"];
+
 // ---------------------------------------------------------------------------
 // Transport: stdout by default. When launched with `--session <file>` (the
 // original's elevated-launch design) the parent cannot read our stdout, so we
@@ -190,12 +203,25 @@ function sendFailure(reason) {
 
 /** Pick the Valorant-relevant features; fall back to everything the game offers. */
 async function setFeatures(gep, gameId) {
+  // 1) Overwolf's documented Valorant set (what ValoSpectra uses) — proven to
+  //    deliver the full fact stream.
+  try {
+    await gep.setRequiredFeatures(gameId, VALORANT_FEATURES);
+    sendEvent("features-set", { gameId, features: VALORANT_FEATURES, source: "valorant-default" });
+    return;
+  } catch (err) {
+    sendEvent(
+      "gep-error",
+      `setRequiredFeatures(${VALORANT_FEATURES.join(",")}) failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  // 2) Fallback: discover what this GEP build actually supports and filter it.
   try {
     const all = await gep.getFeatures(gameId);
     const wanted = Array.isArray(all) ? all.filter((f) => FEATURE_RE.test(f)) : [];
     const features = wanted.length > 0 ? wanted : all;
     await gep.setRequiredFeatures(gameId, Array.isArray(features) ? features : undefined);
-    sendEvent("features-set", { gameId, features: features ?? null });
+    sendEvent("features-set", { gameId, features: features ?? null, source: "discovered" });
   } catch (err) {
     sendEvent("gep-error", `setRequiredFeatures failed: ${err instanceof Error ? err.message : String(err)}`);
   }

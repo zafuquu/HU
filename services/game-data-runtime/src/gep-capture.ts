@@ -24,6 +24,11 @@ import { dirname, join, resolve } from "node:path";
 
 import { formatKill, formatMap, formatPlayer, formatRoster } from "./gep-format";
 import { deriveAppUid, ensureGepPackage, resolveGameDataDir } from "./gep-download";
+import {
+  findOverwolfProcesses,
+  MONITOR_CONFLICT_ERROR,
+  stopOverwolf,
+} from "./overwolf-conflict";
 import type { ProviderFact } from "./mock-source";
 
 const ELEVATED_CONNECTION_TIMEOUT_MS = 45_000;
@@ -285,6 +290,8 @@ export class GepProviderSource {
   private lastError: string | null = null;
   private restartAttempt = 0;
   private restartTimer: NodeJS.Timeout | null = null;
+  /** Debounce for the GEP monitor-conflict handler (see watchPluginStatus). */
+  private monitorConflictHandled = false;
   private stdoutBuffer = "";
   private providerVersion: string | null = null;
   // Elevation (mirrors the original's windows-native-host design): the GEP
@@ -316,9 +323,36 @@ export class GepProviderSource {
       this.lastError = "gep-provider directory not found next to the runtime";
       return false;
     }
+    // Retail Overwolf owns the GEP process monitor exclusively. If it is up we
+    // will get "failed_initializing_monitor" forever, so resolve it up front.
+    this.resolveOverwolfConflict("startup");
     this.state = "starting";
     void this.prepareAndLaunch(exe, providerDir);
     return true;
+  }
+
+  /**
+   * Detect (and optionally stop) retail Overwolf, which contends for the GEP
+   * process monitor. With HAVOC_KILL_OVERWOLF=1 we terminate it like
+   * ValoSpectra does; otherwise we surface the conflict so the UI can ask.
+   */
+  private resolveOverwolfConflict(reason: "startup" | "monitor-conflict"): boolean {
+    const running = findOverwolfProcesses();
+    if (running.length === 0) return false;
+    const images = [...new Set(running.map((p) => p.image))];
+    if (process.env.HAVOC_KILL_OVERWOLF === "1") {
+      const stopped = stopOverwolf();
+      this.emitProviderStatus("overwolf_conflict_resolved", {
+        reason,
+        stopped: stopped.map((p) => `${p.image}#${p.pid}`),
+      });
+      return stopped.length > 0;
+    }
+    this.lastError =
+      `retail Overwolf is running (${images.join(", ")}) and owns the GEP process monitor; ` +
+      `close Overwolf or set HAVOC_KILL_OVERWOLF=1 to stop it automatically`;
+    this.emitProviderStatus("overwolf_conflict", { reason, processes: images });
+    return false;
   }
 
   /** Download/verify the GEP module (original flow), then launch the child. */
@@ -772,6 +806,53 @@ export class GepProviderSource {
     }, delay);
   }
 
+  /**
+   * Watch GEP's own plugin_status stream for the monitor-conflict signature.
+   *
+   * The addon reports `last_error = failed_initializing_monitor` when another
+   * host (retail Overwolf) already owns the process monitor. Without this the
+   * provider silently loops disconnected -> shutdown -> initializing and the
+   * HUD freezes on whatever scene it last saw.
+   */
+  private watchPluginStatus(item: GepItem): void {
+    const category = String(item.category ?? item.feature ?? "").toLowerCase();
+    if (category !== "plugin_status") return;
+    const key = String(item.key ?? "").toLowerCase();
+    const value = typeof item.value === "string" ? item.value : "";
+    if (key !== "last_error" || !value.includes(MONITOR_CONFLICT_ERROR)) return;
+    if (this.monitorConflictHandled) return;
+    this.monitorConflictHandled = true;
+    this.state = "error";
+    this.lastError = `GEP monitor unavailable (${MONITOR_CONFLICT_ERROR})`;
+    // Retail Overwolf is the usual culprit; resolving it makes the next
+    // provider launch succeed. Allow re-detection after a cooldown so a later
+    // Overwolf start is caught too.
+    const resolved = this.resolveOverwolfConflict("monitor-conflict");
+    this.emitProviderStatus("provider_error", this.lastError);
+    setTimeout(() => {
+      this.monitorConflictHandled = false;
+    }, 60_000);
+    if (resolved) this.restartProviderNow();
+  }
+
+  /** Force an immediate provider relaunch (used after clearing a conflict). */
+  private restartProviderNow(): void {
+    if (this.stopped) return;
+    const exe = resolveOwElectronPath();
+    const providerDir = resolveProviderDir();
+    if (!exe || !providerDir) return;
+    this.child?.kill();
+    this.child = null;
+    this.hostSocket?.destroy();
+    this.hostSocket = null;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    this.restartAttempt = 0;
+    this.scheduleRestart(exe, providerDir);
+  }
+
   private handleMessage(line: string): void {
     let msg: ProtocolMessage;
     try {
@@ -847,6 +928,7 @@ export class GepProviderSource {
         return;
       case "info-update":
         if (msg.payload != null && typeof msg.payload === "object") {
+          this.watchPluginStatus(msg.payload as GepItem);
           factFromInfoUpdate(msg.payload as GepItem, this.emit);
         }
         return;

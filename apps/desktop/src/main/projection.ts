@@ -120,6 +120,7 @@ export class ValProjectionSession {
       icebox: "Icebox", pearl: "Pearl", fracture: "Fracture", lotus: "Lotus", sunset: "Sunset",
       abyss: "Abyss", drift: "Drift", piazza: "Piazza", kasbah: "Kasbah", sunset2: "Sunset",
       "ascent-2": "Ascent", glaze: "Glitch", district: "District", summit: "Summit",
+      infinity: "Infinity",
     };
     if (mapKey) {
       s.mapKey = mapKey;
@@ -496,7 +497,13 @@ export class ValProjectionSession {
     // "unknown") — map that to the agent-select scene so the HUD/site stop
     // showing "-" and the popout renders AgentSelectScene.
     if (!s.roundPhase || s.roundPhase === "unknown") {
-      return s.matchId ? "agent-select" : null;
+      if (s.matchId) return "agent-select";
+      // Presence-only mode (GEP starved / GLZ unreachable): the Riot client
+      // reports a live session with a map and score but no match id or round
+      // facts. That is unambiguously an in-progress match, so show the HUD
+      // instead of leaving the scene null (which froze the overlay).
+      if (s.mapKey || s.blue > 0 || s.red > 0) return "ingame-hud";
+      return null;
     }
     return null;
   }

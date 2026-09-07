@@ -160,6 +160,30 @@ interface RiotContext {
   selfPuuid: string | null;
 }
 
+/**
+ * Riot region -> shard. GLZ hosts are `glz-<region>-1.<shard>.a.pvp.net`, and
+ * region != shard for most of the world: /riotclient/region-locale returns e.g.
+ * "SG2", whose shard is "ap". Using the region as the shard builds
+ * `glz-SG2-1.SG2.a.pvp.net`, which does not resolve (verified: "No such host
+ * is known"), so every identity call failed before it was even sent.
+ */
+const REGION_TO_SHARD: Record<string, string> = {
+  // Asia-Pacific
+  ap: "ap", sg2: "ap", sg: "ap", jp1: "ap", jp: "ap", kr: "kr", kr1: "kr",
+  oc1: "ap", tw2: "ap", hk: "ap",
+  // Americas
+  na: "na", na1: "na", latam: "na", la1: "na", la2: "na", br: "na", br1: "na",
+  pbe: "pbe", pbe1: "pbe",
+  // Europe
+  eu: "eu", eu1: "eu", euw: "eu", eune: "eu", tr1: "eu", ru: "eu", ru1: "eu",
+};
+
+/** Resolve the GLZ shard for a region code (defaults to the region itself). */
+function shardForRegion(region: string): string {
+  const key = region.trim().toLowerCase();
+  return REGION_TO_SHARD[key] ?? key;
+}
+
 async function resolveContext(prev: RiotContext | null): Promise<RiotContext> {
   const lockfile = readLockfile();
   if (!lockfile) throw new Error("lockfile_missing");
@@ -170,8 +194,13 @@ async function resolveContext(prev: RiotContext | null): Promise<RiotContext> {
     entitlementsToken?: string;
   };
   const accessToken = entitlements?.accessToken ?? "";
+  // The entitlements JWT is only required for the GLZ/PD cloud calls. The Riot
+  // client frequently returns it empty (observed live: accessToken 1085 chars,
+  // entitlementsToken ""), and treating that as fatal aborted resolveContext —
+  // which killed the whole poll, including the LOCAL presence read that needs
+  // no cloud token at all. That left the runtime idle during a live match.
   const entitlementsToken = entitlements?.entitlementsToken ?? "";
-  if (!accessToken || !entitlementsToken) throw new Error("entitlements_missing");
+  if (!accessToken) throw new Error("entitlements_missing");
 
   let region = prev?.region ?? "";
   let shard = prev?.shard ?? "";
@@ -180,11 +209,19 @@ async function resolveContext(prev: RiotContext | null): Promise<RiotContext> {
       region?: string;
     };
     if (rl?.region) {
-      region = String(rl.region);
-      shard = String(rl.region);
+      // region-locale reports the LOGIN region (e.g. "SG2"); GLZ is addressed
+      // by SHARD. Verified by DNS: glz-ap-1.ap resolves, glz-sg2-1.ap and
+      // glz-sg2-1.sg2 do not — so the shard is used in BOTH host positions.
+      shard = shardForRegion(String(rl.region));
+      region = shard;
     }
   } catch { /* keep previous */ }
-  if (!region) throw new Error("region_missing");
+  // A missing region only disables the GLZ cloud calls; local presence (the
+  // authoritative phase source) still works, so this must not abort the poll.
+  if (!region) {
+    region = "";
+    shard = "";
+  }
 
   const clientVersion = readClientVersionFromLogs() ?? prev?.clientVersion ?? "release-13.05-shipping-11-5350494";
 
@@ -495,7 +532,9 @@ export class RiotIdentitySource {
     let type: "core" | "pregame" | null = matchId ? "core" : null;
 
     // 2. NEW format: no matchId in presences — ask GLZ for the player's match.
-    if (!matchId && self) {
+    //    Requires cloud credentials + a shard; without them we fall through to
+    //    the presence-derived facts below instead of aborting the poll.
+    if (!matchId && self && this.ctx.entitlementsToken && this.ctx.shard) {
       const puuid = encodeURIComponent(self.puuid);
       try {
         const rec = (await glzRequest(this.ctx, `/core-game/v1/players/${puuid}`, "GET")) as {
@@ -521,6 +560,13 @@ export class RiotIdentitySource {
 
     // 3. Presence-derived facts that need no match id at all (NEW format):
     //    live team score from the party presence + raw map path.
+    //
+    //    This path is authoritative for the SESSION PHASE. GLZ may be
+    //    unreachable (wrong shard, 403 TLS-fingerprint block) and GEP may be
+    //    starved by a competing Overwolf host, but the local presence always
+    //    tells us whether we are in agent select or in a live match. Without
+    //    emitting the phase here the runtime stayed on "loading" forever and
+    //    the overlay froze on the agent-select scene mid-match.
     if (!matchId) {
       if (self?.inGame) {
         if (self.matchMap) {
@@ -535,6 +581,12 @@ export class RiotIdentitySource {
             value: { team_0: self.scoreAlly, team_1: self.scoreEnemy },
           });
         }
+        // INGAME with no resolvable match id: still a live match.
+        this.emit({ kind: "new_info_update", key: "scene", value: "ingame_hud" });
+        this.emit({ kind: "new_info_update", key: "session_phase", value: "live" });
+      } else if (self?.isPregame) {
+        this.emit({ kind: "new_info_update", key: "scene", value: "agent_select" });
+        this.emit({ kind: "new_info_update", key: "session_phase", value: "loading" });
       }
       this.lastMatchId = null;
       this.lastMatchType = null;
