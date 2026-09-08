@@ -575,11 +575,20 @@ export class GepProviderSource {
       this.emitProviderStatus("provider_error", this.lastError);
     });
     server.listen(pipeName, () => {
-      // The PowerShell launcher's env must NOT carry ELECTRON_RUN_AS_NODE, or
-      // the elevated electron.exe would start in node mode (Start-Process
-      // inherits the environment from this process).
+      // Launcher env vs provider mode:
+      //  ELECTRON mode: the env must NOT carry ELECTRON_RUN_AS_NODE, or the
+      //    elevated electron.exe would start in node mode.
+      //  NODE mode: the elevated electron.exe MUST boot as a plain Node
+      //    runtime for the bare addon — force the RUN_AS_NODE marker through
+      //    (UAC elevation rebuilds the environment from the spawner's env).
+      const nodeModeRequested =
+        this.preferNodeMode || process.env.HAVOC_GEP_NODE_MODE === "1";
       const psEnv: NodeJS.ProcessEnv = { ...process.env };
-      delete psEnv.ELECTRON_RUN_AS_NODE;
+      if (nodeModeRequested) {
+        psEnv.ELECTRON_RUN_AS_NODE = "1";
+      } else {
+        delete psEnv.ELECTRON_RUN_AS_NODE;
+      }
       psEnv.OVERWOLF_APP_UID = psEnv.OVERWOLF_APP_UID?.trim() || "mkcfiniehcpkhplpahgeepbdpjophjei";
       if (gepDir) psEnv.HAVOC_GAME_DATA_OVERWOLF_GEP_DIRECTORY = gepDir;
       psEnv.HAVOC_GAME_DATA_DIR = psEnv.HAVOC_GAME_DATA_DIR?.trim() || resolveGameDataDir();
@@ -593,6 +602,9 @@ export class GepProviderSource {
         "try { Get-Process electron -ErrorAction SilentlyContinue |",
         "  Where-Object { $_.Path -like '*ow-electron*' } | Stop-Process -Force } catch {}",
         "Start-Sleep -Milliseconds 800",
+        // Deterministic provider mode: UAC elevation may not inherit this
+        // process's environment, so the mode is written INTO the launcher.
+        ...(nodeModeRequested ? ["$env:ELECTRON_RUN_AS_NODE = '1'"] : []),
         `& '${ps(exe)}' '${ps(providerDir + "\\index.js")}' --session '${ps(sessionPath)}'`,
       ].join("\r\n");
       const launcherPath = sessionPath.replace(/[^/\\]+$/, "launch-elevated-provider.ps1");
