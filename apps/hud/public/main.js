@@ -16,6 +16,7 @@
     rosters: document.getElementById("rosters"),
     rosterBlue: document.getElementById("roster-blue"),
     rosterRed: document.getElementById("roster-red"),
+    spectator: document.getElementById("spectator-badge"),
     root: document.getElementById("root"),
     debug: document.getElementById("pipeline-debug"),
   };
@@ -80,9 +81,19 @@
   function renderRosterRow(p) {
     const row = document.createElement("div");
     row.className = "r-row" + (p.isAlive === false ? " dead" : "");
+    if (p.agentIcon) {
+      const img = document.createElement("img");
+      img.className = "r-agent-img";
+      img.src = p.agentIcon;
+      img.alt = "";
+      img.loading = "lazy";
+      row.append(img);
+    }
     const name = span((p.displayName ?? "?").split("#")[0], "r-name");
     const agent = span(p.agentName ?? "", "r-agent");
     row.append(name, agent);
+    // Shield + health chip (when the provider reports them).
+    if (p.shield != null && p.shield > 0) row.append(span(String(p.shield), "r-shield"));
     // Stat columns render only when the provider supplies them, so the
     // pregame/agent-select roster stays clean.
     const hasStats =
@@ -151,6 +162,10 @@
     // (same scene contract the site popout consumes).
     const scene = state.scene ?? "";
     if (el.root) el.root.dataset.scene = scene;
+    // Spectator/observer indicator.
+    const role = (state.viewerRole ?? "").toLowerCase();
+    const spectating = role === "observer" || role === "spectator" || role === "coach";
+    if (el.spectator) el.spectator.classList.toggle("hidden", !spectating);
     debugLog(`scene=${scene || "-"} phase=${phase} roster=${state.roster?.length ?? 0}`);
 
     el.spike.classList.toggle("hidden", state.spike !== "planted");

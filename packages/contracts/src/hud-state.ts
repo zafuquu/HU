@@ -53,12 +53,14 @@ export const hudRelayStateSchema = z.object({
         slot: z.number().int().nullish(),
         // Per-player detail evidence (weapon/credits/ults/scoreline) when the
         // provider supplies scoreboard observations.
+        agentIcon: z.string().nullish(),
         kills: z.number().int().nullish(),
         deaths: z.number().int().nullish(),
         assists: z.number().int().nullish(),
         weapon: z.string().nullish(),
         credits: z.number().nullish(),
         spentCredits: z.number().nullish(),
+        shield: z.number().nullish(),
         health: z.number().nullish(),
         isAlive: z.boolean().nullish(),
         ultPoints: z.number().int().nullish(),

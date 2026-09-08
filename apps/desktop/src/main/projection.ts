@@ -10,7 +10,26 @@ import {
   type ValorantSessionSnapshot,
 } from "@havoc-unleash/contracts";
 
+import { agentDisplayName, agentIconUrl, weaponDisplayName } from "./valorant-identity";
+
 const PHASE_ORDER: Record<string, number> = { shopping: 0, combat: 1, end: 2 };
+
+/**
+ * GEP facts frequently arrive as JSON-encoded STRINGS (scoreboard, kill_feed,
+ * match_score, ...). Decode once so every case works with real objects.
+ */
+function parseFactValue(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const t = value.trim();
+  if (t.startsWith("{") || t.startsWith("[")) {
+    try {
+      return JSON.parse(t) as unknown;
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
 
 /** Pipeline telemetry — enabled with HAVOC_DEBUG_PIPELINE=1 (no secrets). */
 function pipelineLog(event: string, data: Record<string, unknown>): void {
@@ -165,6 +184,7 @@ export class ValProjectionSession {
             p.player.puuid ??
             "?",
           agentName: p.agent?.name ?? null,
+          agentIcon: p.agent?.riotId ? agentIconUrl(p.agent.riotId) ?? null : undefined,
           teamId: normalizedTeamId,
           teamIndex: p.teamIndex ?? fallbackIndex,
           slot: p.observerSlot ?? undefined,
@@ -186,9 +206,18 @@ export class ValProjectionSession {
       // Upstream snapshots carry no per-player stats; the scoreboard facts
       // merged between heartbeats must survive snapshot refreshes. Carry
       // previous stats over when the snapshot itself supplies none.
+      // ALSO dedupe: some engine snapshots list the viewer under BOTH squads —
+      // keep the first entry per normalized display name.
       const previous = new Map(
         (previousRoster ?? []).map((p) => [this.normalizeName(p.displayName), p]),
       );
+      const seenNames = new Set<string>();
+      s.roster = s.roster.filter((entry) => {
+        const n = this.normalizeName(entry.displayName);
+        if (seenNames.has(n)) return false;
+        seenNames.add(n);
+        return true;
+      });
       for (const entry of s.roster) {
         const hasSnapshotStats =
           entry.kills !== undefined ||
@@ -214,17 +243,37 @@ export class ValProjectionSession {
     this.emitChange();
   }
 
-  public applyFact(key: string, value: unknown): void {
+  public applyFact(key: string, rawValue: unknown): void {
     const s = this.s;
+    const value = parseFactValue(rawValue);
     switch (key) {
       case "match_score": {
-        const rec = value as { team_0?: unknown; team_1?: unknown };
-        if (typeof rec?.team_0 === "number" && typeof rec?.team_1 === "number") {
-          s.blue = rec.team_0;
-          s.red = rec.team_1;
+        const rec = value as { team_0?: unknown; team_1?: unknown; won?: unknown; lost?: unknown };
+        // Fork dialect: {team_0, team_1}. Engine dialect: {won, lost} from the
+        // viewer's perspective (won = the viewer's team = blue).
+        let blue: unknown;
+        let red: unknown;
+        if (rec?.team_0 !== undefined || rec?.team_1 !== undefined) {
+          blue = rec?.team_0;
+          red = rec?.team_1;
+        } else if (rec?.won !== undefined || rec?.lost !== undefined) {
+          blue = rec?.won;
+          red = rec?.lost;
+        } else return;
+        if (typeof blue === "number" && typeof red === "number") {
+          s.blue = blue;
+          s.red = red;
           // Match point reached -> the side with more rounds is the winner.
           if (s.blue >= 13 || s.red >= 13) {
             s.matchWinner = s.blue >= s.red ? "blue" : "red";
+          }
+        } else if (typeof blue === "string" || typeof red === "string") {
+          const b = Number(blue);
+          const r = Number(red);
+          if (Number.isFinite(b) && Number.isFinite(r)) {
+            s.blue = b;
+            s.red = r;
+            if (b >= 13 || r >= 13) s.matchWinner = b >= r ? "blue" : "red";
           }
         } else return;
         break;
@@ -262,8 +311,8 @@ export class ValProjectionSession {
           seq: this.killSeq++,
           attacker: rec.attacker,
           victim: rec.victim,
-          weapon: typeof rec.weapon === "string" ? rec.weapon : "",
-          modifier: typeof rec.modifier === "string" ? rec.modifier : null,
+          weapon: weaponDisplayName(rec.weapon ?? rec.weaponName) ?? "",
+          modifier: rec.headshot === true ? "headshot" : typeof rec.modifier === "string" ? rec.modifier : null,
           at: Date.now(),
         });
         s.killfeed = s.killfeed.slice(0, 25);
@@ -291,8 +340,8 @@ export class ValProjectionSession {
         return; // already emitted
       }
       case "scoreboard": {
-        // Per-player detail observation (weapon/credits/ults/scoreline) from
-        // the provider; merged into the matching roster entry by name.
+        // Per-player detail observation (weapon/credits/ults/shield/scoreline)
+        // from the provider; merged into the matching roster entry by name.
         const rec = value as Record<string, unknown>;
         const name = typeof rec?.name === "string" ? rec.name : null;
         if (!name) return;
@@ -304,18 +353,24 @@ export class ValProjectionSession {
           typeof v === "number" && Number.isFinite(v) ? v : undefined;
         const str = (v: unknown): string | undefined =>
           typeof v === "string" && v.length > 0 ? v : undefined;
-        entry.weapon = str(rec.weapon ?? rec.weaponName) ?? entry.weapon ?? null;
+        // GEP internal codenames -> human display + icon.
+        entry.agentName = agentDisplayName(rec.character) ?? entry.agentName ?? null;
+        entry.agentIcon =
+          agentIconUrl(rec.character) ?? agentIconUrl(rec.agentUuid) ?? entry.agentIcon ?? null;
+        entry.weapon = weaponDisplayName(rec.weapon ?? rec.weaponName) ?? entry.weapon ?? null;
         entry.credits = num(rec.credits ?? rec.money) ?? entry.credits ?? null;
         entry.spentCredits = num(rec.spentCredits ?? rec.spent) ?? entry.spentCredits ?? null;
+        entry.shield = num(rec.shield ?? rec.armor) ?? entry.shield ?? null;
         entry.kills = num(rec.kills) ?? entry.kills ?? null;
         entry.deaths = num(rec.deaths) ?? entry.deaths ?? null;
         entry.assists = num(rec.assists) ?? entry.assists ?? null;
         entry.health = num(rec.health) ?? entry.health ?? null;
-        entry.ultPoints = num(rec.ultPoints) ?? entry.ultPoints ?? null;
-        entry.ultMax = num(rec.ultMax) ?? entry.ultMax ?? null;
+        entry.ultPoints = num(rec.ultPoints ?? rec.ult_points) ?? entry.ultPoints ?? null;
+        entry.ultMax = num(rec.ultMax ?? rec.ult_max) ?? entry.ultMax ?? null;
         if (typeof rec.alive === "boolean") entry.isAlive = rec.alive;
         else if (typeof rec.isAlive === "boolean") entry.isAlive = rec.isAlive;
         if (typeof rec.hasSpike === "boolean") entry.hasSpike = rec.hasSpike;
+        else if (typeof rec.spike === "boolean") entry.hasSpike = rec.spike;
         if (Array.isArray(rec.abilities)) {
           entry.abilities = rec.abilities.filter((a): a is string => typeof a === "string");
         }
