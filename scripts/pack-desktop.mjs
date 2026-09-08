@@ -23,7 +23,10 @@ async function main() {
     target: 'node20',
     format: 'cjs',
     outfile: path.join(appDir, 'dist', 'main.js'),
-    external: ['electron', 'koffi'],
+    // Native/hosted modules must stay external: @roamhq/wrtc loads a platform
+    // .node binary at runtime (asarUnpack'd), koffi likewise, and bundling the
+    // wrtc metapackage would inline JS that then fails to find its binary.
+    external: ['electron', 'koffi', '@roamhq/wrtc', '@roamhq/wrtc-win32-x64'],
     define: { 'process.env.NODE_ENV': '"production"' },
     legalComments: 'none',
   });
