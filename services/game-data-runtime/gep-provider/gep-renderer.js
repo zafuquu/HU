@@ -11,8 +11,10 @@
 const { ipcRenderer } = require("electron");
 const path = require("path");
 
-const params = new URLSearchParams(location.search);
-const gepDir = params.get("gepDir") || "";
+// gepDir arrives either via the ?gepDir= query (file:// mode) or injected by
+// the host main process as window.__GEP_DIR__ (data-URL mode).
+const params = new URLSearchParams(typeof location !== "undefined" ? location.search : "");
+const gepDir = params.get("gepDir") || (typeof window !== "undefined" && window.__GEP_DIR__) || "";
 const log = (msg) => {
   try { ipcRenderer.send("gep-log", String(msg).slice(0, 500)); } catch { /* ignore */ }
 };
@@ -71,8 +73,12 @@ function boot() {
     }
     dumpInfo(gep, gameId);
   });
-  gep.on("new-info-update", (_ev, gameId, data) => send("new_info_update", { gameId, data: jsonSafe(data) }));
-  gep.on("new-game-event", (_ev, gameId, data) => send("new_game_event", { gameId, data: jsonSafe(data) }));
+  // Event kinds + payload shapes MUST match the parent's protocol:
+  //   info-update -> gep-capture case "info-update" with payload {gameId,...item}
+  //   game-event  -> case "game-event" with the same shape. (The bare-addon
+  //   mode spreads the GEP item into the payload the same way.)
+  gep.on("new-info-update", (_ev, gameId, data) => send("info-update", { gameId, ...jsonSafe(data) }));
+  gep.on("new-game-event", (_ev, gameId, data) => send("game-event", { gameId, ...jsonSafe(data) }));
   gep.on("game-exit", (_ev, gameId) => send("game-exit", { gameId }));
   gep.on("elevated-privileges-required", () => send("elevated-privileges-required", {}));
   gep.on("error", (err) => send("gep-error", err instanceof Error ? err.message : String(err)));

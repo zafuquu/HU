@@ -302,6 +302,8 @@ export class GepProviderSource {
   // with a medium-integrity parent. If UAC is declined we fall back to the
   // direct (non-elevated) launch instead of nagging the user every retry.
   private elevate: boolean;
+  /** After an Electron-mode provider failure, relaunch in bare-addon mode. */
+  private preferNodeMode = false;
   private pipeServer: Server | null = null;
   private hostSocket: Socket | null = null;
   private connectionTimer: NodeJS.Timeout | null = null;
@@ -440,13 +442,31 @@ export class GepProviderSource {
   }
 
   private launchDirect(exe: string, providerDir: string, gepDir?: string): void {
-    // The addon's async callbacks ONLY fire on a plain Node loop — they never
-    // fire in an Electron main process (verified live). So the provider child
-    // MUST run in RUN_AS_NODE mode (same ABI, plain node behavior — exactly
-    // how the original runs the same addon inside its Bun runtime).
+    // TWO provider modes:
+    //
+    //  ELECTRON (default): ow-electron's electron.exe runs the provider as a
+    //    real Electron app whose PackageManager exposes the official GEP
+    //    package API (setRequiredFeatures/game-detected) — the exact flow
+    //    ValoSpectra ships, and the only one known to deliver the full event
+    //    stream (roster/round/killfeed).
+    //
+    //  NODE (fallback, HAVOC_GEP_NODE_MODE=1 or after an Electron-mode
+    //    failure): RUN_AS_NODE + the bare addon (gep.init/connect only). The
+    //    addon's async callbacks only fire on a plain Node loop, and it
+    //    delivered data in the field — but it has no features API and its
+    //    attach is unreliable against Vanguard.
     const env: NodeJS.ProcessEnv = { ...process.env };
-    env.ELECTRON_RUN_AS_NODE = "1";
-    env.ELECTRON_NO_ATTACH_CONSOLE = "1";
+    const nodeMode = this.preferNodeMode || process.env.HAVOC_GEP_NODE_MODE === "1";
+    if (nodeMode) {
+      env.ELECTRON_RUN_AS_NODE = "1";
+    } else {
+      delete env.ELECTRON_RUN_AS_NODE;
+      // Electron mode: ELECTRON_NO_ATTACH_CONSOLE is an ow-electron-specific
+      // headless marker; with it set, every navigation in a BrowserWindow
+      // failed with ERR_FAILED (-2) (file://, data: AND http://) — the
+      // network/renderer services never came up. Only keep it for node mode.
+      delete env.ELECTRON_NO_ATTACH_CONSOLE;
+    }
     // Original flow: fixed app uid + GEP module directory for the provider child.
     // The GEP backend validates this uid (Overwolf extension id) before letting
     // the game monitor attach — it MUST be the original's registered id.
@@ -462,7 +482,11 @@ export class GepProviderSource {
         cwd: providerDir,
         env,
         stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
+        // windowsHide sets CREATE_NO_WINDOW. For node mode that is fine (no
+        // windows are ever created), but for Electron mode it breaks the
+        // renderer/GPU child-process startup — every navigation failed with
+        // ERR_FAILED (-2). Only hide the node-mode console.
+        windowsHide: nodeMode,
       });
     } catch (error) {
       this.state = "error";
@@ -569,7 +593,6 @@ export class GepProviderSource {
         "try { Get-Process electron -ErrorAction SilentlyContinue |",
         "  Where-Object { $_.Path -like '*ow-electron*' } | Stop-Process -Force } catch {}",
         "Start-Sleep -Milliseconds 800",
-        "$env:ELECTRON_RUN_AS_NODE = '1'",
         `& '${ps(exe)}' '${ps(providerDir + "\\index.js")}' --session '${ps(sessionPath)}'`,
       ].join("\r\n");
       const launcherPath = sessionPath.replace(/[^/\\]+$/, "launch-elevated-provider.ps1");
@@ -889,6 +912,13 @@ export class GepProviderSource {
       this.child = null;
       this.hostSocket?.destroy();
       this.hostSocket = null;
+      // Electron mode (official PackageManager API) failed: fall back to the
+      // bare-addon node mode for the next launch instead of retrying the same
+      // failing mode forever.
+      if (!this.preferNodeMode && process.env.HAVOC_GEP_NODE_MODE !== "1") {
+        this.preferNodeMode = true;
+        this.emitProviderStatus("provider_fallback_node_mode", { reason: this.lastError });
+      }
       return;
     }
     if (msg.type !== "event") return;

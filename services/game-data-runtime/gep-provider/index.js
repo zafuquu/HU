@@ -295,6 +295,29 @@ function startElectronGepHost(gepDir) {
     }
     global.__debugLog?.("gep host: step 2 (ipc ready)");
     if (gepHostWindow && !gepHostWindow.isDestroyed()) return;
+    // Resolve the downloaded GEP package dir: explicit arg -> env -> newest
+    // extracted package under the data dir.
+    let resolvedGepDir = gepDir || process.env.HAVOC_GAME_DATA_OVERWOLF_GEP_DIRECTORY?.trim() || "";
+    if (!resolvedGepDir) {
+      try {
+        const dataDir = process.env.HAVOC_GAME_DATA_DIR?.trim() ||
+          path.join(process.env.LOCALAPPDATA || "", "Havoc", "game-data-runtime");
+        const root = path.join(dataDir, "packages", "gep");
+        const versions = fs.readdirSync(root).sort().reverse();
+        for (const v of versions) {
+          const candidate = path.join(root, v, "extracted");
+          if (fs.existsSync(path.join(candidate, "index.js"))) {
+            resolvedGepDir = candidate;
+            break;
+          }
+        }
+      } catch { /* no package dir */ }
+    }
+    if (!resolvedGepDir) {
+      sendEvent("gep-error", "gep host: no downloaded GEP package directory found");
+      return;
+    }
+    global.__debugLog?.(`gep host: using gepDir=${resolvedGepDir}`);
     gepHostWindow = new BrowserWindow({
       show: false,
       webPreferences: {
@@ -304,13 +327,56 @@ function startElectronGepHost(gepDir) {
         sandbox: false,
       },
     });
+    gepHostWindow.webContents.on("did-fail-load", (_e, code, desc, url) => {
+      global.__debugLog?.(`gep host: did-fail-load ${code} ${desc} ${url}`);
+    });
+    gepHostWindow.webContents.on("render-process-gone", (_e, details) => {
+      global.__debugLog?.(`gep host: render-process-gone ${JSON.stringify(details)}`);
+    });
+    gepHostWindow.on("closed", () => {
+      try { httpServer?.close(); } catch { /* ignore */ }
+      httpServer = null;
+      gepHostWindow = null;
+    });
+    // Serve the renderer over a localhost HTTP server. Both file:// and data:
+    // navigations failed with ERR_FAILED (-2) under ow-electron's fork, while
+    // http:// is the path every ow-electron app uses (ValoSpectra's dev flow).
+    const html =
+      `<!doctype html><html><body><script src="/gep-renderer.js"></script></body></html>`;
+    let httpServer = null;
+    try {
+      httpServer = require("node:http").createServer((req, res) => {
+        try {
+          const url = new URL(req.url ?? "/", "http://127.0.0.1");
+          if (url.pathname === "/gep-renderer.js") {
+            res.writeHead(200, { "content-type": "text/javascript" });
+            res.end(fs.readFileSync(path.join(__dirname, "gep-renderer.js")));
+            return;
+          }
+          res.writeHead(200, { "content-type": "text/html" });
+          res.end(html);
+        } catch (err) {
+          res.writeHead(500);
+          res.end(String(err));
+        }
+      });
+    } catch (err) {
+      global.__debugLog?.(`gep host: http server failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (!httpServer) {
+      sendEvent("gep-error", "gep host: could not start localhost server");
+      return;
+    }
     global.__debugLog?.("gep host: step 3 (window created)");
-    gepHostWindow.on("closed", () => { gepHostWindow = null; });
-    const query = gepDir ? { gepDir } : {};
-    void gepHostWindow.loadFile(nodePath.join(__dirname, "gep-renderer.html"), { query })
-      .then(() => global.__debugLog?.("gep host: step 5 (renderer loaded)"))
-      .catch((err) => global.__debugLog?.(`gep host: load failed: ${err.message}`));
-    global.__debugLog?.("gep host: step 4 (load scheduled)");
+    httpServer.listen(0, "127.0.0.1", () => {
+      const port = httpServer.address()?.port;
+      const url = `http://127.0.0.1:${port}/?gepDir=${encodeURIComponent(resolvedGepDir)}`;
+      global.__debugLog?.(`gep host: step 4 (loading ${url})`);
+      void gepHostWindow
+        .loadURL(url)
+        .then(() => global.__debugLog?.("gep host: step 5 (renderer loaded)"))
+        .catch((err) => global.__debugLog?.(`gep host: load failed: ${err.message}`));
+    });
   } catch (err) {
     global.__debugLog?.(`gep host crashed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
     sendEvent("gep-error", `electron gep host failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -541,75 +607,91 @@ function main() {
         if (g) global.__debugLog?.(`probe: packages.gep=[${surface(g)}]`);
       }
     } catch (e) { global.__debugLog?.(`probe failed: ${e.message}`); }
-    // Original flow first: direct GEP module (downloaded + verified by parent).
-    global.__debugLog?.("calling tryDirectGepInit");
-    if (tryDirectGepInit()) {
-      global.__debugLog?.("direct init OK");
-      // Heartbeat: proves the main loop pumps (distinguishes "frozen" from
-      // "callbacks silent" when diagnosing missing GEP events).
-      let beats = 0;
-      setInterval(() => {
-        beats += 1;
-        global.__debugLog?.(`heartbeat ${beats}`);
-      }, 10_000).unref();
-      global.__debugLog?.("about to call startElectronGepHost");
-      try {
-        // NOTE: the extracted GEP package (renderer route) requires host
-        // services only ow-electron's own provider machinery provides, and a
-        // second GEP instance would conflict with the direct addon's
-        // machine-wide singleton. The renderer host stays available for
-        // future use but is not started in direct-addon mode.
-        void startElectronGepHost;
-      } catch (err) {
-        global.__debugLog?.(`gep host error: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      prepareNativeProviderHost();
-      return;
-    }
-
-    let pm;
+    // OFFICIAL PATH FIRST (ValoSpectra's exact flow): ow-electron's
+    // PackageManager loads the GEP package with the full API
+    // (setRequiredFeatures / game-detected / new-info-update). The bare-addon
+    // direct path (below) has no features API, and its attach loses the race
+    // against Vanguard — it stayed "initializing" forever in the field.
+    global.__debugLog?.("pm path first (electron mode)");
+    let pm = null;
+    // GEP package dir the parent downloaded + verified (may be null).
+    const gepDir = process.env.HAVOC_GAME_DATA_OVERWOLF_GEP_DIRECTORY?.trim() || null;
     try {
       pm = app.overwolf.packages;
       global.__debugLog?.(`package manager available: packages=[${Object.keys(pm).join(",")}]`);
     } catch (err) {
-      sendFailure(`Overwolf package manager unavailable (not running under ow-electron?): ${err instanceof Error ? err.message : String(err)}`);
-      setTimeout(() => process.exit(1), 250);
+      global.__debugLog?.(`package manager unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (pm) {
+      let gepBound = false;
+      const tryBind = (source) => {
+        if (gepBound) return;
+        const gep = pm.gep;
+        global.__debugLog?.(`tryBind(${source}): pm.gep=${typeof gep}`);
+        if (gep != null) {
+          gepBound = true;
+          bindGepPackage(gep);
+          sendEvent("provider-ready", { packageName: "gep", version: gep.version ?? null, source: "package-manager" });
+        }
+      };
+
+      pm.on("ready", (_event, packageName) => {
+        global.__debugLog?.(`pm ready event: ${packageName}`);
+        if (packageName === "gep") tryBind("pm-ready");
+      });
+      pm.on("failed-to-initialize", (_event, packageName) => {
+        global.__debugLog?.(`pm failed-to-initialize: ${packageName}`);
+        if (packageName === "gep") sendFailure(`GEP package failed to initialize`);
+      });
+      pm.on("crashed", (_event, canRecover) => {
+        sendEvent("gep-error", `package manager crashed (canRecover=${Boolean(canRecover)})`);
+      });
+
+      tryBind("initial");
+      // The package manager may need to download + verify the package first.
+      const retryTimers = [3_000, 10_000, 20_000, 35_000, 55_000, 80_000, 110_000];
+      for (const t of retryTimers) setTimeout(() => tryBind(`retry-${t}`), t);
+      if (!gepBound) {
+        setTimeout(() => {
+          if (gepBound) return;
+          // PM never exposed the gep package (it needs Overwolf's own download
+          // services). Fall back to the renderer host, which loads the GEP
+          // package the parent ALREADY downloaded + verified (full API incl.
+          // setRequiredFeatures) — before giving up entirely.
+          global.__debugLog?.("pm never bound gep — falling back to renderer host");
+          if (startElectronGepHost(gepDir)) {
+            global.__debugLog?.("electron gep host started (pm fallback)");
+            prepareNativeProviderHost();
+            return;
+          }
+          if (!gepBound) sendFailure("GEP package never became ready (check Overwolf connectivity)");
+        }, 120_000);
+      }
+      // Events flow through the package listeners; nothing else to start.
+      // (Starting the direct addon here would create a second machine-wide
+      // GEP instance and conflict with the package's own one.)
       return;
     }
 
-    let gepBound = false;
-    const tryBind = (source) => {
-      if (gepBound) return;
-      const gep = pm.gep;
-      global.__debugLog?.(`tryBind(${source}): pm.gep=${typeof gep}`);
-      if (gep != null) {
-        gepBound = true;
-        bindGepPackage(gep);
-        sendEvent("provider-ready", { packageName: "gep", version: gep.version ?? null });
-      }
-    };
-
-    pm.on("ready", (_event, packageName) => {
-      global.__debugLog?.(`pm ready event: ${packageName}`);
-      if (packageName === "gep") tryBind("pm-ready");
-    });
-    pm.on("failed-to-initialize", (_event, packageName) => {
-      global.__debugLog?.(`pm failed-to-initialize: ${packageName}`);
-      if (packageName === "gep") sendFailure(`GEP package failed to initialize`);
-    });
-    pm.on("crashed", (_event, canRecover) => {
-      sendEvent("gep-error", `package manager crashed (canRecover=${Boolean(canRecover)})`);
-    });
-
-    tryBind("initial");
-    // The package manager may need to download + verify the package first.
-    const retryTimers = [3_000, 10_000, 20_000, 35_000, 55_000, 80_000, 110_000];
-    for (const t of retryTimers) setTimeout(() => tryBind(`retry-${t}`), t);
-    if (!gepBound) {
-      setTimeout(() => {
-        if (!gepBound) sendFailure("GEP package never became ready (check Overwolf connectivity)");
-      }, 120_000);
+    // Fallback 1: renderer host with the downloaded GEP package.
+    global.__debugLog?.("pm unavailable — trying startElectronGepHost");
+    if (startElectronGepHost(gepDir)) {
+      global.__debugLog?.("electron gep host started");
+      prepareNativeProviderHost();
+      return;
     }
+
+    // Last resort: direct addon. Its callbacks never fire on an Electron main
+    // loop (verified) — this only surfaces a visible failure to the parent.
+    global.__debugLog?.("calling tryDirectGepInit (last resort)");
+    if (tryDirectGepInit()) {
+      global.__debugLog?.("direct init OK (callbacks will not fire in electron mode)");
+      prepareNativeProviderHost();
+      return;
+    }
+
+    sendFailure("no usable GEP transport (pm/renderer/direct all unavailable)");
   });
 
   // No windows: keep the process alive and quiet.
