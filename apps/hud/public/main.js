@@ -77,13 +77,21 @@
   function renderRosterRow(p) {
     const row = document.createElement("div");
     row.className = "r-row" + (p.isAlive === false ? " dead" : "");
-    const name = document.createElement("span");
-    name.className = "r-name";
-    name.textContent = (p.displayName ?? "?").split("#")[0];
-    const agent = document.createElement("span");
-    agent.className = "r-agent";
-    agent.textContent = p.agentName ?? "";
+    const name = span((p.displayName ?? "?").split("#")[0], "r-name");
+    const agent = span(p.agentName ?? "", "r-agent");
     row.append(name, agent);
+    // Stat columns render only when the provider supplies them, so the
+    // pregame/agent-select roster stays clean.
+    const hasStats =
+      p.kills != null || p.deaths != null || p.credits != null || p.ultPoints != null;
+    if (hasStats) {
+      row.append(span(`${p.kills ?? 0}/${p.deaths ?? 0}/${p.assists ?? 0}`, "r-kda"));
+      if (p.ultPoints != null) {
+        row.append(span(`${p.ultPoints}/${p.ultMax ?? "?"}`, "r-ult"));
+      }
+      if (p.credits != null) row.append(span(String(p.credits), "r-credits"));
+      if (p.hasSpike) row.append(span("SPIKE", "r-spike"));
+    }
     return row;
   }
 
@@ -113,7 +121,7 @@
     }
     const alive = (list) => list.filter((p) => p.isAlive !== false).length;
     renderPips(el.pipsBlue, "on-blue", Math.max(1, Math.min(5, alive(split.blue) || 5)));
-    renderPips(el.pipsRed, "on-blue", Math.max(1, Math.min(5, alive(split.red) || 5)));
+    renderPips(el.pipsRed, "on-red", Math.max(1, Math.min(5, alive(split.red) || 5)));
   }
 
   function render(state) {

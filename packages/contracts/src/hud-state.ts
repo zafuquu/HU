@@ -20,12 +20,14 @@ export const hudRelayStateSchema = z.object({
   revision: z.number().int().nonnegative(),
   connectedToRuntime: z.boolean(),
   game: z.string().nullable(),
-  sessionPhase: z.enum(["idle", "loading", "live"]),
+  // Upstream phases (pregame/ending/unknown) pass through after normalization
+  // in the desktop projection; the HUD renders non-live as "menu / <phase>".
+  sessionPhase: z.enum(["unknown", "idle", "loading", "pregame", "live", "ending"]),
   matchId: z.string().nullable(),
   mapKey: z.string().nullable(),
   /** Friendly map name (e.g. "Ascent") resolved from the map identity. */
   mapName: z.string().nullable().default(null),
-  viewerRole: z.enum(["player", "spectator", "unknown"]).default("unknown"),
+  viewerRole: z.enum(["player", "observer", "coach", "spectator", "unknown"]).default("unknown"),
   /** Post-game result when a match settles (winner + MVP). */
   match: z
     .object({
@@ -90,3 +92,4 @@ export const hudRelayStateSchema = z.object({
   updatedAt: z.number(),
 });
 export type HudRelayState = z.infer<typeof hudRelayStateSchema>;
+

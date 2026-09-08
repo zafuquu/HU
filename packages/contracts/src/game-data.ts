@@ -47,15 +47,43 @@ export const valorantPlayerIdentitySchema = z.object({
 });
 export type ValorantPlayerIdentity = z.infer<typeof valorantPlayerIdentitySchema>;
 
+/**
+ * Upstream viewer.player is a *reference* ({puuid, name:{gameName,tagLine,displayName}}),
+ * the fork dialect uses a flat identity. Accept either shape.
+ */
+export const tolerantPlayerRefSchema = valorantPlayerIdentitySchema
+  .extend({ puuid: z.string().nullish(), name: valorantPlayerIdentitySchema.nullish() })
+  .partial()
+  .nullish();
+
+const rosterPlayerStatsSchema = z.object({
+  playerId: z.string().nullish(),
+  kills: z.number().int().nullish(),
+  deaths: z.number().int().nullish(),
+  assists: z.number().int().nullish(),
+  credits: z.number().nullish(),
+  spentCredits: z.number().nullish(),
+  weapon: z.string().nullish(),
+  health: z.number().nullish(),
+  isAlive: z.boolean().nullish(),
+  hasSpike: z.boolean().nullish(),
+  ultPoints: z.number().int().nullish(),
+  ultMax: z.number().int().nullish(),
+  shield: z.number().nullish(),
+});
+
 const rosterPlayerSchema = z.object({
   agent: z.object({ key: z.string(), name: z.string(), riotId: z.string().nullish() }).nullish(),
   observerSlot: z.number().int().nullish(),
-  player: z.object({
-    identity: valorantPlayerIdentitySchema.nullish(),
-    // Upstream dialect
-    name: valorantPlayerIdentitySchema.nullish(),
-    puuid: z.string().nullish(),
-  }),
+  player: z
+    .object({
+      identity: valorantPlayerIdentitySchema.nullish(),
+      // Upstream dialect
+      name: valorantPlayerIdentitySchema.nullish(),
+      puuid: z.string().nullish(),
+    })
+    // Live scoreboard detail (fork runtime dialect nests these under player).
+    .merge(rosterPlayerStatsSchema),
   teamIndex: z.number().int().nullish(),
 });
 
@@ -63,8 +91,14 @@ const rosterPlayerSchema = z.object({
 export const valorantSessionSnapshotSchema = z.object({
   revision: z.number().int().nonnegative(),
   // Fork dialect uses sessionPhase; upstream uses phase.
-  sessionPhase: z.enum(["idle", "loading", "live"]).optional(),
-  phase: z.enum(["idle", "loading", "live"]).optional(),
+  // Upstream (audited original) emits: unknown | idle | pregame | live | ending.
+  // Fork dialect emits: idle | loading | live.
+  sessionPhase: z
+    .enum(["unknown", "idle", "loading", "pregame", "live", "ending"])
+    .optional(),
+  phase: z
+    .enum(["unknown", "idle", "loading", "pregame", "live", "ending"])
+    .optional(),
   // Fork dialect puts ids top-level; upstream nests them under session.
   matchId: z.string().nullish(),
   mapKey: z.string().nullish(),
@@ -76,7 +110,10 @@ export const valorantSessionSnapshotSchema = z.object({
       teams: z
         .array(
           z.object({
-            teamId: z.enum(["Blue", "Red", "Draw"]),
+            // Upstream uses free strings (z.string().min(1)); the fork's runtime
+            // also emits "Unknown" for not-yet-assigned teams. Never reject a
+            // frame over team naming.
+            teamId: z.string().min(1),
             startingSide: z.enum(["defense", "attack"]).nullish(),
             players: z.array(rosterPlayerSchema),
           }),
@@ -84,8 +121,9 @@ export const valorantSessionSnapshotSchema = z.object({
         .nullish(),
       viewer: z
         .object({
-          role: z.enum(["player", "spectator", "unknown"]),
-          player: valorantPlayerIdentitySchema.nullish(),
+          // Upstream roles: player | observer | coach | unknown.
+          role: z.enum(["player", "observer", "coach", "spectator", "unknown"]),
+          player: tolerantPlayerRefSchema,
         })
         .nullish(),
     })
@@ -93,14 +131,17 @@ export const valorantSessionSnapshotSchema = z.object({
   teams: z
     .array(
       z.object({
-        teamId: z.enum(["Blue", "Red", "Draw"]),
+        teamId: z.string().min(1),
         startingSide: z.enum(["defense", "attack"]).nullish(),
         players: z.array(rosterPlayerSchema),
       }),
     )
     .nullish(),
   viewer: z
-    .object({ role: z.enum(["player", "spectator", "unknown"]), player: valorantPlayerIdentitySchema.nullish() })
+    .object({
+      role: z.enum(["player", "observer", "coach", "spectator", "unknown"]),
+      player: tolerantPlayerRefSchema,
+    })
     .nullish(),
   observedAt: z.string().datetime().nullish(),
 });

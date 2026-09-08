@@ -21,7 +21,8 @@ function pipelineLog(event: string, data: Record<string, unknown>): void {
 
 interface WorkingState {
   revision: number;
-  sessionPhase: "idle" | "loading" | "live" | "pregame";
+  // Includes all upstream phases (unknown/pregame/ending) + fork (loading).
+  sessionPhase: "unknown" | "idle" | "loading" | "pregame" | "live" | "ending";
   matchId: string | null;
   mapKey: string | null;
   mapName: string | null;
@@ -35,7 +36,7 @@ interface WorkingState {
   red: number;
   spike: HudRelayState["spike"];
   killfeed: KillfeedEntry[];
-  viewerRole: "player" | "spectator" | "unknown";
+  viewerRole: "player" | "observer" | "coach" | "spectator" | "unknown";
   roster: HudRelayState["roster"];
   // --- Round-settlement classification (ported from upstream val-round-settlement) ---
   gameEvent: string | null;
@@ -143,9 +144,16 @@ export class ValProjectionSession {
     if (snap.viewer?.role) s.viewerRole = snap.viewer.role;
     else if (snap.session?.viewer?.role) s.viewerRole = snap.session.viewer.role;
     const teams = snap.teams ?? snap.session?.teams;
-    if (teams) {
-      s.roster = teams.flatMap((team) =>
-        team.players.map((p) => ({
+    // Capture the pre-refresh roster first: snapshot refreshes must not wipe
+    // stats merged from scoreboard facts between heartbeats.
+    const previousRoster = s.roster;
+    if (teams && teams.length > 0) {
+      s.roster = teams.flatMap((team) => {
+        // Normalize the (possibly non-canonical) team id to a stable index.
+        const normalizedTeam = team.teamId.toLowerCase();
+        const fallbackIndex =
+          normalizedTeam === "blue" ? 0 : normalizedTeam === "red" ? 1 : undefined;
+        return team.players.map((p) => ({
           displayName:
             p.player.name?.displayName ??
             p.player.identity?.displayName ??
@@ -154,10 +162,50 @@ export class ValProjectionSession {
             "?",
           agentName: p.agent?.name ?? null,
           teamId: team.teamId as string,
-          teamIndex: p.teamIndex ?? undefined,
+          teamIndex: p.teamIndex ?? fallbackIndex,
           slot: p.observerSlot ?? undefined,
-        })),
+          // Live scoreboard detail (fork runtime dialect nests these under
+          // player; upstream "scoreboard" facts merge in via applyFact).
+          kills: p.player.kills ?? undefined,
+          deaths: p.player.deaths ?? undefined,
+          assists: p.player.assists ?? undefined,
+          weapon: p.player.weapon ?? undefined,
+          credits: p.player.credits ?? undefined,
+          spentCredits: p.player.spentCredits ?? undefined,
+          health: p.player.health ?? undefined,
+          isAlive: p.player.isAlive ?? undefined,
+          ultPoints: p.player.ultPoints ?? undefined,
+          ultMax: p.player.ultMax ?? undefined,
+          hasSpike: p.player.hasSpike ?? undefined,
+        }));
+      });
+      // Upstream snapshots carry no per-player stats; the scoreboard facts
+      // merged between heartbeats must survive snapshot refreshes. Carry
+      // previous stats over when the snapshot itself supplies none.
+      const previous = new Map(
+        (previousRoster ?? []).map((p) => [this.normalizeName(p.displayName), p]),
       );
+      for (const entry of s.roster) {
+        const hasSnapshotStats =
+          entry.kills !== undefined ||
+          entry.deaths !== undefined ||
+          entry.credits !== undefined ||
+          entry.isAlive !== undefined;
+        if (hasSnapshotStats) continue;
+        const prior = previous.get(this.normalizeName(entry.displayName));
+        if (!prior) continue;
+        entry.kills = prior.kills ?? undefined;
+        entry.deaths = prior.deaths ?? undefined;
+        entry.assists = prior.assists ?? undefined;
+        entry.weapon = prior.weapon ?? undefined;
+        entry.credits = prior.credits ?? undefined;
+        entry.spentCredits = prior.spentCredits ?? undefined;
+        entry.health = prior.health ?? undefined;
+        entry.isAlive = prior.isAlive ?? undefined;
+        entry.ultPoints = prior.ultPoints ?? undefined;
+        entry.ultMax = prior.ultMax ?? undefined;
+        entry.hasSpike = prior.hasSpike ?? undefined;
+      }
     } else if (s.sessionPhase === "idle") s.roster = [];
     this.emitChange();
   }
@@ -170,6 +218,10 @@ export class ValProjectionSession {
         if (typeof rec?.team_0 === "number" && typeof rec?.team_1 === "number") {
           s.blue = rec.team_0;
           s.red = rec.team_1;
+          // Match point reached -> the side with more rounds is the winner.
+          if (s.blue >= 13 || s.red >= 13) {
+            s.matchWinner = s.blue >= s.red ? "blue" : "red";
+          }
         } else return;
         break;
       }
@@ -223,6 +275,17 @@ export class ValProjectionSession {
       case "spike_detonated":
         s.spike = "detonated";
         break;
+      case "match_end": {
+        // Upstream engine emits match_end when the match settles. Resolve the
+        // winner from the score if the end-phase classification has not yet.
+        if (s.blue >= 13 || s.red >= 13) {
+          s.matchWinner = s.blue >= s.red ? "blue" : "red";
+        }
+        if (s.roundPhase === "end" || s.sessionPhase === "ending") this.settle();
+        s.revision += 1;
+        this.emitChange();
+        return; // already emitted
+      }
       case "scoreboard": {
         // Per-player detail observation (weapon/credits/ults/scoreline) from
         // the provider; merged into the matching roster entry by name.
@@ -490,7 +553,9 @@ export class ValProjectionSession {
   private deriveScene(): "agent-select" | "buy-round" | "ingame-hud" | "post-game" | null {
     const s = this.s;
     if (s.sessionPhase === "idle") return null;
+    if (s.sessionPhase === "unknown") return null;
     if (s.sessionPhase === "loading" || s.sessionPhase === "pregame") return "agent-select";
+    if (s.sessionPhase === "ending") return "post-game";
     if (s.blue >= 13 || s.red >= 13) return "post-game";
     if (s.roundPhase === "shopping") return "buy-round";
     if (s.roundPhase === "combat" || s.roundPhase === "end") return "ingame-hud";

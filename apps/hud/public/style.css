@@ -64,6 +64,11 @@ html, body { background: transparent; font-family: var(--font); color: #eef2f6; 
 .roster.red .r-row { flex-direction: row-reverse; }
 .r-name { font-size: 15px; font-weight: 700; }
 .r-agent { font-size: 12px; opacity: .8; }
+.r-kda { font-size: 12px; font-variant-numeric: tabular-nums; color: #e8eaed; min-width: 52px; text-align: center; }
+.r-ult { font-size: 11px; font-variant-numeric: tabular-nums; color: #ffd166; min-width: 34px; text-align: center; }
+.r-credits { font-size: 11px; font-variant-numeric: tabular-nums; color: #7bdff6; min-width: 40px; text-align: center; }
+.r-spike { font-size: 10px; font-weight: 800; color: #ff5c5c; letter-spacing: .5px; }
+.pip.on-red { background: var(--red); box-shadow: 0 0 8px #ff354966; }
 .r-row.dead { opacity: .38; }
 .r-row.dead .r-name { text-decoration: line-through; }
 /* Scene switching (projection deriveScene contract): agent-select shows

@@ -104,7 +104,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     overlayOrigin,
     desktopProtocol: p.HAVOC_DESKTOP_PROTOCOL,
     desktopProtocols: [
-      ...new Set([p.HAVOC_DESKTOP_PROTOCOL, "havoc-desktop", "havoc-desktop"]),
+      ...new Set([p.HAVOC_DESKTOP_PROTOCOL, "havoc-desktop"].filter(Boolean)),
     ],
     roomId,
     gameWindowTitle: p.HAVOC_GAME_WINDOW_TITLE,
