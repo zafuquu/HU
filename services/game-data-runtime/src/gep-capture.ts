@@ -604,8 +604,22 @@ export class GepProviderSource {
         "Start-Sleep -Milliseconds 800",
         // Deterministic provider mode: UAC elevation may not inherit this
         // process's environment, so the mode is written INTO the launcher.
-        ...(nodeModeRequested ? ["$env:ELECTRON_RUN_AS_NODE = '1'"] : []),
-        `& '${ps(exe)}' '${ps(providerDir + "\\index.js")}' --session '${ps(sessionPath)}'`,
+        //  NODE mode: RUN_AS_NODE + index.js as a plain script.
+        //  ELECTRON mode: launch the provider DIRECTORY so Electron reads its
+        //    package.json manifest — the `overwolf.packages: ["gep"]`
+        //    declaration (mirroring Spectra-Client) is what makes the
+        //    PackageManager load the GEP package and fire `ready`.
+        `$env:OVERWOLF_APP_UID = '${ps(psEnv.OVERWOLF_APP_UID ?? "")}'`,
+        `$env:HAVOC_GAME_DATA_DIR = '${ps(psEnv.HAVOC_GAME_DATA_DIR ?? "")}'`,
+        ...(gepDir ? [`$env:HAVOC_GAME_DATA_OVERWOLF_GEP_DIRECTORY = '${ps(gepDir)}'`] : []),
+        ...(nodeModeRequested
+          ? [
+              "$env:ELECTRON_RUN_AS_NODE = '1'",
+              `& '${ps(exe)}' '${ps(providerDir + "\\index.js")}' --session '${ps(sessionPath)}'`,
+            ]
+          : [
+              `& '${ps(exe)}' '${ps(providerDir)}' --session '${ps(sessionPath)}'`,
+            ]),
       ].join("\r\n");
       const launcherPath = sessionPath.replace(/[^/\\]+$/, "launch-elevated-provider.ps1");
       writeFileSync(launcherPath, launcherScript, "utf8");

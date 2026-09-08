@@ -186,6 +186,50 @@ function repairProtocolCommand(proto: string, execPath: string, args: string[]):
 }
 
 function spawnRuntimeIfNeeded(): void {
+  // Hybrid capture mode: spawn the proven original capture engine (its GEP
+  // self-updates and attaches reliably — the built-in node runtime stays
+  // available as a fallback via HAVOC_CAPTURE_EXE="").
+  if (cfg.captureExe) {
+    if (!fs.existsSync(cfg.captureExe)) {
+      logger.error("app", "capture_exe_missing", { captureExe: cfg.captureExe });
+      return;
+    }
+    try {
+      runtimeChild = spawn(cfg.captureExe, [], {
+        cwd: path.dirname(cfg.captureExe),
+        // The original engine manages its own elevation/provider lifecycle.
+        env: { ...process.env },
+        stdio: ["ignore", "ignore", "pipe"],
+        windowsHide: true,
+      });
+      runtimeChild.stderr?.on("data", (chunk: Buffer) => {
+        const text = String(chunk).trim();
+        if (text) logger.warn("app", "capture_engine_stderr", { text: text.slice(0, 400) });
+      });
+      runtimeChild.on("error", (error) =>
+        logger.error("app", "capture_engine_error", { error: String(error) }),
+      );
+      runtimeChild.on("exit", (code, signal) => {
+        logger.error("app", "capture_engine_exited", { code: code ?? null, signal: signal ?? null });
+        runtimeChild = null;
+        if (runtimeRespawnTimer) return;
+        runtimeRespawnTimer = setTimeout(() => {
+          runtimeRespawnTimer = null;
+          logger.info("app", "capture_engine_respawn");
+          spawnRuntimeIfNeeded();
+        }, 5_000);
+        runtimeRespawnTimer.unref();
+      });
+      logger.info("app", "capture_engine_spawned", {
+        pid: runtimeChild.pid,
+        exe: cfg.captureExe,
+        origin: cfg.runtimeOrigin,
+      });
+    } catch (error) {
+      logger.error("app", "capture_engine_spawn_failed", { error: String(error) });
+    }
+    return;
+  }
   const script = runtimeServerScript();
   if (!script) {
     logger.warn("app", "runtime_script_missing", { packaged: isPackaged });

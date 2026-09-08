@@ -4,6 +4,11 @@ import { z } from "zod";
 
 const envSchema = z.object({
   HAVOC_RUNTIME_PORT: z.coerce.number().int().min(1).max(65535).default(7423),
+  // Hybrid capture mode: point this at the proven original capture engine
+  // (e.g. the installed BLOB desktop's blob-game-data-runtime.exe). When set,
+  // the desktop spawns THAT engine (port 7413, upstream wire dialect) instead
+  // of the built-in node runtime.
+  HAVOC_CAPTURE_EXE: z.string().default(""),
   HAVOC_BRIDGE_ORIGIN: z.string().default(""),
   HAVOC_APP_BASE: z.string().default(""),
   // The exact deep-link protocol the replica website fires on login.
@@ -33,6 +38,8 @@ const HAVOC_DEFAULTS = {
 
 export interface AppConfig {
   readonly runtimeOrigin: string;
+  /** Hybrid capture mode: path to the original capture engine exe ("" = built-in runtime). */
+  readonly captureExe: string;
   readonly bridgeOrigin: string;
   readonly appBase: string;
   readonly overlayOrigin: string;
@@ -50,7 +57,12 @@ export interface AppConfig {
   readonly elevateGep: boolean;
 }
 
-type Overrides = { appBase?: string; bridgeOrigin?: string; roomId?: string };
+type Overrides = {
+  appBase?: string;
+  bridgeOrigin?: string;
+  roomId?: string;
+  captureExe?: string;
+};
 
 function firstTruthy(...values: (string | undefined)[]): string | undefined {
   for (const value of values) {
@@ -78,8 +90,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   )!.replace(/\/+$/, "");
   const overlayOrigin = firstTruthy(p.HAVOC_DESKTOP_OVERLAY_ORIGIN, appBase)!.replace(/\/+$/, "");
   const roomId = p.HAVOC_ROOM_ID?.trim() || over.roomId?.trim() || "";
+  // Hybrid capture mode: the original capture engine serves the upstream wire
+  // dialect on its fixed port 7413.
+  const captureExe = p.HAVOC_CAPTURE_EXE?.trim() || over.captureExe || "";
+  const runtimeOrigin = captureExe
+    ? "http://127.0.0.1:7413"
+    : `http://127.0.0.1:${p.HAVOC_RUNTIME_PORT}`;
   return {
-    runtimeOrigin: `http://127.0.0.1:${p.HAVOC_RUNTIME_PORT}`,
+    runtimeOrigin,
+    captureExe,
     bridgeOrigin,
     appBase,
     overlayOrigin,
@@ -125,6 +144,7 @@ function tryRead(file: string): Overrides | null {
       appBase: str(raw["HAVOC_APP_BASE"] ?? raw.appBase),
       bridgeOrigin: str(raw["HAVOC_BRIDGE_ORIGIN"] ?? raw.bridgeOrigin),
       roomId: str(raw["HAVOC_ROOM_ID"] ?? raw.roomId),
+      captureExe: str(raw["HAVOC_CAPTURE_EXE"] ?? raw.captureExe),
     };
   } catch {
     return null;
