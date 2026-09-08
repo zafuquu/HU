@@ -47,7 +47,11 @@
     }
   },
   "dependencies": {
+    "@roamhq/wrtc": "^0.10.0",
     "koffi": "^2.8.0"
+  },
+  "optionalDependencies": {
+    "@roamhq/wrtc-win32-x64": "0.10.0"
   },
   "devDependencies": {
     "electron": "31.7.7",

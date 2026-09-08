@@ -32,22 +32,18 @@ function load(): typeof funcs {
       right: "long",
       bottom: "long",
     });
+    // koffi 2.x API: lib.func(name, retType, [argTypes]). GetWindowRect wants
+    // a struct POINTER; koffi marshals a plain JS object in and out for us.
+    const rectPtr = koffi.pointer(rectType);
     funcs = {
-      findWindowW: u.func("__stdcall", "ForkFindWindowW", "intptr_t", "str16", "str16"),
-      getWindowRect: u.func("__stdcall", "ForkGetWindowRect", "_Bool", "intptr_t", rectType),
-      isIconic: u.func("__stdcall", "ForkIsIconic", "_Bool", "intptr_t"),
-      isWindowVisible: u.func("__stdcall", "ForkIsWindowVisible", "_Bool", "intptr_t"),
+      findWindowW: u.func("FindWindowW", "intptr_t", ["str16", "str16"]),
+      getWindowRect: u.func("GetWindowRect", "int", ["intptr_t", rectPtr]),
+      isIconic: u.func("IsIconic", "int", ["intptr_t"]),
+      isWindowVisible: u.func("IsWindowVisible", "int", ["intptr_t"]),
       setWindowPos: u.func(
-        "__stdcall",
-        "ForkSetWindowPos",
-        "_Bool",
-        "intptr_t",
-        "intptr_t",
+        "SetWindowPos",
         "int",
-        "int",
-        "int",
-        "int",
-        "uint32",
+        ["intptr_t", "intptr_t", "int", "int", "int", "int", "uint32"],
       ),
       rectType,
     };
@@ -78,7 +74,7 @@ export function getWindowBoundsByTitle(title: string): WindowBounds {
   const hwnd = hwndByTitle(title);
   if (!hwnd) return MISSING_WINDOW_BOUNDS;
   try {
-    const r = new f.rectType();
+    const r = { left: 0, top: 0, right: 0, bottom: 0 }; // koffi fills via struct pointer
     if (!f.getWindowRect(hwnd, r)) return MISSING_WINDOW_BOUNDS;
     const left = Number(r.left);
     const top = Number(r.top);

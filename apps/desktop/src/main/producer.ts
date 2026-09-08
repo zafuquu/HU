@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import { io, type Socket } from "socket.io-client";
 
 import { logger } from "./logger";
+import { RtcPeerDelivery } from "./rtc";
 
 export const GAME_DATA_PROTOCOL_VERSION = 3;
 export const SOCKET_IO_PATH = "/api/socket/io";
@@ -47,6 +48,9 @@ export class ProducerClient {
   private warnedDrop = false;
   private currentRoom: ProducerRoom | null = null;
   private ticketRefresher: (() => Promise<string>) | null = null;
+  /** WebRTC lane (primary); socket.io `game-data:fallback` stays as backup. */
+  private readonly rtc = new RtcPeerDelivery();
+  private lastGame: unknown = null;
 
   public constructor(private readonly bridgeOrigin: string) {}
 
@@ -86,6 +90,10 @@ export class ProducerClient {
             this.producerSessionId = result.producerSessionId ?? randomUUID();
             this.broadcastSessionId = result.broadcastSessionId ?? null;
             logger.info("producer", "claimed", { producerSessionId: this.producerSessionId });
+            // RTC signaling rides the same producer socket. The lane sends a
+            // game-bootstrap frame with the latest snapshot on every (re)open.
+            this.rtc.attach(socket, this.producerSessionId);
+            this.rtc.setBootstrapProvider(() => this.lastGame);
             resolve(result);
           } else {
             reject(new Error(result.reason || result.message || "claim rejected"));
@@ -131,8 +139,13 @@ export class ProducerClient {
     this.reauthorizing = false;
   }
 
-  /** Publish the current game snapshot through the bridge fallback path. */
+  /** Publish the current game snapshot — RTC lane first, fallback second. */
   public publishSnapshot(game: unknown): void {
+    this.lastGame = game;
+    if (this.rtc.sendReliable({ kind: "game-snapshot", game })) {
+      this.warnedDrop = false;
+      return;
+    }
     if (!this.socket || !this.socket.connected) {
       // Silent drops here looked like "data never reaches the overlay" —
       // surface the first drop (and recover quietly once reconnected).
@@ -149,11 +162,13 @@ export class ProducerClient {
   }
 
   public publishEvent(event: unknown): void {
+    if (this.rtc.sendReliable({ kind: "game-event", event })) return;
     this.socket?.emit("game-data:fallback", { kind: "game-event", event });
   }
 
   public async stop(): Promise<void> {
     this.disposed = true;
+    this.rtc.detach();
     if (this.socket && this.producerSessionId) {
       this.socket.emit("game-data:producer:stop", { producerSessionId: this.producerSessionId }, () => {});
     }
