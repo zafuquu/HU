@@ -60,15 +60,18 @@
     el.roundTimer.classList.toggle("urgent", remaining <= 10 && remaining > 0);
   }
 
-  /** Group roster into blue/red by teamId, falling back to teamIndex. */
+  /** Group roster into blue/red by teamIndex first, then teamId; no balancing. */
   function splitRoster(roster) {
     const blue = [];
     const red = [];
     for (const p of roster ?? []) {
       const idx = typeof p.teamIndex === "number" ? p.teamIndex : null;
-      const isBlue = p.teamId ? String(p.teamId).toLowerCase() === "blue" : idx === 0;
-      const isRed = p.teamId ? String(p.teamId).toLowerCase() === "red" : idx === 1;
-      if (isBlue || (!isRed && idx === null && blue.length <= red.length)) blue.push(p);
+      const tid = String(p.teamId ?? "").toLowerCase();
+      const isBlue = idx === 0 || tid === "blue";
+      const isRed = idx === 1 || tid === "red";
+      if (isBlue) blue.push(p);
+      else if (isRed) red.push(p);
+      else if (blue.length <= red.length) blue.push(p);
       else red.push(p);
     }
     return { blue, red };
@@ -120,8 +123,10 @@
       return;
     }
     const alive = (list) => list.filter((p) => p.isAlive !== false).length;
-    renderPips(el.pipsBlue, "on-blue", Math.max(1, Math.min(5, alive(split.blue) || 5)));
-    renderPips(el.pipsRed, "on-red", Math.max(1, Math.min(5, alive(split.red) || 5)));
+    // Placeholder 5s only when no roster exists yet; real alive counts after.
+    const hasRoster = split.blue.length + split.red.length > 0;
+    renderPips(el.pipsBlue, "on-blue", hasRoster ? Math.min(5, alive(split.blue)) : 5);
+    renderPips(el.pipsRed, "on-red", hasRoster ? Math.min(5, alive(split.red)) : 5);
   }
 
   function render(state) {

@@ -149,10 +149,14 @@ export class ValProjectionSession {
     const previousRoster = s.roster;
     if (teams && teams.length > 0) {
       s.roster = teams.flatMap((team) => {
-        // Normalize the (possibly non-canonical) team id to a stable index.
-        const normalizedTeam = team.teamId.toLowerCase();
-        const fallbackIndex =
-          normalizedTeam === "blue" ? 0 : normalizedTeam === "red" ? 1 : undefined;
+        // Normalize team naming: Riot pregame uses "Team One"/"Team Two", the
+        // live game uses "Blue"/"Red", and unknown teams may say anything.
+        const lower = team.teamId.toLowerCase();
+        const isBlue = lower === "blue" || lower === "team one";
+        const isRed = lower === "red" || lower === "team two";
+        const fallbackIndex = isBlue ? 0 : isRed ? 1 : undefined;
+        // HUD color/split logic keys on "Blue"/"Red" strings.
+        const normalizedTeamId = isBlue ? "Blue" : isRed ? "Red" : team.teamId;
         return team.players.map((p) => ({
           displayName:
             p.player.name?.displayName ??
@@ -161,7 +165,7 @@ export class ValProjectionSession {
             p.player.puuid ??
             "?",
           agentName: p.agent?.name ?? null,
-          teamId: team.teamId as string,
+          teamId: normalizedTeamId,
           teamIndex: p.teamIndex ?? fallbackIndex,
           slot: p.observerSlot ?? undefined,
           // Live scoreboard detail (fork runtime dialect nests these under
@@ -561,9 +565,11 @@ export class ValProjectionSession {
     if (s.roundPhase === "combat" || s.roundPhase === "end") return "ingame-hud";
     // Pre-round-1 of a real match: the provider emits match_id during agent
     // select while round facts have not started yet (roundPhase stays
-    // "unknown") — map that to the agent-select scene so the HUD/site stop
-    // showing "-" and the popout renders AgentSelectScene.
+    // "unknown") — map that to the agent-select scene. BUT a nonzero score
+    // means a match is actually in progress (mid-round reconnect): show the
+    // HUD instead of freezing on agent-select.
     if (!s.roundPhase || s.roundPhase === "unknown") {
+      if (s.blue > 0 || s.red > 0) return "ingame-hud";
       if (s.matchId) return "agent-select";
       // Presence-only mode (GEP starved / GLZ unreachable): the Riot client
       // reports a live session with a map and score but no match id or round

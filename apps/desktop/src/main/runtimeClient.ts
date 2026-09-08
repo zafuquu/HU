@@ -119,6 +119,7 @@ export class GameDataRuntimeClient {
         } catch {
           continue;
         }
+        parsedJson = normalizeEngineFrame(parsedJson);
         const frame = streamFrameSchema.safeParse(parsedJson);
         if (!frame.success) {
           // Boundary telemetry: payload/schema validation result.
@@ -190,4 +191,52 @@ async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       { once: true },
     );
   });
+}
+
+/**
+ * The original capture engine speaks a slightly different wire dialect than
+ * the fork's contracts. Normalize BEFORE schema validation, otherwise every
+ * fact/score frame is silently dropped:
+ *
+ *   facts:  {kind:'new_info_update', payload:{data:{key,value,gameId}}}   (engine)
+ *           {kind:'new_info_update', data:{key,value,gameId}}             (fork)
+ *   scores: {kind:'valorant_score_snapshot', score:{ally,enemy,matchId}}  (engine)
+ *           {kind:'valorant_score_snapshot', score:{blue,red,matchId}}    (fork)
+ */
+function normalizeEngineFrame(raw: unknown): unknown {
+  if (typeof raw !== "object" || raw === null) return raw;
+  const msg = raw as Record<string, unknown>;
+
+  if (msg.kind === "new_info_update" || msg.kind === "new_game_event") {
+    if (msg.data === undefined) {
+      const payload = msg.payload as
+        | { data?: { key?: unknown; value?: unknown; gameId?: unknown }; gameId?: unknown }
+        | undefined;
+      const item = payload?.data;
+      if (item && typeof item.key === "string" && item.key.length > 0) {
+        return {
+          ...msg,
+          data: { key: item.key, value: item.value, gameId: item.gameId ?? payload?.gameId },
+        };
+      }
+    }
+    return msg;
+  }
+
+  if (msg.kind === "valorant_score_snapshot" && typeof msg.score === "object" && msg.score !== null) {
+    const s = msg.score as Record<string, unknown>;
+    if (s.blue === undefined && s.ally !== undefined) {
+      return {
+        ...msg,
+        score: {
+          matchId: typeof s.matchId === "string" ? s.matchId : "",
+          blue: s.ally,
+          red: typeof s.enemy === "number" ? s.enemy : 0,
+          observedAt: s.observedAt,
+        },
+      };
+    }
+  }
+
+  return msg;
 }
