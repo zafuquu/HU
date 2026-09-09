@@ -1,5 +1,6 @@
-﻿import React, { useEffect, useState } from 'react'
-import { agentByName, agentByCodename, resolveAgent as resolveAgentMeta, preloadAgentPortraits, type AgentMeta } from '../../data/valAgentMeta'
+import React, { useEffect, useState } from 'react'
+const BLANK_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+import { resolveAgent as resolveAgentMeta, preloadAgentPortraits, type AgentMeta } from '../../data/valAgentMeta'
 
 interface AgentSelectSceneProps {
   leftTeamName?: string
@@ -15,23 +16,6 @@ interface AgentSelectSceneProps {
   isToggled?: (componentId: string) => boolean
 }
 
-// Demo rosters generated from the authoritative agent metadata (mirrored from
-// the desktop's data-schemas) so codename/name/role can never drift apart.
-const LEFT_CARDS = [
-  agentByName('Fade')!,
-  agentByName('Cypher')!,
-  agentByName('Deadlock')!,
-  agentByName('Chamber')!,
-  agentByName('Breach')!,
-].map((m: AgentMeta, i) => ({ player: `Player ${i + 1}`, meta: m }))
-
-const RIGHT_CARDS = [
-  agentByCodename('grenadier')!, // KAY/O
-  agentByCodename('smonk')!, // Clove
-  agentByCodename('aggrobot')!, // Gekko
-  agentByName('Skye')!,
-  agentByName('Raze')!,
-].map((m: AgentMeta, i) => ({ player: `Player ${i + 6}`, meta: m }))
 
 function RoleIcon({ role }: { role: string }) {
   if (role === 'initiator') {
@@ -106,9 +90,9 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
   }, [mapImage])
 
   // Resolve each card's agent (portrait + role) from the authoritative meta.
-  const resolveCard = (p: any, demo: (typeof LEFT_CARDS)[number]) => {
-    const meta: AgentMeta | null =
-      resolveAgentMeta(p) || (demo ? demo.meta : null)
+  // NO demo fallback: an unpicked agent renders as a blank neutral card.
+  const resolveCard = (p: any) => {
+    const meta: AgentMeta | null = resolveAgentMeta(p)
     const img =
       meta?.portrait ||
       p?.img ||
@@ -119,8 +103,9 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
     return { meta, img, role }
   }
 
-  const leftRoster = leftTeamPlayers && leftTeamPlayers.length ? leftTeamPlayers : LEFT_CARDS.map(function(c){ return { id: 'p'+c.player, alias: c.player, riotId: '', avatarUrl: null, photoUrl: c.meta.portrait, __demo: c } })
-  const rightRoster = rightTeamPlayers && rightTeamPlayers.length ? rightTeamPlayers : RIGHT_CARDS.map(function(c){ return { id: 'p'+c.player, alias: c.player, riotId: '', avatarUrl: null, photoUrl: c.meta.portrait, __demo: c } })
+  // Live rosters only — an empty side renders NO cards (never demo data).
+  const leftRoster = leftTeamPlayers && leftTeamPlayers.length ? leftTeamPlayers : []
+  const rightRoster = rightTeamPlayers && rightTeamPlayers.length ? rightTeamPlayers : []
 
   return (
     <div
@@ -170,7 +155,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
             {/* 5 Left Agent Cards */}
             <div className="flex items-end">
               {leftRoster.map(function(c, i){ 
-                const { meta, img, role } = resolveCard(c, (c as any).__demo)
+                const { meta, img, role } = resolveCard(c)
                 return (
                 <div
                   key={i}
@@ -185,7 +170,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
                     {/* Agent Portrait: Head Touching the Top of the Box */}
                     <div className="absolute inset-0 z-10 overflow-hidden flex justify-center">
                       <img
-                        src={img}
+                        src={img || BLANK_IMG}
                         alt={meta?.name || c.alias || ''}
                         loading="eager"
                         decoding="async"
@@ -254,7 +239,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
             {/* 5 Right Agent Cards */}
             <div className="flex items-end">
               {rightRoster.map(function(c, i){
-                const { meta, img, role } = resolveCard(c, (c as any).__demo)
+                const { meta, img, role } = resolveCard(c)
                 return (
                 <div
                   key={i}
@@ -269,7 +254,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
                     {/* Agent Portrait: Head Touching the Top of the Box */}
                     <div className="absolute inset-0 z-10 overflow-hidden flex justify-center">
                       <img
-                        src={img}
+                        src={img || BLANK_IMG}
                         alt={meta?.name || c.alias || ''}
                         loading="eager"
                         decoding="async"

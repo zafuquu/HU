@@ -528,8 +528,8 @@ export default function OverlayPopout() {
       >
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'shopping' && (
           <BuyRoundScene
-            leftTeamName={teamA?.name || ''}
-            rightTeamName={teamB?.name || ''}
+            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamSeed={(teamA as any)?.seed}
             rightTeamSeed={(teamB as any)?.seed}
             leftTeamColor={teamA?.color || '#28D091'}
@@ -541,8 +541,8 @@ export default function OverlayPopout() {
         )}
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'game_start' && (
           <AgentSelectScene
-            leftTeamName={teamA?.name || ''}
-            rightTeamName={teamB?.name || ''}
+            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamColor={teamA?.color || '#28D091'}
             rightTeamColor={teamB?.color || '#FF3549'}
             mapName={liveMapName}
@@ -553,8 +553,8 @@ export default function OverlayPopout() {
         )}
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && !(liveScores && (gamePhase === 'shopping' || gamePhase === 'game_start')) && (
           <IngameHudScene
-            leftTeamName={teamA?.name || ''}
-            rightTeamName={teamB?.name || ''}
+            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamSeed={(teamA as any)?.seed}
             rightTeamSeed={(teamB as any)?.seed}
             leftTeamColor={teamA?.color || '#28D091'}
@@ -587,8 +587,8 @@ export default function OverlayPopout() {
         )}
         {sceneKey === 'agent-select' && (
           <AgentSelectScene
-            leftTeamName={teamA?.name || ''}
-            rightTeamName={teamB?.name || ''}
+            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamColor={teamA?.color || '#28D091'}
             rightTeamColor={teamB?.color || '#FF3549'}
             mapName={liveMapName}
@@ -599,8 +599,8 @@ export default function OverlayPopout() {
         )}
         {sceneKey === 'buy-round' && (
           <BuyRoundScene
-            leftTeamName={teamA?.name || ''}
-            rightTeamName={teamB?.name || ''}
+            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamColor={teamA?.color || '#28D091'}
             rightTeamColor={teamB?.color || '#FF3549'}
             leftTeamPlayers={leftPlayers}
@@ -610,8 +610,8 @@ export default function OverlayPopout() {
         )}
         {sceneKey === 'map-ban' && (
           <MapBanScene
-            leftTeamName={teamA?.name || ''}
-            rightTeamName={teamB?.name || ''}
+            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamColor={teamA?.color || '#28D091'}
             rightTeamColor={teamB?.color || '#FF3549'}
             leftTeamLogo={teamA?.logoUrl || null}
@@ -623,8 +623,8 @@ export default function OverlayPopout() {
         )}
         {sceneKey === 'post-game' && (
           <PostgameScene
-            leftTeamName={teamA?.name || ''}
-            rightTeamName={teamB?.name || ''}
+            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamColor={teamA?.color || '#28D091'}
             rightTeamColor={teamB?.color || '#FF3549'}
             scoreLeft={scoreLeft}
@@ -639,8 +639,8 @@ export default function OverlayPopout() {
         {/* Timeout overlay — shows during tactical timeouts and tech pauses */}
         <TimeoutOverlay
           timeout={liveTimeout}
-          leftTeamName={teamA?.name}
-          rightTeamName={teamB?.name}
+          leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+          rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
           leftTeamColor={teamA?.color || '#28D091'}
           rightTeamColor={teamB?.color || '#FF3549'}
         />
@@ -665,8 +665,8 @@ export default function OverlayPopout() {
               economy={liveEconomy}
               leftTeamColor={teamA?.color || '#28D091'}
               rightTeamColor={teamB?.color || '#FF3549'}
-              leftTeamName={teamA?.name}
-              rightTeamName={teamB?.name}
+              leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+              rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             />
           </div>
         )}
@@ -675,8 +675,8 @@ export default function OverlayPopout() {
         {(sceneKey === 'post-game' || sceneKey === 'default') && liveMvpPlayer && (
           <PostgameMVP
             mvp={liveMvpPlayer}
-            leftTeamName={teamA?.name}
-            rightTeamName={teamB?.name}
+            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamColor={teamA?.color || '#28D091'}
             rightTeamColor={teamB?.color || '#FF3549'}
           />
