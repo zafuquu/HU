@@ -245,7 +245,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   const showScoreLine = isToggled('score-line')
   const showTeamStats = isToggled('team-stats') || isToggled('alive')
   const showMapHistory = isToggled('map-history')
-  const showGameEvents = isToggled('game-events')
+  
   const showSponsors = isToggled('sponsors')
   const showWebcam = isToggled('webcam')
   const webcamVideoRef = React.useRef<HTMLVideoElement | null>(null)
@@ -511,7 +511,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
       )}
 
       {/* Game Events Ceremony - renders only while an event is active */}
-      {showGameEvents && !!(liveOnly ? gameEvent : (gameEvent || 'ROUND WIN')) && (
+      {false && (
         <div
           className={`clickable-component absolute z-20 flex h-40 w-190 items-center justify-center rounded-md border border-white/15 bg-black/85 backdrop-blur-md shadow-2xl cursor-pointer${activeComponentId === 'game-events' ? ' selected' : ''}`} style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)", backgroundColor: eventsBg }}
           data-component-id="game-events"

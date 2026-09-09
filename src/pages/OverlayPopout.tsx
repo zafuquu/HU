@@ -68,7 +68,7 @@ export default function OverlayPopout() {
 
   useEffect(() => {
     if (!liveScores) return
-    if (liveScores.audioCuesEnabled === false) return
+    // Audio cues are OFF by default (user preference) - opt in via the bridge flag.\n    if (liveScores.audioCuesEnabled !== true) return
 
     // Timeout alert
     const isTimeoutActive = Boolean(liveScores.timeout?.active)
@@ -382,9 +382,9 @@ export default function OverlayPopout() {
     id: p.playerId || p.name || Math.random(),
     alias: p.name || p.alias || p.agentName || `Player ${idx + 1}`,
     riotId: p.tagline || '',
-    agentName: p.agentName || p.character || p.agent || 'BountyHunter',
-    agent: p.agentName || p.character || p.agent || 'BountyHunter',
-    character: p.agentName || p.character || p.agent || 'BountyHunter',
+    agentName: p.agentName || p.character || p.agent || null,
+    agent: p.agentName || p.character || p.agent || null,
+    character: p.agentName || p.character || p.agent || null,
     role: null,
     img: null,
     photoUrl: null,

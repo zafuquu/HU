@@ -143,7 +143,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
           }}
         >
           {/* Left Team: Header Card + 5 Agent Cards */}
-          <div className="relative flex flex-col items-end">
+          <div className="relative flex h-[363px] flex-col items-end">
             {/* Left Team Header Card */}
             <div className="mb-2 flex h-[77px] w-[337px] items-center rounded-[2px] border-[2px] border-[#F5F5F5] bg-[#171717] p-0.5 shadow-xl">
               <div className="relative aspect-square h-full overflow-hidden rounded-[2px] p-1" style={{ background: leftTeamColor }} />
@@ -227,7 +227,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
           )}
 
           {/* Right Team: Header Card + 5 Agent Cards */}
-          <div className="relative flex flex-col items-start">
+          <div className="relative flex h-[363px] flex-col items-start">
             {/* Right Team Header Card */}
             <div className="mb-2 flex h-[77px] w-[337px] items-center rounded-[2px] border-[2px] border-[#F5F5F5] bg-[#171717] p-0.5 shadow-xl flex-row-reverse">
               <div className="relative aspect-square h-full overflow-hidden rounded-[2px] p-1" style={{ background: rightTeamColor }} />
