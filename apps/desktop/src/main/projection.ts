@@ -145,6 +145,12 @@ export class ValProjectionSession {
       abyss: "Abyss", drift: "Drift", piazza: "Piazza", kasbah: "Kasbah", sunset2: "Sunset",
       "ascent-2": "Ascent", glaze: "Glitch", district: "District", summit: "Summit",
       infinity: "Abyss", bonsai: "Split", corrode: "Corrode", range: "The Range",
+      // Riot internal codenames the engine actually sends:
+      jam: "Lotus", duality: "Bind", foxtrot: "Breeze", canyon: "Fracture",
+      pitt: "Pearl", triad: "Haven", port: "Icebox", rook: "Corrode", plummet: "Summit",
+      infinity_: "Abyss", hurm_alley: "District", hurm_bowl: "Kasbah", hurm_helix: "Drift",
+      hurm_hightide: "Glitch", hurm_yard: "Piazza", skirmish_a: "Skirmish A", skirmish_b: "Skirmish B",
+      skirmish_c: "Skirmish C", skirmish_d: "Skirmish D", skirmish_e: "Skirmish E",
     };
     if (mapKey) {
       s.mapKey = mapKey;
@@ -312,16 +318,41 @@ export class ValProjectionSession {
         ) {
           return;
         }
+        const weaponName = weaponDisplayName(rec.weapon ?? rec.weaponName) ?? "";
         s.killfeed.unshift({
           seq: this.killSeq++,
           attacker: rec.attacker,
           victim: rec.victim,
-          weapon: weaponDisplayName(rec.weapon ?? rec.weaponName) ?? "",
+          weapon: weaponName,
           modifier: rec.headshot === true ? "headshot" : typeof rec.modifier === "string" ? rec.modifier : null,
           at: Date.now(),
         });
         s.killfeed = s.killfeed.slice(0, 25);
-        this.trackRoundKill(rec.attacker, rec.victim);
+        this.trackRoundKill(rec.attacker, rec.victim, weaponName, rec.assists);
+        break;
+      }
+      case "kill": {
+        const rec = value as Record<string, unknown>;
+        if (rec && typeof rec.attacker === "string" && typeof rec.victim === "string") {
+          const weaponName = weaponDisplayName(rec.weapon ?? rec.weaponName) ?? "";
+          this.trackRoundKill(rec.attacker, rec.victim, weaponName, rec.assists);
+        }
+        break;
+      }
+      case "death": {
+        const rec = value as Record<string, unknown>;
+        const victim = typeof rec?.victim === "string" ? rec.victim : typeof rec?.name === "string" ? rec.name : null;
+        if (victim) {
+          const vKey = this.normalizeName(victim);
+          for (const p of s.roster ?? []) {
+            const pName = this.normalizeName(p.displayName);
+            if (pName === vKey || pName.includes(vKey) || vKey.includes(pName)) {
+              p.isAlive = false;
+              p.health = 0;
+              p.deaths = (p.deaths ?? 0) + 1;
+            }
+          }
+        }
         break;
       }
       case "spike_planted":
@@ -346,6 +377,17 @@ export class ValProjectionSession {
         s.revision += 1;
         this.emitChange();
         return; // already emitted
+      }
+      case "scene": {
+        const sc = String(value ?? "").toLowerCase().replace(/_/g, "-");
+        if (sc === "agent-select" || sc === "character-select" || sc === "lobby" || sc === "pregame") {
+          s.sessionPhase = "pregame";
+        } else if (sc === "in-game" || sc === "combat" || sc === "live") {
+          s.sessionPhase = "live";
+        } else if (sc === "post-game" || sc === "game-end" || sc === "match-end") {
+          s.sessionPhase = "ending";
+        }
+        break;
       }
       case "scoreboard": {
         // Per-player detail observation (weapon/credits/ults/shield/scoreline)
@@ -372,11 +414,19 @@ export class ValProjectionSession {
         entry.kills = num(rec.kills) ?? entry.kills ?? null;
         entry.deaths = num(rec.deaths) ?? entry.deaths ?? null;
         entry.assists = num(rec.assists) ?? entry.assists ?? null;
-        entry.health = num(rec.health) ?? entry.health ?? null;
+        if (num(rec.health) !== undefined) {
+          entry.health = num(rec.health);
+          if ((entry.health ?? 1) <= 0) entry.isAlive = false;
+        }
         entry.ultPoints = num(rec.ultPoints ?? rec.ult_points) ?? entry.ultPoints ?? null;
         entry.ultMax = num(rec.ultMax ?? rec.ult_max) ?? entry.ultMax ?? null;
-        if (typeof rec.alive === "boolean") entry.isAlive = rec.alive;
-        else if (typeof rec.isAlive === "boolean") entry.isAlive = rec.isAlive;
+        if (typeof rec.alive === "boolean") {
+          entry.isAlive = rec.alive;
+          if (!rec.alive) entry.health = 0;
+        } else if (typeof rec.isAlive === "boolean") {
+          entry.isAlive = rec.isAlive;
+          if (!rec.isAlive) entry.health = 0;
+        }
         if (typeof rec.hasSpike === "boolean") entry.hasSpike = rec.hasSpike;
         else if (typeof rec.spike === "boolean") entry.hasSpike = rec.spike;
         if (Array.isArray(rec.abilities)) {
@@ -429,7 +479,12 @@ export class ValProjectionSession {
     s.pendingPhase = null;
 
     if (phase === "shopping") {
-      // New round: wipe per-round evidence, the banner and the round-end marker.
+      // New round: reset alive status and health to 100 for all players
+      for (const p of s.roster ?? []) {
+        p.isAlive = true;
+        p.health = 100;
+      }
+      // wipe per-round evidence, the banner and the round-end marker.
       s.gameEvent = null;
       s.roundEnd = null;
       s.spike = null;
@@ -453,13 +508,48 @@ export class ValProjectionSession {
     return name.split("#")[0]!.trim().toLowerCase();
   }
 
-  private trackRoundKill(attacker: string, victim: string): void {
+  private trackRoundKill(attacker: string, victim: string, weapon?: string, assists?: unknown): void {
     const s = this.s;
     if (s.roundPhase !== "combat" && s.roundPhase !== "unknown") return;
     const aKey = this.normalizeName(attacker);
+    const vKey = this.normalizeName(victim);
     s.roundKills.set(aKey, (s.roundKills.get(aKey) ?? 0) + 1);
-    s.roundDeaths.add(this.normalizeName(victim));
+    s.roundDeaths.add(vKey);
     this.refreshClutchSituations();
+
+    // Mutate s.roster to immediately update deathstate, kills, deaths, weapon
+    for (const p of s.roster ?? []) {
+      const pName = this.normalizeName(p.displayName);
+      const isVictim = pName === vKey || pName.includes(vKey) || vKey.includes(pName);
+      const isAttacker = pName === aKey || pName.includes(aKey) || aKey.includes(pName);
+
+      if (isVictim) {
+        p.isAlive = false;
+        p.health = 0;
+        p.deaths = (p.deaths ?? 0) + 1;
+      }
+      if (isAttacker) {
+        p.kills = (p.kills ?? 0) + 1;
+        if (weapon) {
+          p.weapon = weapon;
+        }
+      }
+    }
+
+    // Update assists if present
+    if (Array.isArray(assists)) {
+      for (const ast of assists) {
+        if (typeof ast === "string" && ast.trim()) {
+          const astKey = this.normalizeName(ast);
+          for (const p of s.roster ?? []) {
+            const pName = this.normalizeName(p.displayName);
+            if (pName === astKey || pName.includes(astKey) || astKey.includes(pName)) {
+              p.assists = (p.assists ?? 0) + 1;
+            }
+          }
+        }
+      }
+    }
   }
 
   private aliveByTeam(): [Set<string>, Set<string>] {
@@ -639,12 +729,8 @@ export class ValProjectionSession {
     // HUD instead of freezing on agent-select.
     if (!s.roundPhase || s.roundPhase === "unknown") {
       if (s.blue > 0 || s.red > 0) return "ingame-hud";
-      if (s.matchId) return "agent-select";
-      // Presence-only mode (GEP starved / GLZ unreachable): the Riot client
-      // reports a live session with a map and score but no match id or round
-      // facts. That is unambiguously an in-progress match, so show the HUD
-      // instead of leaving the scene null (which froze the overlay).
-      if (s.mapKey || s.blue > 0 || s.red > 0) return "ingame-hud";
+      if (s.roundNumber > 0) return "ingame-hud";
+      if (s.matchId || s.mapKey) return "agent-select";
       return null;
     }
     return null;
