@@ -51,6 +51,7 @@ interface IngameHudSceneProps {
   webcamStream?: MediaStream | null
   liveOnly?: boolean
   gameEvent?: string | null
+  roundEnd?: { winner: 'blue' | 'red' | null; reason: string | null } | null
   activeComponentId?: string | null
   onSelectComponent?: (id: string) => void
   isToggled?: (componentId: string) => boolean
@@ -184,6 +185,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     webcamActive = false,
   webcamStream = null,
   liveOnly = false,
+  roundEnd = null,
   // eslint-disable-next-line
     activeComponentId,
     onSelectComponent,
@@ -242,8 +244,12 @@ export function IngameHudScene(props: IngameHudSceneProps) {
       return obs === pName || (pRiot && obs === pRiot) || obs.includes(pName) || (pName && pName.includes(obs))
     }
 
+    const ROUND_END_TEXT: Record<string, string> = { elimination: 'ELIMINATED', detonation: 'SPIKE DETONATED', defusion: 'SPIKE DEFUSED', time: 'TIME RAN OUT' }
+    const roundEndText = roundEnd ? ((ROUND_END_TEXT[roundEnd.reason || ''] || 'ROUND OVER') + (roundEnd.winner ? ' - ' + roundEnd.winner.toUpperCase() : '')) : null
     const isSpikeActive = spikeState === 'planted' || spikeState === 'defusing'
-    const displayTimerText = isSpikeActive
+    const displayTimerText = roundEndText
+      ? roundEndText
+      : isSpikeActive
       ? (spikeState === 'defusing' ? 'DEFUSING' : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
       : timerText
     const displayTimerColor = isSpikeActive ? '#FF3549' : timerColor

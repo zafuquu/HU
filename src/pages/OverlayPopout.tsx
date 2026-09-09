@@ -579,6 +579,7 @@ export default function OverlayPopout() {
             webcamStream={webcamStream}
             liveOnly={true}
             gameEvent={liveEventText}
+            roundEnd={(snapState as any)?.roundEnd || null}
             currentlyObserving={liveCurrentlyObserving}
             spikeSite={spikeSite}
             spikeState={spikeState}
