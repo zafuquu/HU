@@ -411,7 +411,7 @@ export default function OverlayPopout() {
     isUltReady: p.isUltReady ?? ((p.currUltPoints ?? p.ultPoints ?? 0) >= (p.maxUltPoints ?? p.ultMax ?? 8) && (p.maxUltPoints ?? p.ultMax ?? 8) > 0),
     abilities: p.abilities ?? [],
   }))
-  // Team side: trust explicit startTeam/teamIndex, then the team id string.
+    // Team side: trust explicit startTeam/teamIndex, then the team id string.
   // Players with NO side evidence go LEFT only — never both sides.
   const sideOf = (p: any): 0 | 1 => {
     const st = p.startTeam ?? p.teamIndex
@@ -422,6 +422,15 @@ export default function OverlayPopout() {
   }
   const liveLeft = snapPlayers ? snapPlayers.filter((p: any) => sideOf(p) === 0) : null
   const liveRight = snapPlayers ? snapPlayers.filter((p: any) => sideOf(p) === 1) : null
+  // LIVE map wins over the veto pick / defaults (the desktop publishes the
+  // actual in-game map every snapshot — 'Sunset' was a hardcoded fallback).
+  const liveMapKey = (snapState as any)?.mapKey || null
+  const liveMapName = (snapState as any)?.mapName || pickedMap?.mapName || 'Sunset'
+  const liveMapImage =
+    pickedMap?.image ||
+    (liveMapKey ? `/game/val/maps/${liveMapKey}/splash-small.png` : '/game/val/maps/juliett/splash-small.png')
+  const viewerRole = String((snapState as any)?.viewerRole ?? '').toLowerCase()
+  const spectating = viewerRole === 'observer' || viewerRole === 'spectator' || viewerRole === 'coach'
   const leftPlayers = liveLeft && liveLeft.length > 0 ? mapLivePlayers(liveLeft) : []
   const rightPlayers = liveRight && liveRight.length > 0 ? mapLivePlayers(liveRight) : []
   // Phantom-camera guard: only treat the configured player as a live publisher
@@ -480,6 +489,15 @@ export default function OverlayPopout() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
+      {/* Spectator badge: shown while the desktop reports an observing role */}
+      {spectating && (
+        <div style={{
+          position: 'fixed', top: 12, left: 12, zIndex: 9998,
+          fontSize: 12, fontWeight: 800, letterSpacing: 1, color: '#FFD166',
+          border: '1px solid #FFD16666', borderRadius: 4, padding: '2px 10px',
+          background: 'rgba(0,0,0,0.6)', pointerEvents: 'none',
+        }}>SPECTATING</div>
+      )}
       {/* Stale-data reconnecting badge (#1) */}
       {isStale && (
         <div style={{
@@ -527,8 +545,8 @@ export default function OverlayPopout() {
             rightTeamName={teamB?.name || ''}
             leftTeamColor={teamA?.color || '#28D091'}
             rightTeamColor={teamB?.color || '#FF3549'}
-            mapName={pickedMap?.mapName || 'Sunset'}
-            mapImage={pickedMap?.image || '/game/val/maps/juliett/splash-small.png'}
+            mapName={liveMapName}
+            mapImage={liveMapImage}
             leftTeamPlayers={leftPlayers}
             rightTeamPlayers={rightPlayers}
           />
@@ -573,8 +591,8 @@ export default function OverlayPopout() {
             rightTeamName={teamB?.name || ''}
             leftTeamColor={teamA?.color || '#28D091'}
             rightTeamColor={teamB?.color || '#FF3549'}
-            mapName={pickedMap?.mapName || 'Sunset'}
-            mapImage={pickedMap?.image || '/game/val/maps/juliett/splash-small.png'}
+            mapName={liveMapName}
+            mapImage={liveMapImage}
             leftTeamPlayers={leftPlayers}
             rightTeamPlayers={rightPlayers}
           />
