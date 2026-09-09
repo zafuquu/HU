@@ -14,6 +14,7 @@ export interface GameTeamState {
   gameScore?: number;
   seriesScore?: number;
   matches_won_this_series?: number;
+  color?: string | null;
 }
 
 export interface GamePlayerState {
@@ -65,6 +66,10 @@ export interface GameSnapshot {
     isAgentSelectPhase?: boolean;
     /** Phase start epoch (ms) so overlays can derive a round timer. */
     phaseStartedAt?: number | null;
+    /** Round timer in seconds remaining */
+    roundTimer?: number | null;
+    /** Spectator role for overlays that show a spectator badge. */
+    viewerRole?: string | null;
     /** Spike planted flag for the site's SpikeIndicator. */
     bombPlanted?: boolean;
     /** Post-game result (winner + MVP) when a match settles. */
@@ -94,6 +99,7 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
     gameScore: leftScore,
     seriesScore: 0,
     score: leftScore,
+    color: "#28D091",
   };
   const rightTeamBase: GameTeamState = {
     name: TEAM_NAMES.red,
@@ -101,6 +107,7 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
     gameScore: rightScore,
     seriesScore: 0,
     score: rightScore,
+    color: "#FF3549",
   };
 
   const players: GamePlayerState[] = (state.roster ?? []).map((p) => {
@@ -116,7 +123,10 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       teamIndex: p.teamIndex ?? null,
       isAlive: p.isAlive ?? true,
       health: p.health ?? 100,
-      armor: 50,
+      // Real shield from GEP (0/25/50); shieldType drives the site's armor bar.
+      armor: p.shield ?? 0,
+      shield: p.shield ?? null,
+      shieldType: p.shield != null ? (p.shield >= 50 ? 2 : p.shield > 0 ? 1 : 0) : undefined,
       abilities: p.abilities ?? [],
       weapon: p.weapon ?? null,
       credits: p.credits ?? null,
@@ -130,12 +140,19 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
     };
   });
 
-  // Only publish team blocks when a real match reported players. When idle the
-  // bridge then has nothing to mirror into `live:<room>` and the overlay
-  // renders no fallback teams/scores.
-  const hasRealPlayers = players.length > 0;
-  const leftTeam = hasRealPlayers ? { ...leftTeamBase } : null;
-  const rightTeam = hasRealPlayers ? { ...rightTeamBase } : null;
+  // Only publish team blocks when real players exist for that side.
+  const hasLeftPlayers = players.some((p) => (p.teamIndex ?? p.startTeam ?? 0) === 0);
+  const hasRightPlayers = players.some((p) => (p.teamIndex ?? p.startTeam) === 1);
+  const leftTeam = hasLeftPlayers || players.length > 0 ? { ...leftTeamBase } : null;
+  const rightTeam = hasRightPlayers ? { ...rightTeamBase } : null;
+
+  // Compute live round timer in seconds remaining
+  let roundTimer: number | null = null;
+  if (state.round?.phaseStartedAt && typeof state.round.phaseStartedAt === "number") {
+    const elapsed = Math.max(0, Math.floor((Date.now() - state.round.phaseStartedAt) / 1000));
+    const total = state.spike === "planted" ? 45 : state.round.phase === "shopping" ? 30 : 100;
+    roundTimer = Math.max(0, total - elapsed);
+  }
 
   return {
     gameId: 21640,
@@ -143,23 +160,15 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       leftTeam,
       rightTeam,
       currentRound: {
-        roundNumber: hasRealPlayers && roundNumber > 0 ? roundNumber : null,
+        roundNumber: players.length > 0 && roundNumber > 0 ? roundNumber : null,
         roundPhase: state.round?.phase ?? null,
       },
       players,
-      // The score comes from Riot presence and is real even before a roster
-      // exists (GEP/GLZ may be unavailable). Zeroing it here made the bridge
-      // mirror 0-0 for the whole match, so the overlay never saw live scores.
       gameScore: { left: leftScore, right: rightScore },
       gameEvent: state.gameEvent ?? null,
       scene: state.scene ?? null,
       mapName: state.mapName ?? null,
-      // Phase fields the site popout's gamePhase derivation consumes
-      // (OverlayPopout.tsx) — without them the overlay stays on InGameHud.
       roundPhase: state.round?.phase ?? null,
-      // HudRelayState's sessionPhase enum is idle|loading|live — "loading"
-      // covers pregame. A LIVE session with no round facts yet is real
-      // Valorant's agent select (match_id arrives before round facts).
       isAgentSelectPhase:
         state.sessionPhase === "loading" ||
         (state.sessionPhase === "live" &&
@@ -167,6 +176,8 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
           (state.round?.phase ?? "unknown") === "unknown" &&
           !!state.matchId),
       phaseStartedAt: state.round?.phaseStartedAt ?? null,
+      roundTimer,
+      viewerRole: state.viewerRole ?? null,
       bombPlanted: state.spike === "planted",
       match: {
         winner: state.match?.winner ?? null,
