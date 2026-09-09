@@ -23,6 +23,9 @@ export interface GamePlayerState {
   agentName?: string | null;
   teamId?: string | null;
   team?: string | null;
+  /** 0 = blue/left, 1 = red/right — the site popout's team filter key. */
+  startTeam?: number;
+  teamIndex?: number | null;
   isAlive?: boolean;
   health?: number;
   armor?: number;
@@ -109,6 +112,8 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       agentName: p.agentName ?? null,
       teamId: p.teamId ?? null,
       team: p.teamId ?? null,
+      startTeam: p.teamIndex === 1 ? 1 : 0,
+      teamIndex: p.teamIndex ?? null,
       isAlive: p.isAlive ?? true,
       health: p.health ?? 100,
       armor: 50,

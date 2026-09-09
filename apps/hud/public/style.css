@@ -73,6 +73,7 @@ html, body { background: transparent; font-family: var(--font); color: #eef2f6; 
 .r-shield { font-size: 11px; font-variant-numeric: tabular-nums; color: #9ecbff; }
 .spectator-badge { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #ffd166; border: 1px solid #ffd16666; border-radius: 4px; padding: 1px 8px; margin-top: 2px; }
 .spectator-badge.hidden { display: none; }
+.map-chip { position: absolute; top: 6px; right: 10px; font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #e7e7e7; opacity: .75; background: rgba(10,12,14,.55); border-radius: 4px; padding: 2px 10px; }
 .r-row.dead { opacity: .38; }
 .r-row.dead .r-name { text-decoration: line-through; }
 /* Scene switching (projection deriveScene contract): agent-select shows

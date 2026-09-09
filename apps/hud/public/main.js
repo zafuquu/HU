@@ -17,6 +17,7 @@
     rosterBlue: document.getElementById("roster-blue"),
     rosterRed: document.getElementById("roster-red"),
     spectator: document.getElementById("spectator-badge"),
+    mapChip: document.getElementById("map-chip"),
     root: document.getElementById("root"),
     debug: document.getElementById("pipeline-debug"),
   };
@@ -42,11 +43,18 @@
       `ws=${wsConnected ? "on" : "off"} frames=${framesReceived} scene=${el.root?.dataset.scene || "-"}`;
   };
 
-  /** mm:ss countdown from phaseStartedAt + the phase's standard length. */
-  function renderTimer(round) {
+  /** mm:ss countdown; switches to a 45s spike countdown after a plant. */
+  let lastSpikePlanted = false;
+  function renderTimer(round, spikePlanted) {
     if (!el.roundTimer) return;
     const phase = round?.phase ?? "unknown";
     const startedAt = round?.phaseStartedAt ?? null;
+    if (spikePlanted && round?.spikePlantedAt) {
+      const remaining = Math.max(0, 45 - Math.floor((Date.now() - round.spikePlantedAt) / 1000));
+      el.roundTimer.textContent = `0:${String(remaining).padStart(2, "0")}`;
+      el.roundTimer.classList.add("urgent");
+      return;
+    }
     const duration = PHASE_SECONDS[phase];
     if (!startedAt || !duration || phase === "unknown") {
       el.roundTimer.textContent = "--:--";
@@ -156,7 +164,9 @@
         : num > 0
           ? `R${num} · ${phase}`
           : "connecting…";
-    renderTimer(state.round);
+    lastSpikePlanted = state.spike === "planted";
+    renderTimer(state.round, lastSpikePlanted);
+    if (el.mapChip) el.mapChip.textContent = state.mapName ?? "";
 
     // Scene switch: the projection's derived scene drives which blocks show
     // (same scene contract the site popout consumes).
@@ -221,7 +231,7 @@
 
   // Keep the countdown ticking between pushed frames.
   setInterval(() => {
-    if (lastRoundState) renderTimer(lastRoundState);
+    if (lastRoundState) renderTimer(lastRoundState, lastSpikePlanted);
   }, 500);
 
   function connectWs() {

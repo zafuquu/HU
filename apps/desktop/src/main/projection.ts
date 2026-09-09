@@ -48,6 +48,7 @@ interface WorkingState {
   roundNumber: number;
   roundPhase: "shopping" | "combat" | "end" | "unknown";
   phaseStartedAt: number | null;
+  spikePlantedAt: number | null;
   pendingPhase: string | null;
   publishedNumber: number;
   publishedPhase: string | null;
@@ -78,6 +79,7 @@ function initial(): WorkingState {
     roundNumber: 0,
     roundPhase: "unknown",
     phaseStartedAt: null,
+    spikePlantedAt: null,
     pendingPhase: null,
     publishedNumber: 0,
     publishedPhase: null,
@@ -246,7 +248,10 @@ export class ValProjectionSession {
   public applyFact(key: string, rawValue: unknown): void {
     const s = this.s;
     const value = parseFactValue(rawValue);
-    switch (key) {
+    // The engine emits prefixed scoreboard variants (scoreboard_ally,
+    // scoreboard_enemy, scoreboard_N, ...). Normalize to the base case.
+    const normalizedKey = key.startsWith("scoreboard") ? "scoreboard" : key;
+    switch (normalizedKey) {
       case "match_score": {
         const rec = value as { team_0?: unknown; team_1?: unknown; won?: unknown; lost?: unknown };
         // Fork dialect: {team_0, team_1}. Engine dialect: {won, lost} from the
@@ -321,12 +326,15 @@ export class ValProjectionSession {
       }
       case "spike_planted":
         s.spike = "planted";
+        s.spikePlantedAt = Date.now();
         break;
       case "spike_defused":
         s.spike = "defused";
+        s.spikePlantedAt = null;
         break;
       case "spike_detonated":
         s.spike = "detonated";
+        s.spikePlantedAt = null;
         break;
       case "match_end": {
         // Upstream engine emits match_end when the match settles. Resolve the
@@ -425,6 +433,7 @@ export class ValProjectionSession {
       s.gameEvent = null;
       s.roundEnd = null;
       s.spike = null;
+      s.spikePlantedAt = null;
       s.roundKills.clear();
       s.roundDeaths.clear();
       s.clutchMax.clear();
@@ -573,7 +582,12 @@ export class ValProjectionSession {
       match: { winner: s.matchWinner, mvp: this.computeMvp() },
       viewerRole: s.viewerRole,
       roster: s.roster ?? [],
-      round: { number: s.roundNumber, phase: s.roundPhase, phaseStartedAt: s.phaseStartedAt },
+      round: {
+        number: s.roundNumber,
+        phase: s.roundPhase,
+        phaseStartedAt: s.phaseStartedAt,
+        spikePlantedAt: s.spikePlantedAt,
+      },
       score: { blue: s.blue, red: s.red },
       spike: s.spike,
       killfeed: s.killfeed,

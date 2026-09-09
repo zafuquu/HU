@@ -75,6 +75,7 @@ export const hudRelayStateSchema = z.object({
     number: z.number().int().nonnegative(),
     phase: roundPhaseSchema,
     phaseStartedAt: z.number().nullable(),
+    spikePlantedAt: z.number().nullable().default(null),
   }),
   score: z.object({ blue: z.number(), red: z.number() }),
   spike: z.union([spikeStatusSchema, z.null()]),
