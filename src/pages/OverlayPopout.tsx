@@ -381,6 +381,7 @@ export default function OverlayPopout() {
   const mapLivePlayers = (arr: any[]) => arr.map((p: any, idx: number) => ({
     id: p.playerId || p.name || Math.random(),
     alias: p.name || p.alias || p.agentName || `Player ${idx + 1}`,
+    agentKey: p.agentKey ?? null,
     riotId: p.tagline || '',
     agentName: p.agentName || p.character || p.agent || null,
     agent: p.agentName || p.character || p.agent || null,
