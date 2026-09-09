@@ -299,54 +299,6 @@ let lastEventState = {
   matchWinner: null as string | null,
 };
 
-/**
- * The site's kill banners (first blood / ACE), round-win toasts and match-end
- * markers come ONLY from `game-event` frames — snapshots never carry them.
- * Diff the projection against what we already sent and emit the deltas in the
- * bridge's handleGameEventMessage dialect (roundStart / killfeed / roundWin /
- * matchEnd).
- */
-function publishGameEvents(proj: ReturnType<ValProjectionSession["snapshotValue"]>): void {
-  if (!producer) return;
-
-  // Round start resets the site's per-round kill-banner tracker.
-  const roundNumber = proj.round?.number ?? 0;
-  if (roundNumber > 0 && roundNumber !== lastEventState.roundNumber) {
-    producer.publishEvent({ type: "roundStart", data: { roundNumber } });
-    lastEventState.roundNumber = roundNumber;
-  }
-
-  // Killfeed entries drive first-blood / ACE banners on the site.
-  for (const kf of proj.killfeed ?? []) {
-    if (kf.seq <= lastEventState.killSeq) continue;
-    producer.publishEvent({
-      type: "killfeed",
-      data: { attacker: kf.attacker, victim: kf.victim, isTeamkill: false, weapon: kf.weapon },
-    });
-  }
-  const maxSeq = Math.max(0, ...(proj.killfeed ?? []).map((k) => k.seq));
-  if (maxSeq > lastEventState.killSeq) lastEventState.killSeq = maxSeq;
-
-  // Round settlement -> win-type banner (ace / clutch / thrifty / team ace).
-  if (proj.gameEvent && proj.gameEvent !== lastEventState.gameEvent) {
-    producer.publishEvent({
-      type: "roundWin",
-      data: {
-        winType: proj.gameEvent,
-        winningCompetitorId: proj.roundEnd?.winner ?? null,
-      },
-    });
-  }
-  lastEventState.gameEvent = proj.gameEvent;
-
-  // Match settlement -> val:match_end on the site feed.
-  const winner = proj.match?.winner ?? null;
-  if (winner && winner !== lastEventState.matchWinner) {
-    producer.publishEvent({ type: "matchEnd", data: { winner } });
-  }
-  lastEventState.matchWinner = winner;
-}
-
 function publishNow(): void {
   if (!producer || !activeRoom) {
     pipelineDebug("publish_skipped", { hasProducer: !!producer, hasRoom: !!activeRoom });
@@ -365,7 +317,9 @@ function publishNow(): void {
     mapName: snapshot.state.mapName ?? null,
   });
   producer.publishSnapshot(snapshot);
-  publishGameEvents(proj);
+  // NOTE: game-event frames (roundStart/killfeed/roundWin/matchEnd) are NOT
+  // emitted — the site has its own events pipeline and the extra banners were
+  // unwanted. Re-add via producer.publishEvent(...) if ever needed.
 }
 
 async function connectProducer(): Promise<void> {

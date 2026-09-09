@@ -193,6 +193,7 @@ export class ValProjectionSession {
             "?",
           agentName: p.agent?.name ?? null,
           agentIcon: p.agent?.riotId ? agentIconUrl(p.agent.riotId) ?? null : undefined,
+          agentKey: p.agent?.key ?? undefined,
           teamId: normalizedTeamId,
           teamIndex: p.teamIndex ?? fallbackIndex,
           slot: p.observerSlot ?? undefined,
@@ -405,6 +406,10 @@ export class ValProjectionSession {
           typeof v === "string" && v.length > 0 ? v : undefined;
         // GEP internal codenames -> human display + icon.
         entry.agentName = agentDisplayName(rec.character) ?? entry.agentName ?? null;
+        entry.agentKey =
+          typeof rec.character === "string" && rec.character.length > 0
+            ? rec.character.toLowerCase()
+            : (entry.agentKey ?? undefined);
         entry.agentIcon =
           agentIconUrl(rec.character) ?? agentIconUrl(rec.agentUuid) ?? entry.agentIcon ?? null;
         entry.weapon = weaponDisplayName(rec.weapon ?? rec.weaponName) ?? entry.weapon ?? null;
