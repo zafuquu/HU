@@ -152,7 +152,6 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     timerText = '1:40',
     roundText = 'Round 12/24',
     timerColor = '#DADBE3',
-    eventsBg = '#161f2a',
     showBombTimer = true,
     showLogos = true,
     showSeries = true,
@@ -185,7 +184,6 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     webcamActive = false,
   webcamStream = null,
   liveOnly = false,
-  gameEvent = null,
   // eslint-disable-next-line
     activeComponentId,
     onSelectComponent,
@@ -528,27 +526,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     </div><div className="absolute top-1/2 left-1/2 size-full -translate-x-1/2 -translate-y-1/2 -scale-x-100" style={{"height":"43px","width":"43px"} as React.CSSProperties}><svg height="43" viewBox="0 0 43 43" width="43"><path d="M 21.5 2 A 19.5 19.5 0 0 1 29.74105610394364 3.8269981527853254" fill="none" stroke="#FF3549" strokeLinecap="round" strokeWidth="2"></path><path d="M 35.288582233137674 7.711417766862324 A 19.5 19.5 0 0 1 39.82400610532521 14.830607205149459" fill="none" stroke="rgba(255,255,255,0.3)" strokeLinecap="round" strokeWidth="2"></path><path d="M 41 21.5 A 19.5 19.5 0 0 1 39.17300184721468 29.74105610394364" fill="none" stroke="rgba(255,255,255,0.3)" strokeLinecap="round" strokeWidth="2"></path><path d="M 35.288582233137674 35.288582233137674 A 19.5 19.5 0 0 1 28.16939279485054 39.82400610532521" fill="none" stroke="rgba(255,255,255,0.3)" strokeLinecap="round" strokeWidth="2"></path><path d="M 21.5 41 A 19.5 19.5 0 0 1 13.258943896056364 39.17300184721468" fill="none" stroke="rgba(255,255,255,0.3)" strokeLinecap="round" strokeWidth="2"></path><path d="M 7.711417766862324 35.288582233137674 A 19.5 19.5 0 0 1 3.1759938946747894 28.169392794850545" fill="none" stroke="rgba(255,255,255,0.3)" strokeLinecap="round" strokeWidth="2"></path><path d="M 2 21.500000000000004 A 19.5 19.5 0 0 1 3.8269981527853254 13.258943896056364" fill="none" stroke="rgba(255,255,255,0.3)" strokeLinecap="round" strokeWidth="2"></path><path d="M 7.71141776686232 7.711417766862324 A 19.5 19.5 0 0 1 14.830607205149448 3.1759938946747894" fill="none" stroke="rgba(255,255,255,0.3)" strokeLinecap="round" strokeWidth="2"></path></svg></div></div></div></div><div className="flex h-full w-16.25 items-center px-3.75"><img  className="aspect-square size-full object-contain" src="/game/val/shields/Light_Armor.png" /></div><div className="flex h-full flex-1 shrink items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="256" height="96" className="relative max-h-8.5 max-w-25 object-contain" viewBox="0 0 256 96"><path fill="#fff" fillRule="evenodd" d="M78.946 5.75 77.941 8.5l-.439 1.25-.439 1.25H72V8H1v13h70.833l.447-1.25.446-1.25.739.685.739.685-1.716 5.166-1.716 5.165 1.554 1.554 1.554 1.554 2.525-1.655L78.93 30h43.866l4.352 2.488 4.352 2.488 1.664.012 1.664.012-3.966 15.033-3.966 15.033-5.526 9.437-5.525 9.437.561.908.561.908 6.456 4.048 6.455 4.047.909-1.175.909-1.176 4.985-9 4.985-9 2.843-10.837 2.844-10.837 1.355 2.587L150.064 57H153v-.87l-.975-2.565L151.05 51h1.161l5.803 1.504 5.803 1.503 4.674-2.003L173.166 50h.672l4.581 8.404L183 66.808v3.973l3.398.397 3.398.397 7.09-3.038 7.089-3.037.013-.767.012-.768-8.5-12.726-8.5-12.727V33h11.555l2.066 1.447 2.066 1.447 2.094-.547 2.093-.547-.969-2.551-.97-2.551 2.032-2.163L209 25.371V22h19v5.867l2.691.317 2.691.316 2.37 9 2.369 9 1.467 5.249 1.467 5.248 6.973-3.511L255 49.975V18.821l-2.25-1.877-2.25-1.877-25.633-.034L199.233 15l-.462-1.767-.462-1.767-7.097-1.841-7.097-1.841-1.713-1.892L180.69 4l-5.095.032-5.095.032-1.941 1.468L166.618 7H151V2.765l-7.75.643-7.75.642-4.75.569-4.75.569V7H85.07L84 5l-1.07-2h-2.98zm77.068 36.5.013 1.25.593 2.212.594 2.213 4.143.872 4.143.873 1.75-1.49 1.75-1.49V42h-2.187l-.523 2-.523 2h-5.984l.628-2.5.627-2.5H156z"></path></svg></div><div className="flex w-22.5 flex-col items-center justify-center gap-2"><p className="relative -my-1.25 w-fit text-center text-lg leading-normal whitespace-nowrap opacity-80"><span className="mr-0.5 text-[#F9E4AB]">-</span><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="relative mr-0.5 inline size-3 -translate-y-0.5 rotate-45"><circle cx="94.566" cy="94.574" r="54.425" stroke="#F9E4AB" strokeWidth="22.41"></circle><path fill="#F9E4AB" d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z"></path></svg><span className="text-[#F9E4AB]">2300</span></p><p className="relative -my-1.25 w-fit text-center text-lg leading-normal whitespace-nowrap opacity-80"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="relative mr-0.5 inline size-3 -translate-y-0.5 rotate-45 text-[#EFF1FF]"><circle cx="94.566" cy="94.574" r="54.425" stroke="currentColor" strokeWidth="22.41"></circle><path fill="currentColor" d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z"></path></svg><span className="text-white">2500</span></p></div></div></div></div></div></div></div></div></div>
       )}
 
-      {/* Game Events Ceremony - renders only while an event is active */}
-      {false && (
-        <div
-          className={`clickable-component absolute z-20 flex h-40 w-190 items-center justify-center rounded-md border border-white/15 bg-black/85 backdrop-blur-md shadow-2xl cursor-pointer${activeComponentId === 'game-events' ? ' selected' : ''}`} style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)", backgroundColor: eventsBg }}
-          data-component-id="game-events"
-          onClick={(e) => {
-            e.stopPropagation()
-            onSelectComponent?.('game-events')
-          }}
-        >
-          <div
-            className="absolute inset-0 opacity-20 pointer-events-none"
-            style={{ background: `radial-gradient(circle, ${leftTeamColor} 0%, transparent 70%)` }}
-          />
-          <h1 className="font-schabo text-[72px] text-white uppercase drop-shadow-lg">
-            {liveOnly ? gameEvent : (gameEvent || 'ROUND WIN')}
-          </h1>
-        </div>
-      )}
-
-      {/* Facecam / Webcam */}
+            {/* Facecam / Webcam */}
       {showWebcam && (
         <div
           className={`clickable-component val-classic-facecam absolute z-30 flex flex-col cursor-pointer overflow-hidden rounded-sm border border-white/20 bg-black/95 shadow-2xl${activeComponentId === 'webcam' ? ' selected' : ''}`}
