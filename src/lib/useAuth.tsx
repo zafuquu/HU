@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
+import { supabase } from './supabase'
+
 type AuthStatus = 'loading' | 'signedOut' | 'signedIn'
 
 type AuthProfile = {
@@ -29,6 +31,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true
+    // Purge a stale/expired Supabase session: supabase-js attaches the saved
+    // JWT to EVERY query, and an expired token makes even public-read tables
+    // answer 401 (blank dashboard). After signOut the anon key is used and
+    // public data renders again.
+    supabase.auth.getUser().catch(() => {
+      if (active) void supabase.auth.signOut()
+    })
     fetch('/api/auth/me')
       .then(async (r) => {
         if (!r.ok) throw new Error('no session')

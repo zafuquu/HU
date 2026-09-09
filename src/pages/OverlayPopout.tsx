@@ -411,8 +411,17 @@ export default function OverlayPopout() {
     isUltReady: p.isUltReady ?? ((p.currUltPoints ?? p.ultPoints ?? 0) >= (p.maxUltPoints ?? p.ultMax ?? 8) && (p.maxUltPoints ?? p.ultMax ?? 8) > 0),
     abilities: p.abilities ?? [],
   }))
-  const liveLeft = snapPlayers ? snapPlayers.filter((p: any) => (p.startTeam ?? 0) === 0) : null
-  const liveRight = snapPlayers ? snapPlayers.filter((p: any) => (p.startTeam ?? 1) === 1) : null
+  // Team side: trust explicit startTeam/teamIndex, then the team id string.
+  // Players with NO side evidence go LEFT only — never both sides.
+  const sideOf = (p: any): 0 | 1 => {
+    const st = p.startTeam ?? p.teamIndex
+    if (st === 0 || st === 1) return st
+    const tid = String(p.teamId ?? p.team ?? '').toLowerCase()
+    if (tid === 'red' || tid === 'team two' || tid === '2') return 1
+    return 0
+  }
+  const liveLeft = snapPlayers ? snapPlayers.filter((p: any) => sideOf(p) === 0) : null
+  const liveRight = snapPlayers ? snapPlayers.filter((p: any) => sideOf(p) === 1) : null
   const leftPlayers = liveLeft && liveLeft.length > 0 ? mapLivePlayers(liveLeft) : []
   const rightPlayers = liveRight && liveRight.length > 0 ? mapLivePlayers(liveRight) : []
   // Phantom-camera guard: only treat the configured player as a live publisher
