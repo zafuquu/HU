@@ -56,6 +56,8 @@ export interface GameSnapshot {
     scene?: string | null;
     /** Friendly map name (e.g. "Ascent"). */
     mapName?: string | null;
+    /** Canonical map key (e.g. "ascent") for asset paths. */
+    mapKey?: string | null;
     /**
      * Round phase the site popout's gamePhase derivation reads
      * ("shopping" | "combat" | "end" | "unknown"). Without it the popout can
@@ -121,8 +123,8 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       team: p.teamId ?? null,
       startTeam: p.teamIndex === 1 ? 1 : 0,
       teamIndex: p.teamIndex ?? null,
-      isAlive: p.isAlive ?? true,
-      health: p.health ?? 100,
+      isAlive: p.isAlive !== false && (p.health == null || p.health > 0),
+      health: p.isAlive === false ? 0 : (p.health ?? 100),
       // Real shield from GEP (0/25/50); shieldType drives the site's armor bar.
       armor: p.shield ?? 0,
       shield: p.shield ?? null,
@@ -131,9 +133,9 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       weapon: p.weapon ?? null,
       credits: p.credits ?? null,
       spentCredits: p.spentCredits ?? null,
-      kills: p.kills ?? null,
-      deaths: p.deaths ?? null,
-      assists: p.assists ?? null,
+      kills: p.kills ?? 0,
+      deaths: p.deaths ?? 0,
+      assists: p.assists ?? 0,
       ultPoints: p.ultPoints ?? null,
       ultMax: p.ultMax ?? null,
       hasSpike: p.hasSpike ?? null,
@@ -168,6 +170,7 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       gameEvent: state.gameEvent ?? null,
       scene: state.scene ?? null,
       mapName: state.mapName ?? null,
+      mapKey: state.mapKey ?? null,
       roundPhase: state.round?.phase ?? null,
       isAgentSelectPhase:
         state.sessionPhase === "loading" ||
