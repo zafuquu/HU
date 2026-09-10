@@ -585,6 +585,7 @@ export default function OverlayPopout() {
             roundEnd={(snapState as any)?.roundEnd || null}
             roundNumber={snapState?.currentRound?.roundNumber ?? snapState?.roundNumber ?? null}
             currentlyObserving={liveCurrentlyObserving}
+            spectating={spectating}
             spikeSite={spikeSite}
             spikeState={spikeState}
             leftTeamPlayers={leftPlayers}

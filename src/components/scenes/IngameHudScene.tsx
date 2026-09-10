@@ -58,6 +58,7 @@ interface IngameHudSceneProps {
   onSelectComponent?: (id: string) => void
   isToggled?: (componentId: string) => boolean
   currentlyObserving?: string | null
+  spectating?: boolean
   spikeSite?: string | null
   spikeState?: 'none' | 'planted' | 'defusing' | null
 }
@@ -280,7 +281,7 @@ function EndroundBanner({ roundEnd, roundNumber, winType, leftName, rightName, l
       <div className={slide} style={{ width: 875, height: 170, position: 'relative', overflow: 'hidden', borderRadius: 4, boxShadow: '0 12px 40px rgba(0,0,0,0.55)' }}>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, ' + leftColor + '55 0%, rgba(10,14,22,0.92) 30%, rgba(10,14,22,0.92) 70%, ' + rightColor + '55 100%)' }}>
           <img src={leftLogo ?? undefined} alt="" style={{ position: 'absolute', left: 32, maxHeight: '50%', opacity: 0.2, filter: 'grayscale(1)' }} />
-          <img alt="" src="/game/val/misc/icon.webp" style={{ maxHeight: '56%', objectFit: 'contain' }} />
+          <img alt="" src="/sponsor/Sponsor-2.png" style={{ maxHeight: '56%', objectFit: 'contain' }} />
           <p style={{ fontSize: 30, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: '10px 0 0' }}>{winText}</p>
           <img src={rightLogo ?? undefined} alt="" style={{ position: 'absolute', right: 32, maxHeight: '50%', opacity: 0.2, filter: 'grayscale(1)' }} />
         </div>
@@ -382,7 +383,13 @@ function IngamePlayerCard({
               <div className="absolute inset-0 overflow-hidden rounded-[3px]"><div
                 className="absolute top-0 size-full rounded-[3px] transition-all duration-300 ease-out"
                 style={{
-                  backgroundColor: isAlive ? teamColor : 'rgba(0, 0, 0, 0.41)',
+                  backgroundColor: isAlive
+                    ? health > 60
+                      ? '#28D091'
+                      : health > 30
+                        ? '#F5A623'
+                        : '#FF3549'
+                    : 'rgba(0, 0, 0, 0.41)',
                   width: `${isAlive ? Math.max(0, Math.min(100, health)) : 0}%`,
                   [isRight ? 'right' : 'left']: 0,
                 }}
@@ -586,6 +593,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     onSelectComponent,
     isToggled = () => true,
     currentlyObserving = null,
+    spectating = false,
     spikeSite = null,
     spikeState = null,
   } = props
@@ -610,6 +618,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   })()
 
   const isObservedPlayer = (p: any, side: 'left' | 'right', index: number): boolean => {
+    if (spectating && !currentlyObserving) return Boolean(side === 'left' && index === 0)
     if (!currentlyObserving) return Boolean(side === 'left' && index === 0 && !liveOnly)
     const obs = String(currentlyObserving).toLowerCase().trim()
     const pName = String(p.name || p.alias || p.riotId || p.id || '').toLowerCase().trim()
