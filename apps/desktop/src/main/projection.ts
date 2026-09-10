@@ -613,6 +613,11 @@ export class ValProjectionSession {
       );
       if (hit?.teamIndex != null) return hit.teamIndex;
     }
+    // Fall back to the viewer's GEP team number (0 = Blue, 1 = Red in the
+    // engine snapshot's team normalization). Without this the {won,lost}
+    // score fact attributes rounds to the wrong side when the engine
+    // snapshot hasn't populated the viewer's roster entry yet.
+    if (s.viewerGepTeam !== null) return s.viewerGepTeam;
     return 0;
   }
 
