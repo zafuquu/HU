@@ -151,10 +151,18 @@ export class ValProjectionSession {
       if (vn) s.viewerName = vn;
     }
     if ((s.matchId ?? null) !== matchId) {
-      // New match => clear the previous match's post-game result.
+      // New match => clear the previous match's post-game result AND the whole
+      // team/roster anchoring, so sides re-anchor fresh for the new match.
       s.matchId = matchId;
       s.matchWinner = null;
       s.matchMvp = null;
+      s.roster = [];
+      s.roundHistory = [];
+      s.roundEnd = null;
+      s.gameEvent = null;
+      s.viewerGepTeam = null;
+      s.viewerName = null;
+      this.rosterSeq.clear();
     }
     const MAP_NAMES: Record<string, string> = {
       // Canonical keys (formatMapKey output) -> display names. Codename
@@ -481,19 +489,18 @@ export class ValProjectionSession {
           if (!this.rosterSeq.has(posKey)) this.rosterSeq.set(posKey, this.rosterSeq.size + 1);
           break;
         }
-        // Re-anchor an existing entry if its GEP team conflicts with the
-        // viewer's team (fixes entries created before the anchor was known).
+        // Team side is LOCKED for the match: set once from the first GEP team
+        // evidence (anchored to the viewer's is_local team), never flipped by
+        // later facts. GEP re-emits players under shifting team labels (e.g.
+        // after dropping a weapon), which used to bounce rows across teams.
         if (
           typeof rec.team === "number" &&
           s.viewerGepTeam !== null &&
-          entry.teamIndex != null &&
-          entry.teamIndex !== undefined
+          entry.teamIndex == null
         ) {
           const wantIdx = rec.team === s.viewerGepTeam ? this.viewerTeamIndex() : 1 - this.viewerTeamIndex();
-          if (entry.teamIndex !== wantIdx) {
-            entry.teamIndex = wantIdx;
-            entry.teamId = wantIdx === 0 ? "Blue" : "Red";
-          }
+          entry.teamIndex = wantIdx;
+          entry.teamId = wantIdx === 0 ? "Blue" : "Red";
         }
         // GEP internal codenames -> human display + icon.
         entry.agentName = agentDisplayName(rec.character) ?? entry.agentName ?? null;
