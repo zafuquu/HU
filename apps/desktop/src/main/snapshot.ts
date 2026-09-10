@@ -86,6 +86,12 @@ export interface GameSnapshot {
     };
     /** How the last round ended (winner + reason), cleared at next round start. */
     roundEnd?: { winner: "blue" | "red" | null; reason: string | null } | null;
+    /** Per-round win history (ValoSpectra app-roundreasons parity, max 24). */
+    roundHistory?: Array<{
+      round: number;
+      winner: "blue" | "red";
+      reason: "elimination" | "detonation" | "defusion" | "time";
+    }>;
   };
 }
 
@@ -195,6 +201,9 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
         mvp: state.match?.mvp ?? null,
       },
       roundEnd: state.roundEnd ?? null,
+      // ValoSpectra app-roundreasons parity: per-round win history for the
+      // site's timeline strip (kills/detonated/defused/timeout icons).
+      roundHistory: state.roundHistory ?? [],
     },
   };
 }

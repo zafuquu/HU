@@ -69,6 +69,11 @@ interface WorkingState {
   matchWinner: "blue" | "red" | null;
   matchMvp: { name: string; teamId: string; kills: number; deaths: number; assists: number } | null;
   roundEnd: { winner: "blue" | "red"; reason: "elimination" | "detonation" | "defusion" | "time" } | null;
+  roundHistory: Array<{
+    round: number;
+    winner: "blue" | "red";
+    reason: "elimination" | "detonation" | "defusion" | "time";
+  }>;
 }
 
 function initial(): WorkingState {
@@ -101,12 +106,15 @@ function initial(): WorkingState {
     matchWinner: null,
     matchMvp: null,
     roundEnd: null,
+    roundHistory: [],
   };
 }
 
 export class ValProjectionSession {
   private s = initial();
   private killSeq = 1;
+  /** Stable per-player creation order — keeps roster positions fixed across publishes. */
+  private rosterSeq = new Map<string, number>();
   private readonly listeners = new Set<(state: HudRelayState) => void>();
 
   public reset(): void {
@@ -460,6 +468,10 @@ export class ValProjectionSession {
             hasSpike: typeof rec.spike === "boolean" ? rec.spike : null,
           };
           (s.roster ?? []).push(entry);
+          // Lock the player's stable position (first-seen order). Fixes players
+          // swapping rows/teams between publishes when fact order varies.
+          const posKey = this.normalizeName(entry.displayName);
+          if (!this.rosterSeq.has(posKey)) this.rosterSeq.set(posKey, this.rosterSeq.size + 1);
           break;
         }
         // Re-anchor an existing entry if its GEP team conflicts with the
@@ -712,6 +724,15 @@ export class ValProjectionSession {
               ? "elimination"
               : "time";
       s.roundEnd = { winner: winner === 0 ? "blue" : "red", reason };
+      // ValoSpectra app-roundreasons parity: per-round win history for the
+      // timeline strip (kills/detonated/defused/timeout icons per round).
+      if (
+        s.roundNumber > 0 &&
+        !s.roundHistory.some((h) => h.round === s.roundNumber)
+      ) {
+        s.roundHistory.push({ round: s.roundNumber, winner: s.roundEnd.winner, reason });
+        if (s.roundHistory.length > 24) s.roundHistory.shift();
+      }
     }
     if (s.gameEvent !== null) return;
     if (winner === null) return; // keep null; a later score update retries
@@ -788,7 +809,14 @@ export class ValProjectionSession {
       mapName: s.mapName,
       match: { winner: s.matchWinner, mvp: this.computeMvp() },
       viewerRole: s.viewerRole,
-      roster: s.roster ?? [],
+      roster: [...(s.roster ?? [])].sort((a, b) => {
+        const ta = a.teamIndex ?? 9;
+        const tb = b.teamIndex ?? 9;
+        if (ta !== tb) return ta - tb;
+        const sa = this.rosterSeq.get(this.normalizeName(a.displayName)) ?? 999;
+        const sb = this.rosterSeq.get(this.normalizeName(b.displayName)) ?? 999;
+        return sa - sb;
+      }),
       round: {
         number: s.roundNumber,
         phase: s.roundPhase,
@@ -801,6 +829,7 @@ export class ValProjectionSession {
       gameEvent: s.gameEvent,
       scene: this.deriveScene(),
       roundEnd: s.roundEnd,
+      roundHistory: s.roundHistory,
       updatedAt: Date.now(),
     });
   }

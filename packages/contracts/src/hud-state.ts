@@ -101,6 +101,17 @@ export const hudRelayStateSchema = z.object({
     })
     .nullable()
     .default(null),
+  /** Per-round win history (ValoSpectra app-roundreasons parity, max 24). */
+  roundHistory: z
+    .array(
+      z.object({
+        round: z.number().int().positive(),
+        winner: z.enum(["blue", "red"]),
+        reason: z.enum(["elimination", "detonation", "defusion", "time"]),
+      }),
+    )
+    .max(24)
+    .default([]),
   updatedAt: z.number(),
 });
 export type HudRelayState = z.infer<typeof hudRelayStateSchema>;
