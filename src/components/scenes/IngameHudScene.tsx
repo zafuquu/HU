@@ -371,8 +371,15 @@ function IngamePlayerCard({
                 </div>
               )}
 
-              {/* Shield Icon + Armor value */}
-              <div className="relative z-1 flex h-full w-9 items-center justify-center gap-0.5 px-0.5">
+              {/* Shield Icon + Armor value + armor progress bar */}
+              <div className="relative z-1 flex h-full w-9 items-center justify-center gap-0.5 overflow-hidden px-0.5">
+                <div
+                  className="absolute bottom-0 left-0 h-0.5 transition-all duration-300"
+                  style={{
+                    width: `${Math.min(100, (Number(player.armor ?? player.shield ?? 0) / 50) * 100)}%`,
+                    background: teamColor,
+                  }}
+                />
                 <img src={shieldSrc ?? '/game/val/shields/None.webp'} alt="shield" className="h-3.5 w-auto object-contain drop-shadow" />
                 <span className="font-barlowSemiCond text-[11px] font-bold leading-none text-white/80">
                   {Number(player.armor ?? player.shield ?? 0)}
