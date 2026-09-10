@@ -297,6 +297,8 @@ let lastEventState = {
   killSeq: 0,
   gameEvent: null as string | null,
   matchWinner: null as string | null,
+  matchStarted: false,
+  spike: null as string | null,
 };
 
 function publishNow(): void {
@@ -317,9 +319,63 @@ function publishNow(): void {
     mapName: snapshot.state.mapName ?? null,
   });
   producer.publishSnapshot(snapshot);
-  // NOTE: game-event frames (roundStart/killfeed/roundWin/matchEnd) are NOT
-  // emitted — the site has its own events pipeline and the extra banners were
-  // unwanted. Re-add via producer.publishEvent(...) if ever needed.
+  // Game-event frames feed the site's OWN event pipeline (KillBanner banners +
+  // EVENT_TEXT banner). Types match the bridge's GAME_EVENT_KEYS vocabulary.
+  const prod = producer;
+  const r = proj.round?.number ?? 0;
+  const kf = proj.killfeed ?? [];
+  const spikeNow = proj.spike ?? null;
+  const matchWinner = proj.match?.winner ?? null;
+  const roundEnd = proj.roundEnd ?? null;
+  const ev = (type: string, data: unknown = {}): void => prod.publishEvent({ type, data });
+  if (!matchWinner && lastEventState.matchWinner) {
+    // New match: re-arm the whole event stream.
+    lastEventState.matchWinner = null;
+    lastEventState.matchStarted = false;
+    lastEventState.roundNumber = 0;
+    lastEventState.killSeq = 0;
+    lastEventState.gameEvent = null;
+  }
+  if (proj.sessionPhase === "live" && lastEventState.matchStarted !== true) {
+    lastEventState.matchStarted = true;
+    ev("matchStart", { roundNumber: r });
+  }
+  if (r > 0 && r !== lastEventState.roundNumber) {
+    ev("roundStart", { roundNumber: r });
+    lastEventState.roundNumber = r;
+    lastEventState.gameEvent = null; // re-arm the round-win marker per round
+  }
+  for (const k of kf) {
+    if (k.seq > lastEventState.killSeq) {
+      lastEventState.killSeq = k.seq;
+      ev("killfeed", {
+        attacker: k.attacker,
+        victim: k.victim,
+        weapon: k.weapon,
+        isTeamkill: false,
+      });
+    }
+  }
+  if (spikeNow === "defused" && lastEventState.spike !== "defused") {
+    lastEventState.spike = "defused";
+    ev("spikeDefused", {});
+  } else if (spikeNow === "detonated" && lastEventState.spike !== "detonated") {
+    lastEventState.spike = "detonated";
+    ev("spikeDetonated", {});
+  } else if (spikeNow !== "planted") {
+    lastEventState.spike = null;
+  }
+  if (roundEnd?.winner && lastEventState.gameEvent !== `${r}:${roundEnd.winner}`) {
+    lastEventState.gameEvent = `${r}:${roundEnd.winner}`;
+    ev("roundWin", {
+      winType: (proj.gameEvent ?? "Round Win").toLowerCase(),
+      winningCompetitorId: roundEnd.winner,
+    });
+  }
+  if (matchWinner && lastEventState.matchWinner !== matchWinner) {
+    lastEventState.matchWinner = matchWinner;
+    ev("matchEnd", { winner: matchWinner });
+  }
 }
 
 async function connectProducer(): Promise<void> {

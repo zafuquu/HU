@@ -256,6 +256,13 @@ export class ValProjectionSession {
         if (hasSnapshotStats) continue;
         const prior = previous.get(this.normalizeName(entry.displayName));
         if (!prior) continue;
+        // Team side is anchored by GEP scoreboard facts (viewerGepTeam). The
+        // engine snapshot's squad labels oscillate between heartbeats — keep
+        // the anchored side so rows never flip teams or reorder.
+        if (prior.teamIndex != null) {
+          entry.teamIndex = prior.teamIndex;
+          entry.teamId = prior.teamId ?? entry.teamId;
+        }
         entry.kills = prior.kills ?? undefined;
         entry.deaths = prior.deaths ?? undefined;
         entry.assists = prior.assists ?? undefined;
