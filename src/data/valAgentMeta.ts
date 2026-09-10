@@ -40,7 +40,8 @@ const BY_NAME: Record<string, AgentMeta> = Object.fromEntries(
 )
 
 export function agentByCodename(codename: unknown): AgentMeta | null {
-  const k = String(codename ?? '').toLowerCase()
+  // GEP emits suffixed variants: Sequoia_PC_C, Clay_PC, Stealth_PC_C ...
+  const k = String(codename ?? '').trim().toLowerCase().replace(/_pc(_c)?$/i, '')
   return BY_CODENAME[k] || null
 }
 export function agentByName(name: unknown): AgentMeta | null {
@@ -52,6 +53,7 @@ export function agentByName(name: unknown): AgentMeta | null {
 export function resolveAgent(player: any): AgentMeta | null {
   if (!player) return null
   return (
+    agentByCodename(player.agentKey) ||
     agentByCodename(player.agentCodename) ||
     agentByName(player.agentName) ||
     agentByCodename(player.agentName) ||
