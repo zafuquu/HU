@@ -581,6 +581,8 @@ export default function OverlayPopout() {
             liveOnly={true}
             gameEvent={liveEventText}
             roundEnd={(snapState as any)?.roundEnd || null}
+            roundHistory={(snapState as any)?.roundHistory || []}
+            roundNumber={snapState?.currentRound?.roundNumber ?? snapState?.roundNumber ?? null}
             currentlyObserving={liveCurrentlyObserving}
             spikeSite={spikeSite}
             spikeState={spikeState}
@@ -609,6 +611,7 @@ export default function OverlayPopout() {
             leftTeamPlayers={leftPlayers}
             rightTeamPlayers={rightPlayers}
             economy={liveEconomy}
+            roundHistory={(snapState as any)?.roundHistory || []}
           />
         )}
         {sceneKey === 'map-ban' && (

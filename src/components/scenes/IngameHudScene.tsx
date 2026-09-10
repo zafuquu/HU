@@ -52,6 +52,8 @@ interface IngameHudSceneProps {
   webcamStream?: MediaStream | null
   liveOnly?: boolean
   roundEnd?: { winner: 'blue' | 'red' | null; reason: string | null } | null
+  roundHistory?: Array<{ round: number; winner: 'blue' | 'red'; reason: string }>
+  roundNumber?: number | null
   gameEvent?: string | null
   activeComponentId?: string | null
   onSelectComponent?: (id: string) => void
@@ -141,6 +143,65 @@ function ScoreSmallBlock({ teamColor }: { teamColor: string }) {
   )
 }
 
+/**
+ * ValoSpectra app-roundreasons parity: per-round win strip. Top cell = left
+ * team win (icon by reason), bottom cell = right team win. Winner-tinted.
+ */
+export function RoundReasonsStrip({
+  roundHistory = [],
+  leftTeamColor = '#28D091',
+  rightTeamColor = '#FF3549',
+  leftName = 'INT',
+  rightName = 'ZOO',
+}: {
+  roundHistory?: Array<{ round: number; winner: 'blue' | 'red'; reason: string }>
+  leftTeamColor?: string
+  rightTeamColor?: string
+  leftName?: string
+  rightName?: string
+}) {
+  if (!roundHistory || roundHistory.length === 0) return null
+  const REASON_ICON: Record<string, string> = {
+    elimination: 'kills', detonation: 'detonated', defusion: 'defused', time: 'timeout',
+  }
+  const tint = (hex: string | undefined, on: boolean) => {
+    if (!on) return 'rgba(26, 26, 26, 1)'
+    let h = String(hex || '#28D091').replace('#', '')
+    if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+    const r = parseInt(h.slice(0, 2), 16)
+    const g = parseInt(h.slice(2, 4), 16)
+    const b = parseInt(h.slice(4, 6), 16)
+    return `rgba(${r}, ${g}, ${b}, 0.6)`
+  }
+  return (
+    <div className="pointer-events-none flex items-center rounded-xs border border-white/25 bg-black/85 py-0.5 shadow-md">
+      <div className="flex h-full shrink-0 flex-col items-center justify-around px-1.5">
+        <p className="font-unbounded text-[10px] font-extrabold text-white uppercase">{leftName}</p>
+        <p className="font-unbounded text-[10px] font-extrabold text-white uppercase">{rightName}</p>
+      </div>
+      <div className="flex flex-row gap-0.5 px-1">
+        {roundHistory.map((h) => {
+          const icon = REASON_ICON[h.reason] || 'kills'
+          return (
+            <div key={h.round} className="flex w-[26px] flex-col">
+              <div className="flex h-[22px] items-center justify-center" style={{ background: tint(leftTeamColor, h.winner === 'blue') }}>
+                {h.winner === 'blue' && (
+                  <img className="size-[18px] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={h.reason} />
+                )}
+              </div>
+              <div className="flex h-[22px] items-center justify-center" style={{ background: tint(rightTeamColor, h.winner === 'red') }}>
+                {h.winner === 'red' && (
+                  <img className="size-[18px] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={h.reason} />
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function getWeaponImg(weapon: any) {
   if (!weapon || typeof weapon !== 'string') return '/game/val/weapons/classic.png'
   let w = weapon.toLowerCase().replace(/tx_hud_weapon_|tx_hud_pistol_|tx_hud_|weapon_/g, '').trim()
@@ -157,7 +218,7 @@ function getShieldImg(p: any) {
   const type = p?.shieldType ?? (armor >= 50 ? 2 : armor > 0 ? 1 : 0)
   if (type === 2 || type === 3 || armor >= 50) return '/game/val/shields/Heavy_Armor.png'
   if (type === 1 || type === 4 || armor > 0) return '/game/val/shields/Light_Armor.png'
-  return null
+  return '/game/val/shields/None.webp'
 }
 
 const DEMO_LEFT = [
@@ -253,6 +314,10 @@ function IngamePlayerCard({
               }`}
               style={{ color: isAlive ? textColor : '#737373' }}
             >
+              {/* HP number (live health from GEP scoreboard / killfeed deaths) */}
+              <span className="relative z-1 ml-1 min-w-7 text-center font-barlowSemiCond text-[11px] font-bold leading-none text-white/80">
+                {health}
+              </span>
               {/* Dynamic Health Fill Bar */}
               <div
                 className="absolute top-0 size-full rounded-[3px] transition-all duration-300 ease-out"
@@ -307,12 +372,13 @@ function IngamePlayerCard({
                 </div>
               )}
 
-              {/* Shield Icon */}
-              {shieldSrc && (
-                <div className="relative z-1 flex h-full w-6.75 items-center justify-center px-1">
-                  <img src={shieldSrc} alt="shield" className="h-3.5 w-auto object-contain drop-shadow" />
-                </div>
-              )}
+              {/* Shield Icon + Armor value */}
+              <div className="relative z-1 flex h-full w-9 items-center justify-center gap-0.5 px-0.5">
+                <img src={shieldSrc ?? '/game/val/shields/None.webp'} alt="shield" className="h-3.5 w-auto object-contain drop-shadow" />
+                <span className="font-barlowSemiCond text-[11px] font-bold leading-none text-white/80">
+                  {Number(player.armor ?? player.shield ?? 0)}
+                </span>
+              </div>
             </div>
 
             {/* Bottom Row: Ult + K/D/A + Weapon */}
@@ -443,8 +509,12 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     webcamActive = false,
     webcamStream = null,
     liveOnly = false,
-  roundEnd = null,
+    roundEnd = null,
+    roundHistory = [],
+    roundNumber = null,
     gameEvent = null,
+    leftTeamName: leftTeamNameProp,
+    rightTeamName: rightTeamNameProp,
     activeComponentId,
     onSelectComponent,
     isToggled = () => true,
@@ -452,6 +522,21 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     spikeSite = null,
     spikeState = null,
   } = props
+
+  // ===== Round-win banner (ValoSpectra ROUND_WIN_BOX parity) =====
+  const [roundBannerVisible, setRoundBannerVisible] = React.useState(false)
+  const bannerRef = React.useRef<string | null>(null)
+  const bannerKey = roundEnd?.winner ? `${roundNumber ?? ''}-${roundEnd.winner}-${roundEnd.reason ?? ''}` : null
+  React.useEffect(() => {
+    if (!bannerKey || bannerKey === bannerRef.current) return
+    bannerRef.current = bannerKey
+    setRoundBannerVisible(true)
+    const t = setTimeout(() => setRoundBannerVisible(false), 5000)
+    return () => clearTimeout(t)
+  }, [bannerKey])
+  const bannerWinnerIsLeft = roundEnd?.winner === 'blue'
+  const bannerLeftName = (leftTeamNameProp || leftTeamName || '').toUpperCase()
+  const bannerRightName = (rightTeamNameProp || rightTeamName || '').toUpperCase()
 
   const hasLiveMatch = (leftTeamPlayers && leftTeamPlayers.length > 0) || (rightTeamPlayers && rightTeamPlayers.length > 0)
   const leftRoster = leftTeamPlayers && leftTeamPlayers.length > 0 ? leftTeamPlayers : (hasLiveMatch || liveOnly ? [] : DEMO_LEFT)
@@ -519,6 +604,79 @@ export function IngameHudScene(props: IngameHudSceneProps) {
         '--main-right-color-change': rightTeamColor,
       } as React.CSSProperties}
     >
+      {/* ===== ROUND_WIN_BOX: round-win banner (centered overlay) ===== */}
+      {roundBannerVisible && roundEnd?.winner && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 60,
+            pointerEvents: 'none',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 24,
+              padding: '18px 48px',
+              background: 'linear-gradient(90deg, rgba(10,14,22,0.92), rgba(20,28,44,0.92), rgba(10,14,22,0.92))',
+              border: '1px solid rgba(255,255,255,0.14)',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.55)',
+              animation: 'roundBannerIn 260ms ease-out',
+            }}
+          >
+            <span
+              style={{
+                fontSize: 26,
+                fontWeight: 800,
+                letterSpacing: 2,
+                color: bannerWinnerIsLeft ? 'var(--left-team-color, #f5a623)' : 'rgba(160,170,190,0.55)',
+                textShadow: bannerWinnerIsLeft ? '0 0 18px rgba(245,166,35,0.45)' : 'none',
+              }}
+            >
+              {bannerLeftName || 'BLUE'}
+            </span>
+            <span
+              style={{
+                fontSize: 15,
+                fontWeight: 700,
+                letterSpacing: 3,
+                color: 'rgba(220,230,245,0.9)',
+                padding: '6px 14px',
+                background: 'rgba(255,255,255,0.07)',
+              }}
+            >
+              {roundEnd.reason ? (ROUND_END_TEXT[roundEnd.reason] || 'ROUND WON') : 'ROUND WON'}
+            </span>
+            <span
+              style={{
+                fontSize: 26,
+                fontWeight: 800,
+                letterSpacing: 2,
+                color: !bannerWinnerIsLeft ? 'var(--right-team-color, #f5a623)' : 'rgba(160,170,190,0.55)',
+                textShadow: !bannerWinnerIsLeft ? '0 0 18px rgba(245,166,35,0.45)' : 'none',
+              }}
+            >
+              {bannerRightName || 'RED'}
+            </span>
+          </div>
+          <style>{`@keyframes roundBannerIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }`}</style>
+        </div>
+      )}
+      {/* ===== ROUND_REASONS strip (ValoSpectra app-roundreasons parity) ===== */}
+      <div className="pointer-events-none absolute left-1/2 top-12 z-30 -translate-x-1/2">
+        <RoundReasonsStrip
+          roundHistory={roundHistory}
+          leftTeamColor={leftTeamColor}
+          rightTeamColor={rightTeamColor}
+          leftName={bannerLeftName || 'TEAM A'}
+          rightName={bannerRightName || 'TEAM B'}
+        />
+      </div>
       {/* Top Map History */}
       {showMapHistory && activeMapHistory.length > 0 && (
         <div
