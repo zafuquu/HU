@@ -652,7 +652,7 @@ export default function OverlayPopout() {
 
         {/* Kill banner — first blood, ace, clutch, thrifty popups */}
         <KillBanner
-          killBanner={liveKillBanner}
+          killBanner={liveKillBanner?.type === 'first_blood' ? liveKillBanner : null}
           leftTeamColor={teamA?.color || '#28D091'}
           rightTeamColor={teamB?.color || '#FF3549'}
         />

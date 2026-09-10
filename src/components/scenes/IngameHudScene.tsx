@@ -236,6 +236,66 @@ const DEMO_RIGHT = [
   { alias: 'Player 5', agentName: 'Tejo', kills: 8, deaths: 4, assists: 2, health: 85, isAlive: true, credits: 3700, armor: 50, weapon: 'Vandal' },
 ]
 
+
+const ENDROUND_CSS = '@keyframes endroundIn { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } } @keyframes endroundOutR { to { transform: translateX(100%); opacity: 0; } } @keyframes endroundOutL { to { transform: translateX(-100%); opacity: 0; } } .endround-in { animation: endroundIn 300ms ease-out; } .endround-out-right { animation: endroundOutR 300ms ease-in forwards; } .endround-out-left { animation: endroundOutL 300ms ease-in forwards; }'
+function EndroundBanner({ roundEnd, roundNumber, winType, leftName, rightName, leftLogo, rightLogo, leftColor, rightColor }: {
+  roundEnd: { winner: 'blue' | 'red' | null; reason: string | null } | null
+  roundNumber: number | null
+  winType: string | null
+  leftName: string
+  rightName: string
+  leftLogo: string | null
+  rightLogo: string | null
+  leftColor: string
+  rightColor: string
+}) {
+  const key = roundEnd?.winner ? (roundNumber ?? 0) + ':' + roundEnd.winner : null
+  const [phase, setPhase] = React.useState<'hidden' | 'in' | 'shown' | 'out'>('hidden')
+  const seen = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!key || key === seen.current) return
+    seen.current = key
+    const t1 = setTimeout(() => setPhase('in'), 200)
+    const t2 = setTimeout(() => setPhase('shown'), 2800)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [key])
+  React.useEffect(() => {
+    if (phase !== 'shown' && phase !== 'in') return
+    if (roundEnd) return
+    setPhase('out')
+    const t = setTimeout(() => setPhase('hidden'), 320)
+    return () => clearTimeout(t)
+  }, [roundEnd, phase])
+  if (phase === 'hidden' || !roundEnd?.winner) return null
+  const leftWon = roundEnd.winner === 'blue'
+  const win = leftWon
+    ? { name: (leftName || 'TEAM A').toUpperCase(), color: leftColor, logo: leftLogo }
+    : { name: (rightName || 'TEAM B').toUpperCase(), color: rightColor, logo: rightLogo }
+  const slide = phase === 'in' ? 'endround-in' : phase === 'out' ? (leftWon ? 'endround-out-right' : 'endround-out-left') : ''
+  const winText = (winType || 'Round Win').toUpperCase()
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+      <style>{ENDROUND_CSS}</style>
+      <div className={slide} style={{ width: 875, height: 170, position: 'relative', overflow: 'hidden', borderRadius: 4, boxShadow: '0 12px 40px rgba(0,0,0,0.55)' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, ' + leftColor + '55 0%, rgba(10,14,22,0.92) 30%, rgba(10,14,22,0.92) 70%, ' + rightColor + '55 100%)' }}>
+          <img src={leftLogo ?? undefined} alt="" style={{ position: 'absolute', left: 32, maxHeight: '50%', opacity: 0.2, filter: 'grayscale(1)' }} />
+          <img alt="" src="/game/val/misc/icon.webp" style={{ maxHeight: '56%', objectFit: 'contain' }} />
+          <p style={{ fontSize: 30, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: '10px 0 0' }}>{winText}</p>
+          <img src={rightLogo ?? undefined} alt="" style={{ position: 'absolute', right: 32, maxHeight: '50%', opacity: 0.2, filter: 'grayscale(1)' }} />
+        </div>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', background: 'linear-gradient(90deg, ' + win.color + 'dd 0%, rgba(10,14,22,0.92) 55%)', transition: 'transform 300ms ease, opacity 300ms ease', transform: phase === 'shown' ? 'translateX(0)' : leftWon ? 'translateX(-100%)' : 'translateX(100%)', opacity: phase === 'shown' ? 1 : 0 }}>
+          <img src={win.logo ?? undefined} alt="" style={{ maxHeight: '55%', maxWidth: 160, objectFit: 'contain' }} />
+          <div style={{ textAlign: 'center' }}>
+            <p style={{ fontSize: 26, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>{win.name}</p>
+            <p style={{ fontSize: 24, fontWeight: 800, color: '#fff', textTransform: 'uppercase', margin: '6px 0 0' }}>ROUND {roundNumber ?? ''}</p>
+          </div>
+          <img alt="" src="/game/val/misc/logo.webp" style={{ maxHeight: '50%', objectFit: 'contain', opacity: 0.9 }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function IngamePlayerCard({
   player,
   side,
@@ -318,18 +378,19 @@ function IngamePlayerCard({
                 {health}
               </span>
               {/* Dynamic Health Fill Bar */}
-              <div
+              <div className="absolute inset-0 overflow-hidden rounded-[3px]"><div
                 className="absolute top-0 size-full rounded-[3px] transition-all duration-300 ease-out"
                 style={{
                   backgroundColor: isAlive ? teamColor : 'rgba(0, 0, 0, 0.41)',
                   width: `${isAlive ? Math.max(0, Math.min(100, health)) : 0}%`,
                   [isRight ? 'right' : 'left']: 0,
                 }}
-              />
+              /></div>
+
 
               {/* Agent Icon */}
               <div className="relative h-full w-12.5 shrink-0">
-                <div className="absolute bottom-0 left-0 h-12.5 w-12.5 flex items-center justify-center">
+                <div className="absolute top-0 left-0 h-12.5 w-12.5 flex items-center justify-center">
                   <img
                     className={`size-full object-contain duration-200 ${isAlive ? '' : 'grayscale opacity-40 brightness-75'}`}
                     style={isRight ? { transform: 'scaleX(-1)' } : undefined}
@@ -374,7 +435,7 @@ function IngamePlayerCard({
               {/* Shield Icon + Armor value + armor progress bar */}
               <div className="relative z-1 flex h-full w-9 items-center justify-center gap-0.5 overflow-hidden px-0.5">
                 <div
-                  className="absolute bottom-0 left-0 h-0.5 transition-all duration-300"
+                  className="absolute bottom-0 left-0 h-1 transition-all duration-300"
                   style={{
                     width: `${Math.min(100, (Number(player.armor ?? player.shield ?? 0) / 50) * 100)}%`,
                     background: teamColor,
@@ -609,69 +670,18 @@ export function IngameHudScene(props: IngameHudSceneProps) {
         '--main-right-color-change': rightTeamColor,
       } as React.CSSProperties}
     >
-      {/* ===== ROUND_WIN_BOX: round-win banner (centered overlay) ===== */}
-      {roundBannerVisible && roundEnd?.winner && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 60,
-            pointerEvents: 'none',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 24,
-              padding: '18px 48px',
-              background: 'linear-gradient(90deg, rgba(10,14,22,0.92), rgba(20,28,44,0.92), rgba(10,14,22,0.92))',
-              border: '1px solid rgba(255,255,255,0.14)',
-              boxShadow: '0 10px 40px rgba(0,0,0,0.55)',
-              animation: 'roundBannerIn 260ms ease-out',
-            }}
-          >
-            <span
-              style={{
-                fontSize: 26,
-                fontWeight: 800,
-                letterSpacing: 2,
-                color: bannerWinnerIsLeft ? 'var(--left-team-color, #f5a623)' : 'rgba(160,170,190,0.55)',
-                textShadow: bannerWinnerIsLeft ? '0 0 18px rgba(245,166,35,0.45)' : 'none',
-              }}
-            >
-              {bannerLeftName || 'BLUE'}
-            </span>
-            <span
-              style={{
-                fontSize: 15,
-                fontWeight: 700,
-                letterSpacing: 3,
-                color: 'rgba(220,230,245,0.9)',
-                padding: '6px 14px',
-                background: 'rgba(255,255,255,0.07)',
-              }}
-            >
-              {roundEnd.reason ? (ROUND_END_TEXT[roundEnd.reason] || 'ROUND WON') : 'ROUND WON'}
-            </span>
-            <span
-              style={{
-                fontSize: 26,
-                fontWeight: 800,
-                letterSpacing: 2,
-                color: !bannerWinnerIsLeft ? 'var(--right-team-color, #f5a623)' : 'rgba(160,170,190,0.55)',
-                textShadow: !bannerWinnerIsLeft ? '0 0 18px rgba(245,166,35,0.45)' : 'none',
-              }}
-            >
-              {bannerRightName || 'RED'}
-            </span>
-          </div>
-          <style>{`@keyframes roundBannerIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }`}</style>
-        </div>
-      )}
+            {/* ===== ENDROUND BANNER (ValoSpectra endround-banner parity) ===== */}
+      <EndroundBanner
+        roundEnd={roundEnd}
+        roundNumber={roundNumber}
+        winType={gameEvent}
+        leftName={bannerLeftName}
+        rightName={bannerRightName}
+        leftLogo={leftTeamLogo ?? null}
+        rightLogo={rightTeamLogo ?? null}
+        leftColor={leftTeamColor}
+        rightColor={rightTeamColor}
+      />
       {/* Top Map History */}
       {showMapHistory && activeMapHistory.length > 0 && (
         <div
