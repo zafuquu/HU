@@ -52,7 +52,6 @@ interface IngameHudSceneProps {
   webcamStream?: MediaStream | null
   liveOnly?: boolean
   roundEnd?: { winner: 'blue' | 'red' | null; reason: string | null } | null
-  roundHistory?: Array<{ round: number; winner: 'blue' | 'red'; reason: string }>
   roundNumber?: number | null
   gameEvent?: string | null
   activeComponentId?: string | null
@@ -510,7 +509,6 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     webcamStream = null,
     liveOnly = false,
     roundEnd = null,
-    roundHistory = [],
     roundNumber = null,
     gameEvent = null,
     leftTeamName: leftTeamNameProp,
@@ -667,16 +665,6 @@ export function IngameHudScene(props: IngameHudSceneProps) {
           <style>{`@keyframes roundBannerIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }`}</style>
         </div>
       )}
-      {/* ===== ROUND_REASONS strip (ValoSpectra app-roundreasons parity) ===== */}
-      <div className="pointer-events-none absolute left-1/2 top-12 z-30 -translate-x-1/2">
-        <RoundReasonsStrip
-          roundHistory={roundHistory}
-          leftTeamColor={leftTeamColor}
-          rightTeamColor={rightTeamColor}
-          leftName={bannerLeftName || 'TEAM A'}
-          rightName={bannerRightName || 'TEAM B'}
-        />
-      </div>
       {/* Top Map History */}
       {showMapHistory && activeMapHistory.length > 0 && (
         <div
@@ -831,7 +819,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
                 decoding="sync"
                 loading="eager"
                 className="relative z-1 size-full object-contain"
-                src="https://huds.blob.productions/common/default-sponsors/sponsor-1.png"
+                src="/sponsor/Sponsor-1.png"
               />
             </div>
           </div>

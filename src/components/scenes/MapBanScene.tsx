@@ -281,7 +281,7 @@ export function MapBanScene(props: MapBanSceneProps) {
             </div>
             <div className="relative h-[2px] flex-1 self-center"><div className="anim-line-sponsor absolute top-0 right-0 size-full origin-left bg-white" style={{ transform: 'scaleX(1)' } as React.CSSProperties} /></div>
             <div className="anim-logo-sponsor relative h-full w-[205px]" style={{ opacity: '1', transform: 'translateY(0px)' } as React.CSSProperties}>
-              <div className="sponsors-card relative overflow-hidden size-full p-0"><img alt="sponsor" data-cache-status="hit" decoding="sync" loading="eager" className="relative z-1 size-full object-contain" src="https://huds.blob.productions/common/default-sponsors/sponsor-1.png" /></div>
+              <div className="sponsors-card relative overflow-hidden size-full p-0"><img alt="sponsor" data-cache-status="hit" decoding="sync" loading="eager" className="relative z-1 size-full object-contain" src="/sponsor/Sponsor-1.png" /></div>
             </div>
           </div>
         </div>
