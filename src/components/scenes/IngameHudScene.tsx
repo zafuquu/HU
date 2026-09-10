@@ -215,8 +215,9 @@ function getWeaponImg(weapon: any) {
 function getShieldImg(p: any) {
   const armor = Number(p?.armor ?? p?.shield ?? 0)
   const type = p?.shieldType ?? (armor >= 50 ? 2 : armor > 0 ? 1 : 0)
+  if (type === 4) return '/game/val/shields/Regen_Shield.png'
   if (type === 2 || type === 3 || armor >= 50) return '/game/val/shields/Heavy_Armor.png'
-  if (type === 1 || type === 4 || armor > 0) return '/game/val/shields/Light_Armor.png'
+  if (type === 1 || armor > 0) return '/game/val/shields/Light_Armor.png'
   return '/game/val/shields/None.webp'
 }
 
@@ -274,7 +275,7 @@ function EndroundBanner({ roundEnd, roundNumber, winType, leftName, rightName, l
   const slide = phase === 'in' ? 'endround-in' : phase === 'out' ? (leftWon ? 'endround-out-right' : 'endround-out-left') : ''
   const winText = (winType || 'Round Win').toUpperCase()
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <style>{ENDROUND_CSS}</style>
       <div className={slide} style={{ width: 875, height: 170, position: 'relative', overflow: 'hidden', borderRadius: 4, boxShadow: '0 12px 40px rgba(0,0,0,0.55)' }}>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, ' + leftColor + '55 0%, rgba(10,14,22,0.92) 30%, rgba(10,14,22,0.92) 70%, ' + rightColor + '55 100%)' }}>
@@ -390,7 +391,7 @@ function IngamePlayerCard({
 
               {/* Agent Icon */}
               <div className="relative h-full w-12.5 shrink-0">
-                <div className="absolute top-0 left-0 h-12.5 w-12.5 flex items-center justify-center">
+                <div className="absolute bottom-0 left-0 h-12.5 w-12.5 flex items-center justify-center">
                   <img
                     className={`size-full object-contain duration-200 ${isAlive ? '' : 'grayscale opacity-40 brightness-75'}`}
                     style={isRight ? { transform: 'scaleX(-1)' } : undefined}

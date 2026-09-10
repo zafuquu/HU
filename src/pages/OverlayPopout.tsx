@@ -402,6 +402,8 @@ export default function OverlayPopout() {
     weaponName: p.weaponName || p.scoreboardWeaponInternal || p.weapon || null,
     shieldType: p.shieldType,
     currUltPoints: p.currUltPoints ?? p.ultPoints ?? p.ultimate ?? 0,
+    ultPoints: p.ultPoints ?? p.currUltPoints ?? p.ultimate ?? 0,
+    shield: p.shield ?? p.armor ?? 0,
     maxUltPoints: p.maxUltPoints ?? p.ultMax ?? p.ultimateMax ?? 8,
     hasSpike: Boolean(p.hasSpike),
     kills: p.kills ?? 0,
