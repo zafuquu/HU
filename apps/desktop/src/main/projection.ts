@@ -162,6 +162,7 @@ export class ValProjectionSession {
       infinity_: "Abyss", hurm_alley: "District", hurm_bowl: "Kasbah", hurm_helix: "Drift",
       hurm_hightide: "Glitch", hurm_yard: "Piazza", skirmish_a: "Skirmish A", skirmish_b: "Skirmish B",
       skirmish_c: "Skirmish C", skirmish_d: "Skirmish D", skirmish_e: "Skirmish E",
+      juliett: "Sunset", drome: "Drome", riviera: "Riviera",
     };
     if (mapKey) {
       s.mapKey = mapKey;
@@ -828,11 +829,16 @@ export class ValProjectionSession {
     const s = this.s;
     if (s.sessionPhase === "idle") return null;
     if (s.sessionPhase === "unknown") return null;
+    // GEP round facts are the real-time truth for the current phase — they
+    // override the engine snapshot's session-level phase which can be stale
+    // during match transitions (pregame → live).
+    if (s.roundPhase === "shopping") return "buy-round";
+    if (s.roundPhase === "combat") return "ingame-hud";
+    if (s.roundPhase === "end") return "ingame-hud";
+    // No concrete round phase — use sessionPhase for match-level scenes.
     if (s.sessionPhase === "loading" || s.sessionPhase === "pregame") return "agent-select";
     if (s.sessionPhase === "ending") return "post-game";
     if (s.blue >= 13 || s.red >= 13) return "post-game";
-    if (s.roundPhase === "shopping") return "buy-round";
-    if (s.roundPhase === "combat" || s.roundPhase === "end") return "ingame-hud";
     // Pre-round-1 of a real match: the provider emits match_id during agent
     // select while round facts have not started yet (roundPhase stays
     // "unknown") — map that to the agent-select scene. BUT a nonzero score
