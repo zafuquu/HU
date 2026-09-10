@@ -78,8 +78,9 @@ html, body { background: transparent; font-family: var(--font); color: #eef2f6; 
 .r-row.dead .r-name { text-decoration: line-through; }
 /* Scene switching (projection deriveScene contract): agent-select shows
    rosters only; buy-round adds the scoreline; ingame-hud/post-game are full. */
+#root[data-scene='agent-select'] .score-line,
 #root[data-scene='agent-select'] .killfeed,
-#root[data-scene='agent-select'] .alive-bar { display: none; }
+#root[data-scene='agent-select'] .alive-bar { display: none !important; }
 #root[data-scene='buy-round'] .killfeed { display: none; }
 #root[data-scene='post-game'] .killfeed { display: none; }
 .pipeline-debug { position: fixed; right: 6px; bottom: 4px; font: 11px monospace; color: #9aa0a6; }

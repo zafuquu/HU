@@ -49,6 +49,8 @@ interface WorkingState {
   roundPhase: "shopping" | "combat" | "end" | "unknown";
   phaseStartedAt: number | null;
   spikePlantedAt: number | null;
+  viewerGepTeam: number | null;
+  viewerName: string | null;
   pendingPhase: string | null;
   publishedNumber: number;
   publishedPhase: string | null;
@@ -80,6 +82,8 @@ function initial(): WorkingState {
     roundPhase: "unknown",
     phaseStartedAt: null,
     spikePlantedAt: null,
+    viewerGepTeam: null,
+    viewerName: null,
     pendingPhase: null,
     publishedNumber: 0,
     publishedPhase: null,
@@ -131,6 +135,13 @@ export class ValProjectionSession {
 
     s.revision += 1;
     s.sessionPhase = sessionPhase;
+    // Remember the viewer's display name so GEP scoreboard facts can anchor
+    // the local player (is_local/team) to their roster entry.
+    if (!s.viewerName) {
+      const vp = snap.session?.viewer?.player ?? snap.viewer?.player ?? null;
+      const vn = vp?.displayName ?? vp?.gameName ?? null;
+      if (vn) s.viewerName = vn;
+    }
     if ((s.matchId ?? null) !== matchId) {
       // New match => clear the previous match's post-game result.
       s.matchId = matchId;
@@ -259,35 +270,42 @@ export class ValProjectionSession {
     // scoreboard_enemy, scoreboard_N, ...). Normalize to the base case.
     const normalizedKey = key.startsWith("scoreboard") ? "scoreboard" : key;
     switch (normalizedKey) {
-      case "match_score": {
+      case "match_score":
+      case "score": {
         const rec = value as { team_0?: unknown; team_1?: unknown; won?: unknown; lost?: unknown };
-        // Fork dialect: {team_0, team_1}. Engine dialect: {won, lost} from the
-        // viewer's perspective (won = the viewer's team = blue).
-        let blue: unknown;
-        let red: unknown;
+        // Fork dialect: {team_0, team_1} are absolute sides (blue/red).
+        // Engine dialect: {won, lost} is the LOCAL PLAYER's perspective - the
+        // viewer's side is anchored by their GEP team number (is_local
+        // scoreboard entries), NOT assumed to be blue.
+        let viewerScore: number | null = null;
+        let enemyScore: number | null = null;
         if (rec?.team_0 !== undefined || rec?.team_1 !== undefined) {
-          blue = rec?.team_0;
-          red = rec?.team_1;
-        } else if (rec?.won !== undefined || rec?.lost !== undefined) {
-          blue = rec?.won;
-          red = rec?.lost;
-        } else return;
-        if (typeof blue === "number" && typeof red === "number") {
-          s.blue = blue;
-          s.red = red;
-          // Match point reached -> the side with more rounds is the winner.
-          if (s.blue >= 13 || s.red >= 13) {
-            s.matchWinner = s.blue >= s.red ? "blue" : "red";
-          }
-        } else if (typeof blue === "string" || typeof red === "string") {
-          const b = Number(blue);
-          const r = Number(red);
+          const b = Number(rec?.team_0);
+          const r = Number(rec?.team_1);
           if (Number.isFinite(b) && Number.isFinite(r)) {
             s.blue = b;
             s.red = r;
-            if (b >= 13 || r >= 13) s.matchWinner = b >= r ? "blue" : "red";
+          } else return;
+        } else if (rec?.won !== undefined || rec?.lost !== undefined) {
+          viewerScore = Number(rec?.won);
+          enemyScore = Number(rec?.lost);
+          if (!Number.isFinite(viewerScore) || !Number.isFinite(enemyScore)) return;
+          const vi = this.viewerTeamIndex();
+          if (vi === 1) {
+            s.red = viewerScore;
+            s.blue = enemyScore;
+          } else {
+            s.blue = viewerScore;
+            s.red = enemyScore;
           }
         } else return;
+        // Match point reached -> the side with more rounds is the winner.
+        if (s.blue >= 13 || s.red >= 13) {
+          s.matchWinner = s.blue >= s.red ? "blue" : "red";
+        }
+        // The engine delivers match_score AFTER round_phase:end - settle now
+        // so the round winner/reason is never lost to the shopping wipe.
+        if (s.roundPhase === "end" && s.gameEvent === null) this.settle();
         break;
       }
       case "round_number": {
@@ -396,14 +414,67 @@ export class ValProjectionSession {
         const rec = value as Record<string, unknown>;
         const name = typeof rec?.name === "string" ? rec.name : null;
         if (!name) return;
-        const entry = (s.roster ?? []).find(
+        let entry = (s.roster ?? []).find(
           (p) => this.normalizeName(p.displayName) === this.normalizeName(name),
         );
-        if (!entry) return;
         const num = (v: unknown): number | undefined =>
           typeof v === "number" && Number.isFinite(v) ? v : undefined;
         const str = (v: unknown): string | undefined =>
           typeof v === "string" && v.length > 0 ? v : undefined;
+        // Anchor the viewer's GEP team from the local player's scoreboard row.
+        if (rec.is_local === true && typeof rec.team === "number") {
+          if (s.viewerGepTeam === null) s.viewerGepTeam = rec.team;
+          if (!s.viewerName) s.viewerName = name;
+        }
+        if (!entry) {
+          // ValoSpectra-style: GEP scoreboard is authoritative - create the
+          // player on the fly instead of dropping the fact (cold-start safe).
+          const viewerIdx = this.viewerTeamIndex();
+          const gepTeam = typeof rec.team === "number" ? rec.team : null;
+          const teamIdx =
+            gepTeam === null
+              ? undefined
+              : s.viewerGepTeam !== null && gepTeam !== s.viewerGepTeam
+                ? 1 - viewerIdx
+                : viewerIdx;
+          entry = {
+            displayName: name,
+            agentName: agentDisplayName(rec.character) ?? null,
+            agentKey:
+              typeof rec.character === "string" && rec.character.length > 0
+                ? rec.character.toLowerCase()
+                : undefined,
+            agentIcon: agentIconUrl(rec.character) ?? null,
+            teamId: teamIdx === 0 ? "Blue" : teamIdx === 1 ? "Red" : undefined,
+            teamIndex: teamIdx ?? undefined,
+            kills: num(rec.kills) ?? null,
+            deaths: num(rec.deaths) ?? null,
+            assists: num(rec.assists) ?? null,
+            credits: num(rec.credits ?? rec.money) ?? null,
+            shield: num(rec.shield ?? rec.armor) ?? null,
+            weapon: weaponDisplayName(rec.weapon) ?? null,
+            isAlive: typeof rec.alive === "boolean" ? rec.alive : undefined,
+            ultPoints: num(rec.ult_points) ?? null,
+            ultMax: num(rec.ult_max) ?? null,
+            hasSpike: typeof rec.spike === "boolean" ? rec.spike : null,
+          };
+          (s.roster ?? []).push(entry);
+          break;
+        }
+        // Re-anchor an existing entry if its GEP team conflicts with the
+        // viewer's team (fixes entries created before the anchor was known).
+        if (
+          typeof rec.team === "number" &&
+          s.viewerGepTeam !== null &&
+          entry.teamIndex != null &&
+          entry.teamIndex !== undefined
+        ) {
+          const wantIdx = rec.team === s.viewerGepTeam ? this.viewerTeamIndex() : 1 - this.viewerTeamIndex();
+          if (entry.teamIndex !== wantIdx) {
+            entry.teamIndex = wantIdx;
+            entry.teamId = wantIdx === 0 ? "Blue" : "Red";
+          }
+        }
         // GEP internal codenames -> human display + icon.
         entry.agentName = agentDisplayName(rec.character) ?? entry.agentName ?? null;
         entry.agentKey =
@@ -439,6 +510,24 @@ export class ValProjectionSession {
         }
         break;
       }
+      case "abilities": {
+        // GEP emits the LOCAL player's ability charges: {C,Q,E,X} booleans.
+        const rec = value as Record<string, unknown>;
+        const local = (s.roster ?? []).find(
+          (p) =>
+            s.viewerName != null &&
+            this.normalizeName(p.displayName) === this.normalizeName(s.viewerName),
+        );
+        if (local) {
+          local.abilityState = {
+            C: rec?.C === true,
+            Q: rec?.Q === true,
+            E: rec?.E === true,
+            X: rec?.X === true,
+          };
+        }
+        break;
+      }
       default:
         return; // unhandled keys never mutate -> no emit
     }
@@ -465,7 +554,12 @@ export class ValProjectionSession {
 
   private shouldWaitForNumber(nextPhase: string): boolean {
     const s = this.s;
-    if (s.roundNumber <= 0) return true;
+    if (s.roundNumber <= 0) {
+      // Round 1: the engine starts emitting shopping/combat before any
+      // round_number fact - NEVER block (ValoSpectra parity). publishRound
+      // promotes the round number to 1.
+      return false;
+    }
     if (s.publishedPhase === null) return false;
     if (s.roundNumber > s.publishedNumber) return false;
     const prevOrder = PHASE_ORDER[s.publishedPhase];
@@ -479,6 +573,7 @@ export class ValProjectionSession {
     const phase = s.pendingPhase;
     s.roundPhase = phase as HudRelayState["round"]["phase"];
     s.phaseStartedAt = Date.now();
+    if (s.roundNumber <= 0) s.roundNumber = 1;
     s.publishedNumber = s.roundNumber;
     s.publishedPhase = phase;
     s.pendingPhase = null;
@@ -508,6 +603,17 @@ export class ValProjectionSession {
    * Clutch -> Ace (>=5 round kills) -> Team Ace (every winner >=1 kill) ->
    * Flawless (no winner died) -> Thrifty (loadout avg +2000; needs credit
    * evidence, otherwise skipped) -> Normal ("Round Win"). */
+
+  private viewerTeamIndex(): number {
+    const s = this.s;
+    if (s.viewerName) {
+      const hit = (s.roster ?? []).find(
+        (p) => this.normalizeName(p.displayName) === this.normalizeName(s.viewerName!),
+      );
+      if (hit?.teamIndex != null) return hit.teamIndex;
+    }
+    return 0;
+  }
 
   private normalizeName(name: string): string {
     return name.split("#")[0]!.trim().toLowerCase();

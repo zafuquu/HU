@@ -35,6 +35,8 @@ export interface GamePlayerState {
   weapon?: string | null;
   /** GEP internal agent codename (e.g. "cashew") for icon/ability asset paths. */
   agentKey?: string | null;
+  /** Local player's ability charges (C/Q/E/X) from GEP. */
+  abilityState?: { C?: boolean | null; Q?: boolean | null; E?: boolean | null; X?: boolean | null } | null;
   credits?: number | null;
   spentCredits?: number | null;
   kills?: number | null;
@@ -126,6 +128,7 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       startTeam: p.teamIndex === 1 ? 1 : 0,
       teamIndex: p.teamIndex ?? null,
       agentKey: p.agentKey ?? undefined,
+      abilityState: p.abilityState ?? null,
       isAlive: p.isAlive !== false && (p.health == null || p.health > 0),
       health: p.isAlive === false ? 0 : (p.health ?? 100),
       // Real shield from GEP (0/25/50); shieldType drives the site's armor bar.

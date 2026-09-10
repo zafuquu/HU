@@ -55,6 +55,14 @@ export const hudRelayStateSchema = z.object({
         // provider supplies scoreboard observations.
         agentIcon: z.string().nullish(),
         agentKey: z.string().nullish(),
+        abilityState: z
+          .object({
+            C: z.boolean().nullish(),
+            Q: z.boolean().nullish(),
+            E: z.boolean().nullish(),
+            X: z.boolean().nullish(),
+          })
+          .nullish(),
         kills: z.number().int().nullish(),
         deaths: z.number().int().nullish(),
         assists: z.number().int().nullish(),
