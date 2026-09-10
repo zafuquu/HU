@@ -85,7 +85,7 @@ export function BuyRoundScene(props: BuyRoundSceneProps) {
   const wonLeft = !!rec && rec.winner === 'blue'
   const wonRight = !!rec && rec.winner === 'red'
   const icon = rec ? ({ elimination: 'kills', detonation: 'detonated', defusion: 'defused', time: 'timeout' } as Record<string, string>)[rec.reason] || 'kills' : null
-  const tint = (hex: string | undefined, on: boolean) => {if (!on) return 'rgb(26, 26, 26)'; let h = String(hex || '#1DCD9B').replace('#', ''); if (h.length === 3) h = h.split('').map((c) => c + c).join(''); const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16)return 'rgba(' + r + ', ' + g + ', ' + b + ', 0.55)' }
+  const tint = (hex: string | undefined, on: boolean) => {if (!on) return 'rgb(26, 26, 26)'; let h = String(hex || '#1DCD9B').replace('#', ''); if (h.length === 3) h = h.split('').map((c) => c + c).join(''); const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16); return 'rgba(' + r + ', ' + g + ', ' + b + ', 0.55)' }
   return (
     <div key={n} className="flex h-full w-[34.6px] flex-col items-center justify-center gap-1">
       <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>{wonLeft && icon && <img className="size-[80%] object-contain" src={'/game/val/roundWinReason/' + icon + '.webp'} alt={rec.reason} />}</div>
@@ -98,7 +98,7 @@ export function BuyRoundScene(props: BuyRoundSceneProps) {
   const wonLeft = !!rec && rec.winner === 'blue'
   const wonRight = !!rec && rec.winner === 'red'
   const icon = rec ? ({ elimination: 'kills', detonation: 'detonated', defusion: 'defused', time: 'timeout' } as Record<string, string>)[rec.reason] || 'kills' : null
-  const tint = (hex: string | undefined, on: boolean) => {if (!on) return 'rgb(26, 26, 26)'; let h = String(hex || '#1DCD9B').replace('#', ''); if (h.length === 3) h = h.split('').map((c) => c + c).join(''); const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16)return 'rgba(' + r + ', ' + g + ', ' + b + ', 0.55)' }
+  const tint = (hex: string | undefined, on: boolean) => {if (!on) return 'rgb(26, 26, 26)'; let h = String(hex || '#1DCD9B').replace('#', ''); if (h.length === 3) h = h.split('').map((c) => c + c).join(''); const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16); return 'rgba(' + r + ', ' + g + ', ' + b + ', 0.55)' }
   return (
     <div key={n} className="flex h-full w-[34.6px] flex-col items-center justify-center gap-1">
       <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>{wonLeft && icon && <img className="size-[80%] object-contain" src={'/game/val/roundWinReason/' + icon + '.webp'} alt={rec.reason} />}</div>
