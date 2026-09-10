@@ -589,18 +589,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     spikeState = null,
   } = props
 
-  // ===== Round-win banner (ValoSpectra ROUND_WIN_BOX parity) =====
-  const [roundBannerVisible, setRoundBannerVisible] = React.useState(false)
-  const bannerRef = React.useRef<string | null>(null)
-  const bannerKey = roundEnd?.winner ? `${roundNumber ?? ''}-${roundEnd.winner}-${roundEnd.reason ?? ''}` : null
-  React.useEffect(() => {
-    if (!bannerKey || bannerKey === bannerRef.current) return
-    bannerRef.current = bannerKey
-    setRoundBannerVisible(true)
-    const t = setTimeout(() => setRoundBannerVisible(false), 5000)
-    return () => clearTimeout(t)
-  }, [bannerKey])
-  const bannerWinnerIsLeft = roundEnd?.winner === 'blue'
+  // ===== Endround banner names (ValoSpectra endround-banner parity) =====
   const bannerLeftName = (leftTeamNameProp || leftTeamName || '').toUpperCase()
   const bannerRightName = (rightTeamNameProp || rightTeamName || '').toUpperCase()
 
