@@ -382,6 +382,7 @@ export default function OverlayPopout() {
     id: p.playerId || p.name || Math.random(),
     alias: p.name || p.alias || p.agentName || `Player ${idx + 1}`,
     agentKey: p.agentKey ?? null,
+    abilityState: p.abilityState ?? null,
     riotId: p.tagline || '',
     agentName: p.agentName || p.character || p.agent || null,
     agent: p.agentName || p.character || p.agent || null,
