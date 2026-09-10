@@ -115,6 +115,8 @@ export class ValProjectionSession {
   private killSeq = 1;
   /** Stable per-player creation order — keeps roster positions fixed across publishes. */
   private rosterSeq = new Map<string, number>();
+  /** Last GEP team number seen per player — the team-side source of truth. */
+  private lastGepTeam = new Map<string, number>();
   private readonly listeners = new Set<(state: HudRelayState) => void>();
 
   public reset(): void {
@@ -163,6 +165,7 @@ export class ValProjectionSession {
       s.viewerGepTeam = null;
       s.viewerName = null;
       this.rosterSeq.clear();
+      this.lastGepTeam.clear();
     }
     const MAP_NAMES: Record<string, string> = {
       // Canonical keys (formatMapKey output) -> display names. Codename
@@ -267,7 +270,16 @@ export class ValProjectionSession {
         // Team side is anchored by GEP scoreboard facts (viewerGepTeam). The
         // engine snapshot's squad labels oscillate between heartbeats — keep
         // the anchored side so rows never flip teams or reorder.
-        if (prior.teamIndex != null) {
+        if (s.viewerGepTeam !== null) {
+          const gt = this.lastGepTeam.get(this.normalizeName(entry.displayName));
+          if (gt != null) {
+            entry.teamIndex = gt === s.viewerGepTeam ? 0 : 1;
+            entry.teamId = entry.teamIndex === 0 ? "Blue" : "Red";
+          } else if (prior.teamIndex != null) {
+            entry.teamIndex = prior.teamIndex;
+            entry.teamId = prior.teamId ?? entry.teamId;
+          }
+        } else if (prior.teamIndex != null) {
           entry.teamIndex = prior.teamIndex;
           entry.teamId = prior.teamId ?? entry.teamId;
         }
@@ -445,10 +457,26 @@ export class ValProjectionSession {
           typeof v === "number" && Number.isFinite(v) ? v : undefined;
         const str = (v: unknown): string | undefined =>
           typeof v === "string" && v.length > 0 ? v : undefined;
-        // Anchor the viewer's GEP team from the local player's scoreboard row.
-        if (rec.is_local === true && typeof rec.team === "number") {
-          if (s.viewerGepTeam === null) s.viewerGepTeam = rec.team;
+        // Anchor the viewer's GEP team from their scoreboard row — is_local
+        // when the provider sends it, otherwise the snapshot's viewer name.
+        // (Without this, a cold start piles every player onto one team.)
+        const normName = this.normalizeName(name);
+        if (typeof rec.team === "number") this.lastGepTeam.set(normName, rec.team);
+        const isViewerRow =
+          rec.is_local === true ||
+          (s.viewerName != null && normName === this.normalizeName(s.viewerName));
+        if (isViewerRow && typeof rec.team === "number" && s.viewerGepTeam === null) {
+          s.viewerGepTeam = rec.team;
           if (!s.viewerName) s.viewerName = name;
+          // First anchor: re-side every already-known player from their own
+          // last GEP team (self-heals the pre-anchor cold start).
+          for (const p of s.roster ?? []) {
+            const gt = this.lastGepTeam.get(this.normalizeName(p.displayName));
+            if (gt != null) {
+              p.teamIndex = gt === s.viewerGepTeam ? 0 : 1;
+              p.teamId = p.teamIndex === 0 ? "Blue" : "Red";
+            }
+          }
         }
         if (!entry) {
           // ValoSpectra-style: GEP scoreboard is authoritative - create the
@@ -489,18 +517,17 @@ export class ValProjectionSession {
           if (!this.rosterSeq.has(posKey)) this.rosterSeq.set(posKey, this.rosterSeq.size + 1);
           break;
         }
-        // Team side is LOCKED for the match: set once from the first GEP team
-        // evidence (anchored to the viewer's is_local team), never flipped by
-        // later facts. GEP re-emits players under shifting team labels (e.g.
-        // after dropping a weapon), which used to bounce rows across teams.
-        if (
-          typeof rec.team === "number" &&
-          s.viewerGepTeam !== null &&
-          entry.teamIndex == null
-        ) {
-          const wantIdx = rec.team === s.viewerGepTeam ? this.viewerTeamIndex() : 1 - this.viewerTeamIndex();
-          entry.teamIndex = wantIdx;
-          entry.teamId = wantIdx === 0 ? "Blue" : "Red";
+        // Team side from the player's own last GEP team vs the viewer's
+        // anchored team. Recompute is idempotent (GEP team ids are stable per
+        // match), so rows never oscillate — and a pre-anchor cold start
+        // self-heals on the next scoreboard cycle.
+        if (s.viewerGepTeam !== null) {
+          const gt = this.lastGepTeam.get(this.normalizeName(name));
+          if (gt != null) {
+            const wantIdx = gt === s.viewerGepTeam ? 0 : 1;
+            entry.teamIndex = wantIdx;
+            entry.teamId = wantIdx === 0 ? "Blue" : "Red";
+          }
         }
         // GEP internal codenames -> human display + icon.
         entry.agentName = agentDisplayName(rec.character) ?? entry.agentName ?? null;
@@ -510,7 +537,13 @@ export class ValProjectionSession {
             : (entry.agentKey ?? undefined);
         entry.agentIcon =
           agentIconUrl(rec.character) ?? agentIconUrl(rec.agentUuid) ?? entry.agentIcon ?? null;
-        entry.weapon = weaponDisplayName(rec.weapon ?? rec.weaponName) ?? entry.weapon ?? null;
+        const wNew = weaponDisplayName(rec.weapon ?? rec.weaponName) ?? null;
+        // Knife equipped while a primary is still owned: keep the gun visible
+        // (ValoSpectra highestWeapon semantics — GEP reports the HELD weapon).
+        entry.weapon =
+          wNew && !/knife|melee/i.test(wNew)
+            ? wNew
+            : (entry.weapon ?? wNew);
         entry.credits = num(rec.credits ?? rec.money) ?? entry.credits ?? null;
         entry.spentCredits = num(rec.spentCredits ?? rec.spent) ?? entry.spentCredits ?? null;
         entry.shield = num(rec.shield ?? rec.armor) ?? entry.shield ?? null;
