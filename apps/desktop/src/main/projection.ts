@@ -970,6 +970,8 @@ export class ValProjectionSession {
       if (s.roundEndedAt && Date.now() - s.roundEndedAt < 5500) return "ingame-hud";
       return "buy-round";
     }
+    // A settled match always wins — never sit on the HUD after match point.
+    if (s.matchWinner) return "post-game";
     if (s.roundPhase === "combat") return "ingame-hud";
     if (s.roundPhase === "end") return "ingame-hud";
     // No concrete round phase — use sessionPhase for match-level scenes.
