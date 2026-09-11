@@ -186,12 +186,7 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       mapName: state.mapName ?? null,
       mapKey: state.mapKey ?? null,
       roundPhase: state.round?.phase ?? null,
-      isAgentSelectPhase:
-        state.sessionPhase === "loading" ||
-        (state.sessionPhase === "live" &&
-          (state.round?.number ?? 0) === 0 &&
-          (state.round?.phase ?? "unknown") === "unknown" &&
-          !!state.matchId),
+      isAgentSelectPhase: state.sessionPhase === "loading" || state.sessionPhase === "pregame",
       phaseStartedAt: state.round?.phaseStartedAt ?? null,
       roundTimer,
       viewerRole: state.viewerRole ?? null,

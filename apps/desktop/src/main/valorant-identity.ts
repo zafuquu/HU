@@ -39,7 +39,7 @@ const AGENTS: Record<string, { name: string; uuid: string }> = {
 /** Display name for a GEP internal agent codename ("cashew" -> "Tejo"). */
 export function agentDisplayName(internal: unknown): string | undefined {
   if (typeof internal !== "string") return undefined;
-  const key = internal.trim().toLowerCase();
+  const key = internal.trim().toLowerCase().replace(/_pc(_c)?$/i, '');
   return AGENTS[key]?.name;
 }
 
@@ -50,7 +50,7 @@ export function agentIconUrl(internalOrUuid: unknown): string | undefined {
   if (/^[0-9a-f-]{36}$/i.test(v)) {
     return `https://media.valorant-api.com/agents/${v}/displayicon.png`;
   }
-  const agent = AGENTS[v.toLowerCase()];
+  const agent = AGENTS[v.toLowerCase().replace(/_pc(_c)?$/i, '')];
   return agent ? `https://media.valorant-api.com/agents/${agent.uuid}/displayicon.png` : undefined;
 }
 
@@ -79,6 +79,52 @@ const WEAPON_WORDS: Record<string, string> = {
 };
 
 /**
+ * Exact VS-family internal weapon codenames (Spectra-Server
+ * ValorantInternalTranslator.WeaponsAndAbilities). The engine sends these for
+ * `scoreboardWeaponInternal`; generic tail-split heuristics cannot map them
+ * (e.g. "Volcano" -> Vandal), so resolve them first.
+ */
+const WEAPON_TX: Record<string, string> = {
+  tx_hud_pistol_classic: "Classic",
+  tx_hud_pistol_glock_s: "Classic",
+  tx_hud_pistol_slim: "Shorty",
+  tx_hud_pistol_sawedoff_s: "Shorty",
+  tx_hud_pistol_autopistol: "Frenzy",
+  tx_hud_autopistol: "Frenzy",
+  tx_hud_pistol_luger: "Ghost",
+  tx_hud_pistol_luger_s: "Ghost",
+  tx_hud_pistol_sheriff: "Sheriff",
+  tx_hud_pistol_revolver_s: "Sheriff",
+  tx_hud_pistol_compact: "Bandit",
+  tx_hud_pistol_compact_s: "Bandit",
+  tx_hud_shotguns_pump: "Bucky",
+  tx_hud_pump: "Bucky",
+  tx_hud_shotguns_persuader: "Judge",
+  tx_hud_shotguns_spas12_s: "Judge",
+  tx_hud_smgs_vector: "Stinger",
+  tx_hud_vector: "Stinger",
+  tx_hud_smgs_ninja: "Spectre",
+  tx_hud_smg_mp5_s: "Spectre",
+  tx_hud_rifles_burst: "Bulldog",
+  tx_hud_burst: "Bulldog",
+  tx_hud_rifles_dmr: "Guardian",
+  tx_hud_dmr: "Guardian",
+  tx_hud_rifles_ghost: "Phantom",
+  tx_hud_assault_ar10a2_s: "Phantom",
+  tx_hud_rifles_volcano: "Vandal",
+  tx_hud_volcano: "Vandal",
+  tx_hud_sniper_bolt: "Marshal",
+  tx_hud_sniper_boltaction_s: "Marshal",
+  tx_hud_sniper_operater: "Operator",
+  tx_hud_operator: "Operator",
+  tx_hud_sniper_doublesniper: "Outlaw",
+  tx_hud_doublesniper: "Outlaw",
+  tx_hud_lmg: "Ares",
+  tx_hud_hmg: "Odin",
+  tx_hud_knife_standard_s: "Knife",
+};
+
+/**
  * Human weapon name from GEP internals like "TX_Hud_Pistol_Classic",
  * "TX_Icon_FallenDamage_S" or "knife".
  */
@@ -87,6 +133,8 @@ export function weaponDisplayName(internal: unknown): string | undefined {
   let s = internal.trim();
   if (!s) return undefined;
   if (WEAPON_WORDS[s.toLowerCase()]) return WEAPON_WORDS[s.toLowerCase()];
+  const tx = WEAPON_TX[s.toLowerCase()];
+  if (tx) return tx;
   s = s.replace(/^TX_(Hud|Icon|Shy)_/i, "").replace(/_S$/i, "");
   const tail = s.split("_").pop() ?? s;
   return WEAPON_WORDS[tail.toLowerCase()] ?? tail.replace(/([a-z])([A-Z])/g, "$1 $2");

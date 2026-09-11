@@ -66,6 +66,8 @@ interface WorkingState {
   roundDeaths: Set<string>;
   clutchMax: Map<string, number>;
   roundStartScore: { blue: number; red: number } | null;
+  /** Epoch ms of the last round settlement — drives the endround hold. */
+  roundEndedAt: number | null;
   matchWinner: "blue" | "red" | null;
   matchMvp: { name: string; teamId: string; kills: number; deaths: number; assists: number } | null;
   roundEnd: { winner: "blue" | "red"; reason: "elimination" | "detonation" | "defusion" | "time" } | null;
@@ -103,6 +105,7 @@ function initial(): WorkingState {
     roundDeaths: new Set(),
     clutchMax: new Map(),
     roundStartScore: null,
+    roundEndedAt: null,
     matchWinner: null,
     matchMvp: null,
     roundEnd: null,
@@ -198,6 +201,7 @@ export class ValProjectionSession {
       s.publishedPhase = null;
       s.pendingPhase = null;
       s.roundPhase = "unknown";
+      s.roundEndedAt = null;
     }
     if (snap.viewer?.role) s.viewerRole = snap.viewer.role;
     else if (snap.session?.viewer?.role) s.viewerRole = snap.session.viewer.role;
@@ -457,24 +461,49 @@ export class ValProjectionSession {
           typeof v === "number" && Number.isFinite(v) ? v : undefined;
         const str = (v: unknown): string | undefined =>
           typeof v === "string" && v.length > 0 ? v : undefined;
+        // Dialect union: the GEP-raw dialect sends {team, weapon, credits,
+        // alive, ult_points}; the VS-family engine dialect sends {startTeam,
+        // scoreboardWeaponInternal, money, isAlive, currUltPoints, initialArmor,
+        // agentInternal}. Accept every alias so the anchor and all per-player
+        // detail land regardless of which engine dialect is live.
+        const gepTeam =
+          typeof rec.team === "number"
+            ? rec.team
+            : typeof rec.startTeam === "number"
+              ? rec.startTeam
+              : null;
         // Anchor the viewer's GEP team from their scoreboard row — is_local
         // when the provider sends it, otherwise the snapshot's viewer name.
         // (Without this, a cold start piles every player onto one team.)
         const normName = this.normalizeName(name);
-        if (typeof rec.team === "number") this.lastGepTeam.set(normName, rec.team);
+        if (gepTeam !== null) this.lastGepTeam.set(normName, gepTeam);
         const isViewerRow =
           rec.is_local === true ||
           (s.viewerName != null && normName === this.normalizeName(s.viewerName));
-        if (isViewerRow && typeof rec.team === "number" && s.viewerGepTeam === null) {
-          s.viewerGepTeam = rec.team;
-          if (!s.viewerName) s.viewerName = name;
-          // First anchor: re-side every already-known player from their own
-          // last GEP team (self-heals the pre-anchor cold start).
-          for (const p of s.roster ?? []) {
-            const gt = this.lastGepTeam.get(this.normalizeName(p.displayName));
-            if (gt != null) {
-              p.teamIndex = gt === s.viewerGepTeam ? 0 : 1;
-              p.teamId = p.teamIndex === 0 ? "Blue" : "Red";
+        if (isViewerRow && gepTeam !== null) {
+          if (s.viewerGepTeam === null) {
+            s.viewerGepTeam = gepTeam;
+            if (!s.viewerName) s.viewerName = name;
+            // First anchor: re-side every already-known player from their own
+            // last GEP team (self-heals the pre-anchor cold start).
+            for (const p of s.roster ?? []) {
+              const gt = this.lastGepTeam.get(this.normalizeName(p.displayName));
+              if (gt != null) {
+                p.teamIndex = gt === s.viewerGepTeam ? 0 : 1;
+                p.teamId = p.teamIndex === 0 ? "Blue" : "Red";
+              }
+            }
+          } else if (gepTeam !== s.viewerGepTeam) {
+            // The viewer's own GEP team number changed mid-match (halftime
+            // side flip or squad re-index). Re-anchor to the viewer so the
+            // viewer stays LEFT and everyone re-sides from their own team.
+            s.viewerGepTeam = gepTeam;
+            for (const p of s.roster ?? []) {
+              const gt = this.lastGepTeam.get(this.normalizeName(p.displayName));
+              if (gt != null) {
+                p.teamIndex = gt === s.viewerGepTeam ? 0 : 1;
+                p.teamId = p.teamIndex === 0 ? "Blue" : "Red";
+              }
             }
           }
         }
@@ -482,7 +511,6 @@ export class ValProjectionSession {
           // ValoSpectra-style: GEP scoreboard is authoritative - create the
           // player on the fly instead of dropping the fact (cold-start safe).
           const viewerIdx = this.viewerTeamIndex();
-          const gepTeam = typeof rec.team === "number" ? rec.team : null;
           const teamIdx =
             gepTeam === null
               ? undefined
@@ -503,11 +531,13 @@ export class ValProjectionSession {
             deaths: num(rec.deaths) ?? null,
             assists: num(rec.assists) ?? null,
             credits: num(rec.credits ?? rec.money) ?? null,
-            shield: num(rec.shield ?? rec.armor) ?? null,
-            weapon: weaponDisplayName(rec.weapon) ?? null,
-            isAlive: typeof rec.alive === "boolean" ? rec.alive : undefined,
-            ultPoints: num(rec.ult_points) ?? null,
-            ultMax: num(rec.ult_max) ?? null,
+            shield: num(rec.shield ?? rec.armor ?? rec.initialArmor) ?? null,
+            weapon:
+              weaponDisplayName(rec.weapon ?? rec.weaponName ?? rec.scoreboardWeaponInternal) ??
+              null,
+            isAlive: typeof rec.alive === "boolean" ? rec.alive : typeof rec.isAlive === "boolean" ? rec.isAlive : undefined,
+            ultPoints: num(rec.ultPoints ?? rec.ult_points ?? rec.currUltPoints) ?? null,
+            ultMax: num(rec.ultMax ?? rec.ult_max ?? rec.maxUltPoints) ?? null,
             hasSpike: typeof rec.spike === "boolean" ? rec.spike : null,
           };
           (s.roster ?? []).push(entry);
@@ -529,15 +559,19 @@ export class ValProjectionSession {
             entry.teamId = wantIdx === 0 ? "Blue" : "Red";
           }
         }
-        // GEP internal codenames -> human display + icon.
-        entry.agentName = agentDisplayName(rec.character) ?? entry.agentName ?? null;
+        // GEP internal codenames -> human display + icon. The VS-family engine
+        // dialect names the agent `agentInternal` ("Clay_PC_C") instead of
+        // `character` ("Clay") — accept both.
+        const agentInternal = str(rec.character) ?? str(rec.agentInternal) ?? null;
+        entry.agentName = agentDisplayName(agentInternal) ?? entry.agentName ?? null;
         entry.agentKey =
-          typeof rec.character === "string" && rec.character.length > 0
-            ? rec.character.toLowerCase()
+          typeof agentInternal === "string" && agentInternal.length > 0
+            ? agentInternal.toLowerCase().replace(/_pc(_c)?$/i, "")
             : (entry.agentKey ?? undefined);
         entry.agentIcon =
-          agentIconUrl(rec.character) ?? agentIconUrl(rec.agentUuid) ?? entry.agentIcon ?? null;
-        const wNew = weaponDisplayName(rec.weapon ?? rec.weaponName) ?? null;
+          agentIconUrl(agentInternal) ?? agentIconUrl(rec.agentUuid) ?? entry.agentIcon ?? null;
+        const wNew =
+          weaponDisplayName(rec.weapon ?? rec.weaponName ?? rec.scoreboardWeaponInternal) ?? null;
         // Knife equipped while a primary is still owned: keep the gun visible
         // (ValoSpectra highestWeapon semantics — GEP reports the HELD weapon).
         entry.weapon =
@@ -546,22 +580,30 @@ export class ValProjectionSession {
             : (entry.weapon ?? wNew);
         entry.credits = num(rec.credits ?? rec.money) ?? entry.credits ?? null;
         entry.spentCredits = num(rec.spentCredits ?? rec.spent) ?? entry.spentCredits ?? null;
-        entry.shield = num(rec.shield ?? rec.armor) ?? entry.shield ?? null;
+        entry.shield = num(rec.shield ?? rec.armor ?? rec.initialArmor) ?? entry.shield ?? null;
         entry.kills = num(rec.kills) ?? entry.kills ?? null;
         entry.deaths = num(rec.deaths) ?? entry.deaths ?? null;
         entry.assists = num(rec.assists) ?? entry.assists ?? null;
+        // Buy phase: everyone is alive by definition. Ignore stale death
+        // evidence that can trail the round reset (greyed-out card bug).
+        const shopping = s.roundPhase === "shopping";
         if (num(rec.health) !== undefined) {
-          entry.health = num(rec.health);
-          if ((entry.health ?? 1) <= 0) entry.isAlive = false;
+          entry.health = shopping ? Math.max(100, num(rec.health) ?? 0) : num(rec.health);
+          if (!shopping && (entry.health ?? 1) <= 0) entry.isAlive = false;
         }
-        entry.ultPoints = num(rec.ultPoints ?? rec.ult_points) ?? entry.ultPoints ?? null;
-        entry.ultMax = num(rec.ultMax ?? rec.ult_max) ?? entry.ultMax ?? null;
-        if (typeof rec.alive === "boolean") {
-          entry.isAlive = rec.alive;
-          if (!rec.alive) entry.health = 0;
-        } else if (typeof rec.isAlive === "boolean") {
-          entry.isAlive = rec.isAlive;
-          if (!rec.isAlive) entry.health = 0;
+        entry.ultPoints =
+          num(rec.ultPoints ?? rec.ult_points ?? rec.currUltPoints) ?? entry.ultPoints ?? null;
+        entry.ultMax = num(rec.ultMax ?? rec.ult_max ?? rec.maxUltPoints) ?? entry.ultMax ?? null;
+        const aliveEvidence =
+          typeof rec.alive === "boolean" ? rec.alive : typeof rec.isAlive === "boolean" ? rec.isAlive : undefined;
+        if (aliveEvidence !== undefined) {
+          if (shopping) {
+            entry.isAlive = true;
+            entry.health = 100;
+          } else {
+            entry.isAlive = aliveEvidence;
+            if (!aliveEvidence) entry.health = 0;
+          }
         }
         if (typeof rec.hasSpike === "boolean") entry.hasSpike = rec.hasSpike;
         else if (typeof rec.spike === "boolean") entry.hasSpike = rec.spike;
@@ -644,9 +686,9 @@ export class ValProjectionSession {
         p.isAlive = true;
         p.health = 100;
       }
-      // wipe per-round evidence, the banner and the round-end marker.
-      s.gameEvent = null;
-      s.roundEnd = null;
+      // wipe per-round evidence (the round-end banner survives into the buy
+      // phase so the endround animation is never cut off — it is cleared when
+      // the next round's combat phase publishes below).
       s.spike = null;
       s.spikePlantedAt = null;
       s.roundKills.clear();
@@ -655,6 +697,11 @@ export class ValProjectionSession {
       s.roundStartScore = { blue: s.blue, red: s.red };
     } else if (phase === "end") {
       this.settle();
+    } else if (phase === "combat") {
+      // The previous round's banner/evidence is only stale once the next
+      // round is actually being fought.
+      s.gameEvent = null;
+      s.roundEnd = null;
     }
   }
 
@@ -771,6 +818,9 @@ export class ValProjectionSession {
               ? "elimination"
               : "time";
       s.roundEnd = { winner: winner === 0 ? "blue" : "red", reason };
+      // Stamp the settlement time — deriveScene holds the HUD (and the
+      // endround banner) on screen for a grace period after this.
+      s.roundEndedAt = Date.now();
       // ValoSpectra app-roundreasons parity: per-round win history for the
       // timeline strip (kills/detonated/defused/timeout icons per round).
       if (
@@ -913,7 +963,13 @@ export class ValProjectionSession {
     // GEP round facts are the real-time truth for the current phase — they
     // override the engine snapshot's session-level phase which can be stale
     // during match transitions (pregame → live).
-    if (s.roundPhase === "shopping") return "buy-round";
+    if (s.roundPhase === "shopping") {
+      // Round-end hold: the endround banner just played — keep the HUD scene
+      // (and the banner) on screen for a grace period before switching to the
+      // buy scene, matching the roundwin-box timing of VS-class overlays.
+      if (s.roundEndedAt && Date.now() - s.roundEndedAt < 5500) return "ingame-hud";
+      return "buy-round";
+    }
     if (s.roundPhase === "combat") return "ingame-hud";
     if (s.roundPhase === "end") return "ingame-hud";
     // No concrete round phase — use sessionPhase for match-level scenes.
@@ -922,13 +978,13 @@ export class ValProjectionSession {
     if (s.blue >= 13 || s.red >= 13) return "post-game";
     // Pre-round-1 of a real match: the provider emits match_id during agent
     // select while round facts have not started yet (roundPhase stays
-    // "unknown") — map that to the agent-select scene. BUT a nonzero score
-    // means a match is actually in progress (mid-round reconnect): show the
-    // HUD instead of freezing on agent-select.
+    // "unknown"). Once the session goes LIVE the match has loaded — show the
+    // buy scene immediately instead of freezing on agent-select. A nonzero
+    // score/round means a mid-round reconnect: show the HUD.
     if (!s.roundPhase || s.roundPhase === "unknown") {
       if (s.blue > 0 || s.red > 0) return "ingame-hud";
       if (s.roundNumber > 0) return "ingame-hud";
-      if (s.matchId || s.mapKey) return "agent-select";
+      if (s.matchId || s.mapKey) return "buy-round";
       return null;
     }
     return null;
