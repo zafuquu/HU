@@ -54,6 +54,7 @@ interface IngameHudSceneProps {
   roundEnd?: { winner: 'blue' | 'red' | null; reason: string | null } | null
   roundNumber?: number | null
   gameEvent?: string | null
+  winSide?: string | null
   activeComponentId?: string | null
   onSelectComponent?: (id: string) => void
   isToggled?: (componentId: string) => boolean
@@ -215,7 +216,11 @@ function getWeaponImg(weapon: any) {
 
 function getShieldImg(p: any) {
   const armor = Number(p?.armor ?? p?.shield ?? 0)
-  const type = p?.shieldType ?? (armor >= 50 ? 2 : armor > 0 ? 1 : 0)
+  // GEP shield TIER enum (VS Armor table): 0 none / 1 light / 2 heavy /
+  // 3 enemy-unknown (assume heavy) / 4 regen. Tier wins over points so a
+  // regen shield never renders as light.
+  const raw = Number(p?.shieldType)
+  const type = Number.isInteger(raw) && raw >= 0 && raw <= 4 ? raw : (armor >= 50 ? 2 : armor > 0 ? 1 : 0)
   if (type === 4) return '/game/val/shields/Regen_Shield.png'
   if (type === 2 || type === 3 || armor >= 50) return '/game/val/shields/Heavy_Armor.png'
   if (type === 1 || armor > 0) return '/game/val/shields/Light_Armor.png'
@@ -240,10 +245,37 @@ const DEMO_RIGHT = [
 
 
 const ENDROUND_CSS = '@keyframes endroundIn { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } } @keyframes endroundOutR { to { transform: translateX(100%); opacity: 0; } } @keyframes endroundOutL { to { transform: translateX(-100%); opacity: 0; } } .endround-in { animation: endroundIn 300ms ease-out; } .endround-out-right { animation: endroundOutR 300ms ease-in forwards; } .endround-out-left { animation: endroundOutL 300ms ease-in forwards; }'
-function EndroundBanner({ roundEnd, roundNumber, winType, leftName, rightName, leftLogo, rightLogo, leftColor, rightColor }: {
+// VS spike-planted parity: the planted spike icon blinks faster as detonation
+// approaches (1s -> 0.5s -> 0.25s -> 0.125s over the 45s fuse).
+function useSpikeBlink(active: boolean) {
+  const [on, setOn] = React.useState(true)
+  React.useEffect(() => {
+    if (!active) { setOn(true); return }
+    let alive = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let left = 45_000
+    let last = Date.now()
+    const tick = () => {
+      if (!alive) return
+      const now = Date.now()
+      left -= now - last
+      last = now
+      if (left <= 1_000) return // stop blinking in the final second
+      setOn((v) => !v)
+      const next = left > 20_000 ? 1_000 : left > 10_000 ? 500 : left > 5_000 ? 250 : 125
+      timer = setTimeout(tick, next)
+    }
+    timer = setTimeout(tick, 1_000)
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+  }, [active])
+  return on
+}
+
+function EndroundBanner({ roundEnd, roundNumber, winType, winSide, leftName, rightName, leftLogo, rightLogo, leftColor, rightColor }: {
   roundEnd: { winner: 'blue' | 'red' | null; reason: string | null } | null
   roundNumber: number | null
   winType: string | null
+  winSide?: string | null
   leftName: string
   rightName: string
   leftLogo: string | null
@@ -276,7 +308,7 @@ function EndroundBanner({ roundEnd, roundNumber, winType, leftName, rightName, l
   const slide = phase === 'in' ? 'endround-in' : phase === 'out' ? (leftWon ? 'endround-out-right' : 'endround-out-left') : ''
   const winText = (winType || 'Round Win').toUpperCase()
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 140 }}>
       <style>{ENDROUND_CSS}</style>
       <div className={slide} style={{ width: 875, height: 170, position: 'relative', overflow: 'hidden', borderRadius: 4, boxShadow: '0 12px 40px rgba(0,0,0,0.55)' }}>
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, ' + leftColor + '55 0%, rgba(10,14,22,0.92) 30%, rgba(10,14,22,0.92) 70%, ' + rightColor + '55 100%)' }}>
@@ -289,9 +321,12 @@ function EndroundBanner({ roundEnd, roundNumber, winType, leftName, rightName, l
           <img src={win.logo ?? undefined} alt="" style={{ maxHeight: '55%', maxWidth: 160, objectFit: 'contain' }} />
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontSize: 26, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>{win.name}</p>
-            <p style={{ fontSize: 24, fontWeight: 800, color: '#fff', textTransform: 'uppercase', margin: '6px 0 0' }}>ROUND {roundNumber ?? ''}</p>
+            {winSide && <p style={{ fontSize: 22, fontWeight: 800, color: '#FFD166', textTransform: 'uppercase', letterSpacing: 3, margin: '4px 0 0' }}>{winSide}</p>}
           </div>
-          <img alt="" src="/sponsor/Sponsor-2.png" style={{ maxHeight: '50%', objectFit: 'contain', opacity: 0.9 }} />
+          <div style={{ textAlign: 'center' }}>
+            <img alt="" src="/sponsor/Sponsor-2.png" style={{ maxHeight: '38%', objectFit: 'contain', opacity: 0.9 }} />
+            <p style={{ fontSize: 24, fontWeight: 800, color: '#fff', textTransform: 'uppercase', margin: '4px 0 0' }}>ROUND {roundNumber ?? ''}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -631,6 +666,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   }
 
   const isSpikeActive = spikeState === 'planted' || spikeState === 'defusing'
+  const spikeBlinkOn = useSpikeBlink(spikeState === 'planted')
   // Endround: keep the plain clock in the timer slot (the banner tells the
   // story — no ELIMINATED/SPIKE DETONATED words crowding the scoreline).
   const displayTimerText = isSpikeActive
@@ -760,7 +796,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
                     {showBombTimer && (
                       <h1 className="translate-y-1 flex items-center gap-2 text-[40px]" style={{ color: displayTimerColor }}>
                         {spikeState === 'planted' && (
-                          <img src="/game/val/misc/Spike_Icon.svg" alt="" className="h-[30px] w-auto object-contain" />
+                          <img src="/game/val/misc/Spike_Icon.svg" alt="" className="h-[30px] w-auto object-contain" style={{ opacity: spikeBlinkOn ? 1 : 0.15, transition: 'opacity 80ms linear' }} />
                         )}
                         {displayTimerText}
                       </h1>

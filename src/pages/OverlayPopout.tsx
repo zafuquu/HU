@@ -453,6 +453,12 @@ export default function OverlayPopout() {
   const hudRoundEnd = sideSwap && baseRoundEnd ? { ...baseRoundEnd, winner: flipWinner(baseRoundEnd.winner) } : baseRoundEnd
   const baseRoundHistory = ((snapState as any)?.roundHistory || []) as Array<{ round: number; winner: 'blue' | 'red'; reason: string }>
   const hudRoundHistory = sideSwap ? baseRoundHistory.map((h) => ({ ...h, winner: flipWinner(h.winner) })) : baseRoundHistory
+  // ValoSpectra endround parity: label the round win by SIDE. GEP native team 0
+  // starts on attack; sides flip every 12 rounds (rounds 1-12 / 13-24, OT ignored).
+  const nativeRoundNumber = (snapState as any)?.roundNumber ?? scores?.roundNumber ?? null
+  const attackingIdx = nativeRoundNumber != null && nativeRoundNumber > 0 && ((nativeRoundNumber - 1) % 24) < 12 ? 0 : 1
+  const nativeWinnerIdx = baseRoundEnd?.winner === 'blue' ? 0 : baseRoundEnd?.winner === 'red' ? 1 : null
+  const roundWinSide = nativeWinnerIdx == null ? null : (nativeWinnerIdx === attackingIdx ? 'ATTACKER WIN' : 'DEFENDER WIN')
   // Phantom-camera guard: only treat the configured player as a live publisher
   // when the desktop is connected AND they are in the current live roster.
   // Otherwise no camera box is rendered and no viewer connection is opened.
@@ -464,7 +470,6 @@ export default function OverlayPopout() {
     'val:spike_defused': 'SPIKE DEFUSED',
     'val:spike_detonated': 'SPIKE DETONATED',
     'val:match_end': 'MATCH END',
-    'val:match_start': 'MATCH START',
     'val:tech_pause': 'TECH PAUSE',
     'val:pause': 'PAUSE',
   }
@@ -530,6 +535,7 @@ export default function OverlayPopout() {
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#FF6B35', animation: 'timeout-blink 1s ease-in-out infinite' }} />
           RECONNECTING…
           <style>{`@keyframes timeout-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
+        <style>{`.scene-fade { animation: sceneFade 320ms ease; will-change: opacity, transform; } @keyframes sceneFade { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }`}</style>
         </div>
       )}
       {/* Desktop connection badge (top-right, subtle) */}
@@ -545,6 +551,7 @@ export default function OverlayPopout() {
           top: `calc(50% - ${(1080 * scale) / 2}px)`,
         }}
       >
+        <div key={sceneKey + ':' + (gamePhase || '')} className="scene-fade">
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'shopping' && (
           <BuyRoundScene
             leftTeamName={hudLeftName}
@@ -598,6 +605,7 @@ export default function OverlayPopout() {
             webcamStream={webcamStream}
             liveOnly={true}
             gameEvent={liveEventText}
+            winSide={roundWinSide}
             roundEnd={hudRoundEnd}
             roundNumber={snapState?.currentRound?.roundNumber ?? snapState?.roundNumber ?? null}
             currentlyObserving={liveCurrentlyObserving}
@@ -658,6 +666,8 @@ export default function OverlayPopout() {
           />
         )}
 
+        </div>
+
         {/* ====== NEW OVERLAY LAYERS (#4) ====== */}
 
         {/* Timeout overlay — shows during tactical timeouts and tech pauses */}
@@ -667,6 +677,8 @@ export default function OverlayPopout() {
           rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
           leftTeamColor={teamA?.color || '#28D091'}
           rightTeamColor={teamB?.color || '#FF3549'}
+          leftTeamLogo={teamA?.logoUrl || null}
+          rightTeamLogo={teamB?.logoUrl || null}
         />
 
         {/* (Kill banner / first-blood popup removed by request) */}

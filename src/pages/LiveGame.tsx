@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Copy, Info, ChevronDown, Minus, Plus, Eye, EyeOff, Tv, Download, Upload, Mic, Film, Video, Bell, Sun, Moon, BarChart3, History, Send } from 'lucide-react'
+import { Copy, Info, ChevronDown, Minus, Plus, Eye, EyeOff, Tv, Download, Upload, Mic, Film, Video, Bell, Sun, Moon, BarChart3, History, Send, Clock, X } from 'lucide-react'
 import { useAppStore } from '../store/AppContext'
 import { IngameHudScene } from '../components/scenes/IngameHudScene'
 import { buildMapHistoryItems } from './MapVeto'
@@ -686,6 +686,84 @@ export default function LiveGame() {
               >
                 <Eye className="size-3" />
                 Show All
+              </button>
+
+              {/* Technical Pause (ValoSpectra timeout parity) */}
+              <button
+                type="button"
+                className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-950/40 px-3 py-1.5 text-xs text-amber-400 hover:bg-amber-900/50 cursor-pointer transition-colors"
+                onClick={async () => {
+                  const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
+                  try {
+                    await fetch(`${origin}/api/control`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'timeout', timeoutType: 'tech_pause' }),
+                    })
+                    showToast('TECHNICAL PAUSE shown on overlay')
+                  } catch { showToast('Bridge unreachable') }
+                }}
+              >
+                <Clock className="size-3" />
+                Tech Pause
+              </button>
+
+              {/* Tactical Timeouts */}
+              <button
+                type="button"
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#16171a] px-3 py-1.5 text-xs text-white hover:bg-white/5 cursor-pointer transition-colors"
+                onClick={async () => {
+                  const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
+                  try {
+                    await fetch(`${origin}/api/control`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'timeout', timeoutType: 'tactical', team: 'left' }),
+                    })
+                    showToast('Tactical timeout (LEFT) shown')
+                  } catch { showToast('Bridge unreachable') }
+                }}
+              >
+                <Clock className="size-3" />
+                Timeout L
+              </button>
+              <button
+                type="button"
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#16171a] px-3 py-1.5 text-xs text-white hover:bg-white/5 cursor-pointer transition-colors"
+                onClick={async () => {
+                  const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
+                  try {
+                    await fetch(`${origin}/api/control`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'timeout', timeoutType: 'tactical', team: 'right' }),
+                    })
+                    showToast('Tactical timeout (RIGHT) shown')
+                  } catch { showToast('Bridge unreachable') }
+                }}
+              >
+                <Clock className="size-3" />
+                Timeout R
+              </button>
+
+              {/* Clear pause/timeout */}
+              <button
+                type="button"
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#16171a] px-3 py-1.5 text-xs text-white/70 hover:bg-white/5 cursor-pointer transition-colors"
+                onClick={async () => {
+                  const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
+                  try {
+                    await fetch(`${origin}/api/control`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ action: 'timeout', timeoutType: 'clear' }),
+                    })
+                    showToast('Pause / timeout cleared')
+                  } catch { showToast('Bridge unreachable') }
+                }}
+              >
+                <X className="size-3" />
+                Clear Pause
               </button>
 
               {/* Casters Toggle Button (#15) */}

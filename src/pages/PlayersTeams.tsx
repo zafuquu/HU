@@ -286,9 +286,19 @@ export default function PlayersTeams() {
                         onChange={e => {
                           const file = e.target.files?.[0]
                           if (file) {
-                            const fakeUrl = URL.createObjectURL(file)
-                            updateTeam(selectedTeam.id, { [item.key]: fakeUrl })
-                            showToast(`${item.label} logo updated`)
+                            if (file.size > 1_500_000) {
+                              showToast('Logo too large — use an image under 1.5 MB')
+                              return
+                            }
+                            // Store as a data URL: blob: URLs die on reload and
+                            // never resolve inside the OBS overlay popout.
+                            const reader = new FileReader()
+                            reader.onload = () => {
+                              updateTeam(selectedTeam.id, { [item.key]: String(reader.result) })
+                              showToast(`${item.label} logo updated`)
+                            }
+                            reader.onerror = () => showToast('Failed to read logo file')
+                            reader.readAsDataURL(file)
                           }
                         }}
                       />
