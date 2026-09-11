@@ -394,6 +394,28 @@ export default function OverlayPopout() {
   const stickyRosterRef = useRef<{ left: any[]; right: any[] }>({ left: [], right: [] })
   if (liveLeft && liveLeft.length > 0) stickyRosterRef.current.left = liveLeft
   if (liveRight && liveRight.length > 0) stickyRosterRef.current.right = liveRight
+
+  // ===== Halftime / overtime side swap (automatic, VS parity) =====
+  // VALORANT flips attack/defense sides every 12 rounds (and again in
+  // overtime). The overlay mirrors the in-game HUD: the whole team panel
+  // (name, color, logo, score, roster) moves to the other side.
+  const liveRoundNumber = (function () {
+    const st = (snapState as any) || {}
+    return Number(st?.round?.number ?? st?.currentRound?.roundNumber ?? st?.roundNumber ?? liveScores?.scores?.roundNumber ?? 0) || 0
+  })()
+  const sideSwap = liveRoundNumber >= 13 && Math.floor((liveRoundNumber - 1) / 12) % 2 === 1
+
+  // New-match reset: GEP keeps the same match_id across games, so round 1
+  // arriving after a played match (or a return to agent select) is the only
+  // reliable signal — drop the previous game's roster so its score/KD never
+  // bleeds into the next match.
+  const lastRoundRef = useRef(0)
+  const lastSceneRef = useRef<string | null>(null)
+  const curEngineScene = String((snapState as any)?.scene || '')
+  if (liveRoundNumber === 1 && lastRoundRef.current > 1) stickyRosterRef.current = { left: [], right: [] }
+  if (curEngineScene === 'agent-select' && lastSceneRef.current && lastSceneRef.current !== 'agent-select') stickyRosterRef.current = { left: [], right: [] }
+  if (liveRoundNumber > 0) lastRoundRef.current = liveRoundNumber
+  if (curEngineScene) lastSceneRef.current = curEngineScene
   // LIVE map wins over the veto pick / defaults (the desktop publishes the
   // actual in-game map every snapshot — 'Sunset' was a hardcoded fallback).
   const liveMapKey = (snapState as any)?.mapKey || null
@@ -405,6 +427,32 @@ export default function OverlayPopout() {
   const spectating = viewerRole === 'observer' || viewerRole === 'spectator' || viewerRole === 'coach'
   const leftPlayers = stickyRosterRef.current.left.length > 0 ? mapLivePlayers(stickyRosterRef.current.left) : []
   const rightPlayers = stickyRosterRef.current.right.length > 0 ? mapLivePlayers(stickyRosterRef.current.right) : []
+
+  // Team-attributed props under the side swap (everything moves with the
+  // panel: names, colors, logos, round + series scores, rosters).
+  const baseLeftName = teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'
+  const baseRightName = teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'
+  const baseLeftColor = teamA?.color || '#28D091'
+  const baseRightColor = teamB?.color || '#FF3549'
+  const hudLeftName = sideSwap ? baseRightName : baseLeftName
+  const hudRightName = sideSwap ? baseLeftName : baseRightName
+  const hudLeftColor = sideSwap ? baseRightColor : baseLeftColor
+  const hudRightColor = sideSwap ? baseLeftColor : baseRightColor
+  const hudLeftPlayers = sideSwap ? rightPlayers : leftPlayers
+  const hudRightPlayers = sideSwap ? leftPlayers : rightPlayers
+  const hudScoreLeft = sideSwap ? scoreRight : scoreLeft
+  const hudScoreRight = sideSwap ? scoreLeft : scoreRight
+  const hudSeriesLeft = sideSwap ? seriesRight : seriesLeft
+  const hudSeriesRight = sideSwap ? seriesLeft : seriesRight
+  const hudLeftLogo = sideSwap ? (teamB?.logoUrl || null) : (teamA?.logoUrl || null)
+  const hudRightLogo = sideSwap ? (teamA?.logoUrl || null) : (teamB?.logoUrl || null)
+  const hudLeftSeed = sideSwap ? (teamB as any)?.seed : (teamA as any)?.seed
+  const hudRightSeed = sideSwap ? (teamA as any)?.seed : (teamB as any)?.seed
+  const flipWinner = (w: any) => (w === 'blue' ? 'red' : w === 'red' ? 'blue' : w)
+  const baseRoundEnd = (snapState as any)?.roundEnd || null
+  const hudRoundEnd = sideSwap && baseRoundEnd ? { ...baseRoundEnd, winner: flipWinner(baseRoundEnd.winner) } : baseRoundEnd
+  const baseRoundHistory = ((snapState as any)?.roundHistory || []) as Array<{ round: number; winner: 'blue' | 'red'; reason: string }>
+  const hudRoundHistory = sideSwap ? baseRoundHistory.map((h) => ({ ...h, winner: flipWinner(h.winner) })) : baseRoundHistory
   // Phantom-camera guard: only treat the configured player as a live publisher
   // when the desktop is connected AND they are in the current live roster.
   // Otherwise no camera box is rendered and no viewer connection is opened.
@@ -499,49 +547,50 @@ export default function OverlayPopout() {
       >
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'shopping' && (
           <BuyRoundScene
-            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-            leftTeamSeed={(teamA as any)?.seed}
-            rightTeamSeed={(teamB as any)?.seed}
-            leftTeamColor={teamA?.color || '#28D091'}
-            rightTeamColor={teamB?.color || '#FF3549'}
-            leftTeamPlayers={leftPlayers}
-            rightTeamPlayers={rightPlayers}
+            leftTeamName={hudLeftName}
+            rightTeamName={hudRightName}
+            leftTeamSeed={hudLeftSeed}
+            rightTeamSeed={hudRightSeed}
+            leftTeamColor={hudLeftColor}
+            rightTeamColor={hudRightColor}
+            leftTeamPlayers={hudLeftPlayers}
+            rightTeamPlayers={hudRightPlayers}
             economy={liveEconomy}
+            roundHistory={hudRoundHistory}
           />
         )}
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'game_start' && (
           <AgentSelectScene
-            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-            leftTeamColor={teamA?.color || '#28D091'}
-            rightTeamColor={teamB?.color || '#FF3549'}
+            leftTeamName={hudLeftName}
+            rightTeamName={hudRightName}
+            leftTeamColor={hudLeftColor}
+            rightTeamColor={hudRightColor}
             mapName={liveMapName}
             mapImage={liveMapImage}
-            leftTeamPlayers={leftPlayers}
-            rightTeamPlayers={rightPlayers}
+            leftTeamPlayers={hudLeftPlayers}
+            rightTeamPlayers={hudRightPlayers}
           />
         )}
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && !(liveScores && (gamePhase === 'shopping' || gamePhase === 'game_start')) && (
           <IngameHudScene
-            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-            leftTeamSeed={(teamA as any)?.seed}
-            rightTeamSeed={(teamB as any)?.seed}
-            leftTeamColor={teamA?.color || '#28D091'}
-            rightTeamColor={teamB?.color || '#FF3549'}
-            scoreLeft={scoreLeft}
-            scoreRight={scoreRight}
-            seriesScoreLeft={seriesLeft}
-            seriesScoreRight={seriesRight}
+            leftTeamName={hudLeftName}
+            rightTeamName={hudRightName}
+            leftTeamSeed={hudLeftSeed}
+            rightTeamSeed={hudRightSeed}
+            leftTeamColor={hudLeftColor}
+            rightTeamColor={hudRightColor}
+            scoreLeft={hudScoreLeft}
+            scoreRight={hudScoreRight}
+            seriesScoreLeft={hudSeriesLeft}
+            seriesScoreRight={hudSeriesRight}
             bestOf={Number(state.matchFormat) || state.bestOf || 3}
             roundText={roundText}
             timerText={timerText}
             seriesTitleText={state.seriesTitle || ''}
             eventTitleText={state.eventTitle || ''}
             gameSeriesText={state.gameSeries || ''}
-            leftTeamLogo={teamA?.logoUrl || null}
-            rightTeamLogo={teamB?.logoUrl || null}
+            leftTeamLogo={hudLeftLogo}
+            rightTeamLogo={hudRightLogo}
             mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds)}
             webcamPlayerName={webcamActive ? (webcamPlayer?.alias || 'No camera') : ''}
             webcamPlayerPhoto={webcamActive ? (webcamPlayer?.avatarUrl || null) : null}
@@ -549,38 +598,38 @@ export default function OverlayPopout() {
             webcamStream={webcamStream}
             liveOnly={true}
             gameEvent={liveEventText}
-            roundEnd={(snapState as any)?.roundEnd || null}
+            roundEnd={hudRoundEnd}
             roundNumber={snapState?.currentRound?.roundNumber ?? snapState?.roundNumber ?? null}
             currentlyObserving={liveCurrentlyObserving}
             spectating={spectating}
             spikeSite={spikeSite}
             spikeState={spikeState}
-            leftTeamPlayers={leftPlayers}
-            rightTeamPlayers={rightPlayers}
+            leftTeamPlayers={hudLeftPlayers}
+            rightTeamPlayers={hudRightPlayers}
           />
         )}
         {sceneKey === 'agent-select' && (
           <AgentSelectScene
-            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-            leftTeamColor={teamA?.color || '#28D091'}
-            rightTeamColor={teamB?.color || '#FF3549'}
+            leftTeamName={hudLeftName}
+            rightTeamName={hudRightName}
+            leftTeamColor={hudLeftColor}
+            rightTeamColor={hudRightColor}
             mapName={liveMapName}
             mapImage={liveMapImage}
-            leftTeamPlayers={leftPlayers}
-            rightTeamPlayers={rightPlayers}
+            leftTeamPlayers={hudLeftPlayers}
+            rightTeamPlayers={hudRightPlayers}
           />
         )}
         {sceneKey === 'buy-round' && (
           <BuyRoundScene
-            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-            leftTeamColor={teamA?.color || '#28D091'}
-            rightTeamColor={teamB?.color || '#FF3549'}
-            leftTeamPlayers={leftPlayers}
-            rightTeamPlayers={rightPlayers}
+            leftTeamName={hudLeftName}
+            rightTeamName={hudRightName}
+            leftTeamColor={hudLeftColor}
+            rightTeamColor={hudRightColor}
+            leftTeamPlayers={hudLeftPlayers}
+            rightTeamPlayers={hudRightPlayers}
             economy={liveEconomy}
-            roundHistory={(snapState as any)?.roundHistory || []}
+            roundHistory={hudRoundHistory}
           />
         )}
         {sceneKey === 'map-ban' && (

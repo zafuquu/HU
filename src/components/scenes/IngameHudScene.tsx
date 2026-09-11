@@ -332,8 +332,11 @@ function IngamePlayerCard({
     (player?.agentName ? String(player.agentName).toLowerCase() : (isRight ? 'clay' : 'wushu'))
   const agentIcon = `/game/val/agents/${codename}/icon.png`
   const alias = player.alias || player.name || player.riotId || `Player ${index + 1}`
-  const isAlive = player.isAlive !== false && (player.health == null || player.health > 0)
-  const health = isAlive ? Number(player.health ?? 100) : 0
+  // Positive health is definitive alive evidence — GEP's alive flag can trail
+  // the damage packet and would flip a wounded player into the death state.
+  const healthNum = player.health == null ? null : Number(player.health)
+  const isAlive = healthNum != null ? healthNum > 0 : player.isAlive !== false
+  const health = isAlive ? (healthNum ?? 100) : 0
   const kills = player.kills ?? 0
   const deaths = player.deaths ?? 0
   const assists = player.assists ?? 0
@@ -380,13 +383,9 @@ function IngamePlayerCard({
               <div
                 className="absolute top-0 size-full rounded-[3px] duration-300"
                 style={{
-                  backgroundColor: isAlive
-                    ? health > 60
-                      ? '#28D091'
-                      : health > 30
-                        ? '#F5A623'
-                        : '#FF3549'
-                    : 'rgba(0, 0, 0, 0.41)',
+                  // Team-colored fill (VS parity): the bar belongs to the team,
+                  // not to generic HP tiers.
+                  backgroundColor: isAlive ? teamColor : 'rgba(0, 0, 0, 0.41)',
                   width: `${isAlive ? Math.max(0, Math.min(100, health)) : 0}%`,
                   [isRight ? 'right' : 'left']: 0,
                 }}
@@ -457,14 +456,8 @@ function IngamePlayerCard({
                       src={`/game/val/agents/${codename}/abilities/ultimate.png`}
                       onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
                     />
-                    {/* Ult points badge — live count from GEP scoreboard */}
-                    <span
-                      className={`absolute -bottom-1 -right-1 z-30 rounded-full px-1 font-barlowCond text-[10px] font-bold leading-tight ${
-                        ultReady ? 'bg-[#FFD166] text-black' : 'bg-black/80 text-white'
-                      }`}
-                    >
-                      {ultPoints}
-                    </span>
+                    {/* (Raw ult points badge removed — VS parity shows the
+                        icon + dash-progress ring only, gold when ready.) */}
                   </div>
                   <div className="absolute inset-0 size-full flex items-center justify-center pointer-events-none z-20">
                     <svg height="30" viewBox="0 0 30 30" width="30">
@@ -527,8 +520,12 @@ function IngamePlayerCard({
             </div>
           </div>
 
-          {/* Spectator Eye Slot */}
-          <div className={`h-full overflow-hidden ${isRight ? 'rounded-l-md' : 'rounded-r-md'}`} style={{ width: 20 }}>
+          {/* Spectator Eye Slot — VS parity: only the spectated row extends
+              (slot goes 0 -> 24px), all other cards stay the same length. */}
+          <div
+            className={`h-full overflow-hidden transition-all duration-300 ${isRight ? 'rounded-l-md' : 'rounded-r-md'}`}
+            style={{ width: isObserved ? 24 : 0 }}
+          >
             <div className="size-full" style={eyeContainerStyle}>
               <div className="flex size-full items-center justify-center bg-[#00000073]">
                 <svg fill="none" height="8" viewBox="0 0 10 8" width="10" xmlns="http://www.w3.org/2000/svg">
