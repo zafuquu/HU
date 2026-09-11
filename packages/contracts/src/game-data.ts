@@ -70,6 +70,7 @@ const rosterPlayerStatsSchema = z.object({
   ultPoints: z.number().int().nullish(),
   ultMax: z.number().int().nullish(),
   shield: z.number().nullish(),
+  shieldType: z.number().int().nullish(),
 });
 
 const rosterPlayerSchema = z.object({

@@ -31,6 +31,8 @@ export interface GamePlayerState {
   isAlive?: boolean;
   health?: number;
   armor?: number;
+  shield?: number | null;
+  shieldType?: number | null;
   abilities?: unknown[];
   // Live scoreboard detail (passed through when the provider supplies it).
   weapon?: string | null;
@@ -139,10 +141,21 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       abilityState: p.abilityState ?? null,
       isAlive: p.isAlive !== false && (p.health == null || p.health > 0),
       health: p.isAlive === false ? 0 : (p.health ?? 100),
-      // Real shield from GEP (0/25/50); shieldType drives the site's armor bar.
+      // Real shield from GEP: `shield` = points (0/25/50), `shieldType` = the
+      // GEP tier enum (0 none / 1 light / 2 heavy / 3 enemy-unknown / 4 regen)
+      // so the site can render the correct armor icon (VS parity).
       armor: p.shield ?? 0,
       shield: p.shield ?? null,
-      shieldType: p.shield != null ? (p.shield >= 50 ? 2 : p.shield > 0 ? 1 : 0) : undefined,
+      shieldType:
+        p.shieldType != null
+          ? p.shieldType
+          : p.shield != null
+            ? p.shield >= 50
+              ? 2
+              : p.shield > 0
+                ? 1
+                : 0
+            : undefined,
       abilities: p.abilities ?? [],
       weapon: p.weapon ?? null,
       credits: p.credits ?? null,

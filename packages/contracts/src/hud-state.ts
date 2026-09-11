@@ -70,6 +70,8 @@ export const hudRelayStateSchema = z.object({
         credits: z.number().nullish(),
         spentCredits: z.number().nullish(),
         shield: z.number().nullish(),
+        /** GEP shield TIER enum (0 none / 1 light / 2 heavy / 3 enemy-unknown / 4 regen). */
+        shieldType: z.number().int().nullish(),
         health: z.number().nullish(),
         isAlive: z.boolean().nullish(),
         ultPoints: z.number().int().nullish(),

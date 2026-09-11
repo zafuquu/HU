@@ -123,6 +123,17 @@ export function formatRoster(data: Record<string, unknown>): { key: "roster"; va
 }
 
 export function formatPlayer(data: Record<string, unknown>): { key: string; value: Record<string, unknown> } {
+  // Absent GEP fields must stay absent: GEP only reports health/alive for the
+  // players it tracked this cycle. Defaulting to 0/false phantom-killed healthy
+  // players the moment a scoreboard update fired (the "took damage -> death
+  // state" bug on the overlay).
+  const armorRaw = toNum(data.armor ?? data.shield_type);
+  // GEP's armor field is the shield TIER enum (VS parity — ValorantInternal
+  // Translator.Armor): 0 none / 1 light / 2 heavy / 3 enemy-unknown / 4 regen.
+  // Map the enum to its point value; already-numeric point values (25/50)
+  // pass through untouched. The raw tier rides along as shieldType so the
+  // site can render the correct icon (light vs heavy vs regen).
+  const SHIELD_POINTS: Record<number, number> = { 0: 0, 1: 25, 2: 50, 3: 50, 4: 25 };
   return {
     key: "scoreboard",
     value: {
@@ -135,12 +146,13 @@ export function formatPlayer(data: Record<string, unknown>): { key: string; valu
       assists: toNum(data.assists),
       credits: toNum(data.money ?? data.credits),
       spentCredits: toNum(data.spent ?? data.spent_money),
-      health: toNum(data.health),
-      alive: toBool(data.alive, true),
+      health: data.health == null ? undefined : toNum(data.health),
+      alive: data.alive == null ? undefined : toBool(data.alive, true),
       hasSpike: toBool(data.has_spike ?? data.is_spike_carrier),
-      ultPoints: toNum(data.ult_points),
-      ultMax: toNum(data.ult_max),
-      shield: toNum(data.shield_type ?? data.armor),
+      ultPoints: data.ult_points == null ? undefined : toNum(data.ult_points),
+      ultMax: data.ult_max == null ? undefined : toNum(data.ult_max),
+      shield: SHIELD_POINTS[armorRaw] ?? armorRaw,
+      shieldType: Number.isInteger(armorRaw) && armorRaw >= 0 && armorRaw <= 4 ? armorRaw : undefined,
       player_id: String(data.player_id ?? ""),
       team: toNum(data.team),
     },

@@ -59,6 +59,7 @@ interface RealPlayer {
   ultPoints: number | null;
   ultMax: number | null;
   shield: number | null;
+  shieldType: number | null;
 }
 
 const num = (v: unknown, fallback: number | null): number | null => {
@@ -92,6 +93,7 @@ function upsertPlayer(players: Map<string, RealPlayer>, patch: Record<string, un
       ultPoints: null,
       ultMax: null,
       shield: null,
+      shieldType: null,
     };
   const next: RealPlayer = {
     playerId: id || prev.playerId,
@@ -111,6 +113,7 @@ function upsertPlayer(players: Map<string, RealPlayer>, patch: Record<string, un
     ultPoints: num(patch.ultPoints, prev.ultPoints),
     ultMax: num(patch.ultMax, prev.ultMax),
     shield: num(patch.shield, prev.shield),
+    shieldType: num(patch.shieldType, prev.shieldType),
   };
   players.delete(key);
   players.delete(prev.name);
@@ -140,6 +143,7 @@ function playerToSnapshot(p: RealPlayer): Record<string, unknown> {
       ultPoints: p.ultPoints,
       ultMax: p.ultMax,
       shield: p.shield,
+      shieldType: p.shieldType,
       weapon: p.weapon,
     },
     teamIndex: p.team ?? undefined,
@@ -159,7 +163,7 @@ class RuntimeHub {
   private readonly useSpectra: boolean;
   private revision = 0;
   private matchId: string | null = null;
-  private sessionPhase: "idle" | "loading" | "live" = "idle";
+  private sessionPhase: "idle" | "loading" | "live" | "ending" = "idle";
   private currentScene: string | null = null;
   private mapKey: string | null = null;
   private score: { blue: number; red: number } | null = null;
@@ -173,6 +177,8 @@ class RuntimeHub {
   /** Real players reported by GEP (never faked). */
   private readonly players = new Map<string, RealPlayer>();
   private killfeed: unknown[] = [];
+  /** GEP "me" player id — routes live local_health updates to the right player. */
+  private localPlayerId: string | null = null;
 
   constructor() {
     const source = (process.env.HAVOC_SOURCE ?? "").toLowerCase();
@@ -363,9 +369,70 @@ class RuntimeHub {
       } else if (fact.key === "kill_feed") {
         this.killfeed.push(fact.value);
         if (this.killfeed.length > KILLFEED_CAP) this.killfeed.shift();
+        // Deaths/kills attribution stays with the GEP scoreboard (alive /
+        // health evidence) and the ported round-settlement engine. Deriving
+        // them here from kill_feed fuzzy name matching false-killed players
+        // (an empty victim name matched EVERYONE) and double-counted kills
+        // the engine already tallies (overlay "damage -> death state" bug).
+        this.revision += 1;
+        this.emitSessionSnapshot();
+      } else if (fact.key === "round_phase" && fact.value === "shopping") {
+        for (const p of this.players.values()) {
+          p.isAlive = true;
+          p.health = 100;
+        }
+        this.revision += 1;
+        this.emitSessionSnapshot();
       } else if (fact.key === "match_start") {
         this.resetMatch();
         this.sessionPhase = "loading";
+        this.emitSessionSnapshot();
+      } else if (fact.key === "player_id" && (typeof fact.value === "string" || typeof fact.value === "number")) {
+        // GEP "me" identity: needed to route live local_health updates.
+        this.localPlayerId = String(fact.value);
+      } else if (fact.key === "local_health" && typeof fact.value === "number") {
+        // GEP "me" HP — merge into the local player's record and re-emit a
+        // scoreboard fact so the desktop projector applies it (GEP's roster
+        // scoreboard itself never streams per-player health).
+        const hp = fact.value;
+        const local = this.localPlayerId
+          ? [...this.players.values()].find((p) => p.playerId === this.localPlayerId)
+          : undefined;
+        if (local) {
+          local.health = hp;
+          local.isAlive = hp > 0;
+          this.revision += 1;
+          this.emitSessionSnapshot();
+          this.broadcast("", {
+            at: new Date().toISOString(),
+            id: this.nextFrameId++,
+            protocolVersion: GAME_DATA_PROTOCOL_VERSION,
+            kind: "new_info_update",
+            data: {
+              gameId: 21640,
+              key: "scoreboard",
+              value: {
+                player_id: local.playerId,
+                name: local.name,
+                tagline: local.tagline,
+                health: hp,
+                alive: hp > 0,
+              },
+            },
+          });
+        }
+      } else if (fact.key === "match_end") {
+        // Match settled (game_end / match_outcome). Flip the session to
+        // ending so every downstream consumer (bridge deriveScene, projector
+        // deriveScene) lands on post-game.
+        this.sessionPhase = "ending";
+        this.revision += 1;
+        this.emitSessionSnapshot();
+      } else if (fact.key === "round_phase" && fact.value === "game_end") {
+        // Raw GEP game_end phase: same as match_end for the session, but the
+        // round engine below still receives it as a normal round end.
+        this.sessionPhase = "ending";
+        this.revision += 1;
         this.emitSessionSnapshot();
       }
       // Feed the ported round-state engine (non-mock only; the mock script is
@@ -380,7 +447,11 @@ class RuntimeHub {
               this.engine.onRoundNumber(Number(fact.value));
               break;
             case "round_phase":
-              if (typeof fact.value === "string") this.engine.onRoundPhase(fact.value);
+              // The round engine only knows shopping/combat/end — "game_end"
+              // is a MATCH-end signal (handled above), feed it as a round end.
+              if (typeof fact.value === "string") {
+                this.engine.onRoundPhase(fact.value === "game_end" ? "end" : fact.value);
+              }
               break;
             case "scoreboard":
             case "roster":

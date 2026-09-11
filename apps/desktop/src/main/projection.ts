@@ -59,6 +59,8 @@ interface WorkingState {
   spike: HudRelayState["spike"];
   killfeed: KillfeedEntry[];
   viewerRole: "player" | "observer" | "coach" | "spectator" | "unknown";
+  /** Epoch ms when the session first went live — drives the round-1 buy grace. */
+  liveSince: number | null;
   roster: HudRelayState["roster"];
   // --- Round-settlement classification (ported from upstream val-round-settlement) ---
   gameEvent: string | null;
@@ -99,6 +101,7 @@ function initial(): WorkingState {
     spike: null,
     killfeed: [],
     viewerRole: "unknown",
+    liveSince: null,
     roster: [],
     gameEvent: null,
     roundKills: new Map(),
@@ -147,6 +150,7 @@ export class ValProjectionSession {
     const mapKey = snap.mapKey ?? snap.session?.map?.key ?? null;
 
     s.revision += 1;
+    if (sessionPhase !== s.sessionPhase && sessionPhase === "live") s.liveSince = Date.now();
     s.sessionPhase = sessionPhase;
     // Remember the viewer's display name so GEP scoreboard facts can anchor
     // the local player (is_local/team) to their roster entry.
@@ -244,6 +248,8 @@ export class ValProjectionSession {
           isAlive: p.player.isAlive ?? undefined,
           ultPoints: p.player.ultPoints ?? undefined,
           ultMax: p.player.ultMax ?? undefined,
+          shield: p.player.shield ?? undefined,
+          shieldType: p.player.shieldType ?? undefined,
           hasSpike: p.player.hasSpike ?? undefined,
         }));
       });
@@ -351,12 +357,77 @@ export class ValProjectionSession {
       case "round_number": {
         const n = Number(value);
         if (!Number.isFinite(n)) return;
+        // Fresh-match detection: GEP frequently keeps the SAME match_id across
+        // games, so the match_id-change wipe never fired and the previous
+        // game's score/KD/round history bled into the next one. Round 1
+        // arriving while a previous match was already tracked means a new
+        // game started — clear its state now (roster identities + team
+        // anchoring are kept; stats repopulate from the next scoreboard).
+        if (
+          n === 1 &&
+          (s.publishedNumber > 1 || s.roundNumber > 1 || s.matchWinner !== null || s.roundHistory.length > 0)
+        ) {
+          s.blue = 0;
+          s.red = 0;
+          s.roundNumber = 0;
+          s.roundPhase = "unknown";
+          s.publishedNumber = 0;
+          s.publishedPhase = null;
+          s.pendingPhase = null;
+          s.roundHistory = [];
+          s.roundEnd = null;
+          s.gameEvent = null;
+          s.matchWinner = null;
+          s.matchMvp = null;
+          s.roundEndedAt = null;
+          s.spike = null;
+          s.spikePlantedAt = null;
+          s.killfeed = [];
+          s.roundKills.clear();
+          s.roundDeaths.clear();
+          s.clutchMax.clear();
+          s.roundStartScore = null;
+          for (const p of s.roster ?? []) {
+            p.kills = null;
+            p.deaths = null;
+            p.assists = null;
+            p.credits = null;
+            p.spentCredits = null;
+            p.shield = null;
+            p.shieldType = null;
+            p.weapon = null;
+            p.health = 100;
+            p.isAlive = true;
+            p.ultPoints = null;
+            p.ultMax = null;
+            p.hasSpike = null;
+            // Agent evidence is per-match too — stale agentKey/agentIcon from
+            // the previous game made the buy-round cards show wrong/duplicated
+            // agent icons until GEP re-reports the roster.
+            p.agentKey = undefined;
+            p.agentIcon = null;
+            p.agentName = null;
+          }
+        }
         s.roundNumber = n;
         if (s.pendingPhase !== null && n > s.publishedNumber) this.publishRound();
         break;
       }
       case "round_phase": {
         if (typeof value !== "string") return;
+        // GEP signals the END OF THE MATCH with phase "game_end" (VS parity).
+        // It must never enter the round-phase state machine — settle the
+        // match, flip to post-game and stop.
+        if (value === "game_end") {
+          s.sessionPhase = "ending";
+          if (s.matchWinner === null && (s.blue > 0 || s.red > 0)) {
+            s.matchWinner = s.blue >= s.red ? "blue" : "red";
+          }
+          this.settle();
+          s.revision += 1;
+          this.emitChange();
+          return;
+        }
         if (!(value in PHASE_ORDER)) return;
         if (value === "end" && s.roundNumber <= 0) {
           s.pendingPhase = null;
@@ -428,10 +499,15 @@ export class ValProjectionSession {
         break;
       case "match_end": {
         // Upstream engine emits match_end when the match settles. Resolve the
-        // winner from the score if the end-phase classification has not yet.
-        if (s.blue >= 13 || s.red >= 13) {
+        // winner from the score if the end-phase classification has not yet —
+        // custom games end below 13 rounds, so the leader wins on evidence.
+        if (s.matchWinner === null && (s.blue >= 13 || s.red >= 13)) {
           s.matchWinner = s.blue >= s.red ? "blue" : "red";
         }
+        if (s.matchWinner === null && (s.blue > 0 || s.red > 0 || s.roundNumber > 0)) {
+          s.matchWinner = s.blue >= s.red ? "blue" : "red";
+        }
+        s.sessionPhase = "ending";
         if (s.roundPhase === "end" || s.sessionPhase === "ending") this.settle();
         s.revision += 1;
         this.emitChange();
@@ -531,7 +607,20 @@ export class ValProjectionSession {
             deaths: num(rec.deaths) ?? null,
             assists: num(rec.assists) ?? null,
             credits: num(rec.credits ?? rec.money) ?? null,
-            shield: num(rec.shield ?? rec.armor ?? rec.initialArmor) ?? null,
+            // Tier-aware shield: GEP armor is the tier enum 0-4, never points.
+            shield:
+              (() => {
+                const v = num(rec.shield ?? rec.armor ?? rec.initialArmor);
+                if (v === undefined) return null;
+                if (v === 25 || v === 50) return v;
+                if (Number.isInteger(v) && v >= 0 && v <= 4) return [0, 25, 50, 50, 25][v];
+                return null;
+              })(),
+            shieldType:
+              (() => {
+                const t = num(rec.shieldType ?? rec.armor ?? rec.initialArmor);
+                return t !== undefined && Number.isInteger(t) && t >= 0 && t <= 4 ? t : null;
+              })(),
             weapon:
               weaponDisplayName(rec.weapon ?? rec.weaponName ?? rec.scoreboardWeaponInternal) ??
               null,
@@ -580,20 +669,38 @@ export class ValProjectionSession {
             : (entry.weapon ?? wNew);
         entry.credits = num(rec.credits ?? rec.money) ?? entry.credits ?? null;
         entry.spentCredits = num(rec.spentCredits ?? rec.spent) ?? entry.spentCredits ?? null;
-        entry.shield = num(rec.shield ?? rec.armor ?? rec.initialArmor) ?? entry.shield ?? null;
+        // Shield: GEP's armor field is the TIER enum (0 none / 1 light / 2
+        // heavy / 3 enemy-unknown / 4 regen) — the VS-family dialect sends it
+        // as initialArmor, the fork engine as shield+shieldType. Treating a
+        // raw tier as POINTS made every shield render light (tiers are 0-4).
+        const shieldPointsFromTier = (v: number | undefined): number | undefined => {
+          if (v === undefined || v === null || !Number.isFinite(v)) return undefined;
+          if (v === 25 || v === 50) return v; // already points
+          if (Number.isInteger(v) && v >= 0 && v <= 4) return [0, 25, 50, 50, 25][v];
+          return undefined;
+        };
+        const tierFrom = (v: unknown): number | undefined => {
+          const n = num(v);
+          return n !== undefined && Number.isInteger(n) && n >= 0 && n <= 4 ? n : undefined;
+        };
+        const shieldTier =
+          tierFrom(rec.shieldType) ??
+          tierFrom(rec.armor) ??
+          tierFrom(rec.initialArmor) ??
+          (entry.shieldType ?? undefined);
+        const shieldPts =
+          shieldPointsFromTier(num(rec.shield)) ??
+          shieldPointsFromTier(shieldTier) ??
+          shieldPointsFromTier(num(rec.armor)) ??
+          shieldPointsFromTier(num(rec.initialArmor));
+        entry.shield = shieldPts ?? entry.shield ?? null;
+        entry.shieldType = shieldTier ?? (entry.shield != null ? (entry.shield >= 50 ? 2 : entry.shield > 0 ? 1 : 0) : null);
         entry.kills = num(rec.kills) ?? entry.kills ?? null;
         entry.deaths = num(rec.deaths) ?? entry.deaths ?? null;
         entry.assists = num(rec.assists) ?? entry.assists ?? null;
         // Buy phase: everyone is alive by definition. Ignore stale death
         // evidence that can trail the round reset (greyed-out card bug).
         const shopping = s.roundPhase === "shopping";
-        if (num(rec.health) !== undefined) {
-          entry.health = shopping ? Math.max(100, num(rec.health) ?? 0) : num(rec.health);
-          if (!shopping && (entry.health ?? 1) <= 0) entry.isAlive = false;
-        }
-        entry.ultPoints =
-          num(rec.ultPoints ?? rec.ult_points ?? rec.currUltPoints) ?? entry.ultPoints ?? null;
-        entry.ultMax = num(rec.ultMax ?? rec.ult_max ?? rec.maxUltPoints) ?? entry.ultMax ?? null;
         const aliveEvidence =
           typeof rec.alive === "boolean" ? rec.alive : typeof rec.isAlive === "boolean" ? rec.isAlive : undefined;
         if (aliveEvidence !== undefined) {
@@ -605,6 +712,19 @@ export class ValProjectionSession {
             if (!aliveEvidence) entry.health = 0;
           }
         }
+        // Health is applied AFTER the alive flag: a positive health reading is
+        // definitive alive evidence and rescues a wounded player whose GEP
+        // alive flag trailed the damage packet (the "damage -> death state"
+        // bug). Only explicit dead evidence may mark a death.
+        const hRaw = num(rec.health);
+        if (hRaw !== undefined) {
+          entry.health = shopping ? Math.max(100, hRaw) : hRaw;
+          if (hRaw > 0) entry.isAlive = true;
+          else if (!shopping && aliveEvidence === false) entry.isAlive = false;
+        }
+        entry.ultPoints =
+          num(rec.ultPoints ?? rec.ult_points ?? rec.currUltPoints) ?? entry.ultPoints ?? null;
+        entry.ultMax = num(rec.ultMax ?? rec.ult_max ?? rec.maxUltPoints) ?? entry.ultMax ?? null;
         if (typeof rec.hasSpike === "boolean") entry.hasSpike = rec.hasSpike;
         else if (typeof rec.spike === "boolean") entry.hasSpike = rec.spike;
         if (Array.isArray(rec.abilities)) {
@@ -972,7 +1092,22 @@ export class ValProjectionSession {
     }
     // A settled match always wins — never sit on the HUD after match point.
     if (s.matchWinner) return "post-game";
-    if (s.roundPhase === "combat") return "ingame-hud";
+    if (s.roundPhase === "combat") {
+      // Match-start grace: some GEP cycles skip the round-1 shopping phase and
+      // jump straight to combat right after agent select. Hold the buy scene
+      // briefly after the match loads so the buy phase still plays before the
+      // HUD (ValoSpectra parity).
+      if (
+        s.liveSince !== null &&
+        Date.now() - s.liveSince < 8000 &&
+        s.roundNumber <= 1 &&
+        s.blue === 0 &&
+        s.red === 0
+      ) {
+        return "buy-round";
+      }
+      return "ingame-hud";
+    }
     if (s.roundPhase === "end") return "ingame-hud";
     // No concrete round phase — use sessionPhase for match-level scenes.
     if (s.sessionPhase === "loading" || s.sessionPhase === "pregame") return "agent-select";

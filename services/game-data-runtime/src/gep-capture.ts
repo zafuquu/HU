@@ -180,7 +180,29 @@ function factFromInfoUpdate(item: GepItem, emit: ProviderEmit): void {
     // Phase only ever arrives as a plain string; anything else (e.g. a
     // round_report object relayed under a similar key) must not pollute the
     // phase stream — it corrupts the round engine and the projector.
-    if (typeof value === "string") pushInfo("round_phase", value);
+    if (typeof value === "string") {
+      pushInfo("round_phase", value);
+      // GEP ends a match with roundPhase "game_end" (ValoSpectra parity —
+      // their gepService treats it as MatchEnd). Forward it as an explicit
+      // match_end fact so the projector can settle + flip to post-game even
+      // when the final score never reached 13 (custom games).
+      if (value.trim().toLowerCase() === "game_end") {
+        emit({ kind: "new_game_event", key: "match_end", value: { reason: "game_end" } });
+      }
+    }
+    return;
+  }
+  if (low === "match_outcome") {
+    // GEP's me/match_info match outcome — another match-end evidence source.
+    emit({ kind: "new_game_event", key: "match_end", value: { reason: "match_outcome", outcome: value } });
+    return;
+  }
+  if (low === "health") {
+    // GEP "me" feature: the LOCAL player's HP, streamed live (ValoSpectra's
+    // setPlayerHealth parity). GEP never streams per-player health for the
+    // rest of the roster — this is the only live HP source.
+    const hp = Number(value);
+    if (Number.isFinite(hp) && hp >= 0) pushInfo("local_health", hp);
     return;
   }
   if (low === "round_report") {
