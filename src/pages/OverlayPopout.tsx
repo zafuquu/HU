@@ -10,7 +10,6 @@ import { BuyRoundScene } from '../components/scenes/BuyRoundScene'
 import { MapBanScene } from '../components/scenes/MapBanScene'
 import { PostgameScene } from '../components/scenes/PostgameScene'
 import { TimeoutOverlay } from '../components/scenes/TimeoutOverlay'
-import { KillBanner } from '../components/scenes/KillBanner'
 import { CasterCard } from '../components/scenes/CasterCard'
 import { EconomyTracker } from '../components/scenes/EconomyTracker'
 import { PostgameMVP } from '../components/scenes/PostgameMVP'
@@ -390,6 +389,11 @@ export default function OverlayPopout() {
   }
   const liveLeft = snapPlayers ? snapPlayers.filter((p: any) => sideOf(p) === 0) : null
   const liveRight = snapPlayers ? snapPlayers.filter((p: any) => sideOf(p) === 1) : null
+  // Sticky roster: transient empty-player frames (engine hiccups, scene
+  // remounts) must never blank the team stats — keep the last real roster.
+  const stickyRosterRef = useRef<{ left: any[]; right: any[] }>({ left: [], right: [] })
+  if (liveLeft && liveLeft.length > 0) stickyRosterRef.current.left = liveLeft
+  if (liveRight && liveRight.length > 0) stickyRosterRef.current.right = liveRight
   // LIVE map wins over the veto pick / defaults (the desktop publishes the
   // actual in-game map every snapshot — 'Sunset' was a hardcoded fallback).
   const liveMapKey = (snapState as any)?.mapKey || null
@@ -399,8 +403,8 @@ export default function OverlayPopout() {
     (liveMapKey ? `/game/val/maps/${liveMapKey}/splash-small.png` : '/game/val/maps/juliett/splash-small.png')
   const viewerRole = String((snapState as any)?.viewerRole ?? '').toLowerCase()
   const spectating = viewerRole === 'observer' || viewerRole === 'spectator' || viewerRole === 'coach'
-  const leftPlayers = liveLeft && liveLeft.length > 0 ? mapLivePlayers(liveLeft) : []
-  const rightPlayers = liveRight && liveRight.length > 0 ? mapLivePlayers(liveRight) : []
+  const leftPlayers = stickyRosterRef.current.left.length > 0 ? mapLivePlayers(stickyRosterRef.current.left) : []
+  const rightPlayers = stickyRosterRef.current.right.length > 0 ? mapLivePlayers(stickyRosterRef.current.right) : []
   // Phantom-camera guard: only treat the configured player as a live publisher
   // when the desktop is connected AND they are in the current live roster.
   // Otherwise no camera box is rendered and no viewer connection is opened.
@@ -446,7 +450,6 @@ export default function OverlayPopout() {
 
   // Extract new bridge state fields for overlay components
   const liveTimeout = liveScores?.timeout || null
-  const liveKillBanner = liveScores?.killBanner || null
   const liveEconomy = liveScores?.economy || null
   const liveMvpPlayer = liveScores?.mvpPlayer || null
   const liveCasterCards = liveScores?.casterCards || null
@@ -617,12 +620,7 @@ export default function OverlayPopout() {
           rightTeamColor={teamB?.color || '#FF3549'}
         />
 
-        {/* Kill banner — first blood, ace, clutch, thrifty popups */}
-        <KillBanner
-          killBanner={liveKillBanner?.type === 'first_blood' ? liveKillBanner : null}
-          leftTeamColor={teamA?.color || '#28D091'}
-          rightTeamColor={teamB?.color || '#FF3549'}
-        />
+        {/* (Kill banner / first-blood popup removed by request) */}
 
         {/* Caster cards — lower-third name plates */}
         <CasterCard

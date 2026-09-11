@@ -260,8 +260,32 @@ export default function HudEditor() {
   })()
   // The HUD facecam shows the first player that has a camera configured.
   const webcamPlayer = [...(leftTeam?.players || []), ...(rightTeam?.players || [])].find(p => p.webcamSource !== 'None' && state.cameraVisibility?.[p.id] !== false)
-  const leftRoster = (leftTeam?.players || []).map(function(p){ return { id: p.id, alias: p.alias || p.riotId || '', riotId: p.riotId || '', avatarUrl: p.avatarUrl || null, photoUrl: p.photoUrl || null } })
-  const rightRoster = (rightTeam?.players || []).map(function(p){ return { id: p.id, alias: p.alias || p.riotId || '', riotId: p.riotId || '', avatarUrl: p.avatarUrl || null, photoUrl: p.photoUrl || null } })
+  // Demo mode (editor only): pad configured rosters to full 5v5 with demo
+  // players so every scene renders completely. Live overlay pages never see
+  // these — they render only the real desktop roster.
+  const DEMO_POOL: Array<Record<string, any>> = [
+    { alias: 'Player 1', agentKey: 'bountyhunter', agentName: 'Fade', kills: 3, deaths: 10, assists: 1, health: 100, isAlive: true, credits: 650, armor: 25, shieldType: 1, weapon: 'Phantom', weaponName: 'Phantom', abilityState: { C: true, Q: true, E: true, X: false }, currUltPoints: 5, maxUltPoints: 8 },
+    { alias: 'Player 2', agentKey: 'gumshoe', agentName: 'Cypher', kills: 4, deaths: 12, assists: 0, health: 72, isAlive: true, credits: 0, armor: 50, shieldType: 2, weapon: 'Spectre', weaponName: 'Spectre', abilityState: { C: true, Q: false, E: true, X: false }, currUltPoints: 2, maxUltPoints: 7 },
+    { alias: 'Player 3', agentKey: 'cable', agentName: 'Deadlock', kills: 4, deaths: 11, assists: 2, health: 0, isAlive: false, credits: 550, armor: 0, shieldType: 0, weapon: 'Classic', weaponName: 'Classic', abilityState: { C: false, Q: false, E: false, X: false }, currUltPoints: 4, maxUltPoints: 8 },
+    { alias: 'Player 4', agentKey: 'deadeye', agentName: 'Chamber', kills: 1, deaths: 7, assists: 1, health: 34, isAlive: true, credits: 50, armor: 25, shieldType: 1, weapon: 'Sheriff', weaponName: 'Sheriff', abilityState: { C: true, Q: true, E: false, X: false }, currUltPoints: 7, maxUltPoints: 8 },
+    { alias: 'Player 5', agentKey: 'breach', agentName: 'Breach', kills: 2, deaths: 9, assists: 3, health: 0, isAlive: false, credits: 200, armor: 0, shieldType: 0, weapon: 'Classic', weaponName: 'Classic', abilityState: { C: false, Q: false, E: false, X: false }, currUltPoints: 1, maxUltPoints: 9 },
+    { alias: 'Player 6', agentKey: 'clay', agentName: 'Raze', kills: 12, deaths: 6, assists: 2, health: 61, isAlive: true, credits: 1900, armor: 50, shieldType: 2, weapon: 'Vandal', weaponName: 'Vandal', abilityState: { C: true, Q: true, E: true, X: true }, currUltPoints: 8, maxUltPoints: 8 },
+    { alias: 'Player 7', agentKey: 'guide', agentName: 'Skye', kills: 6, deaths: 4, assists: 8, health: 18, isAlive: true, credits: 2500, armor: 25, shieldType: 1, weapon: 'Phantom', weaponName: 'Phantom', abilityState: { C: true, Q: false, E: true, X: false }, currUltPoints: 3, maxUltPoints: 7 },
+    { alias: 'Player 8', agentKey: 'grenadier', agentName: 'KAY/O', kills: 12, deaths: 1, assists: 3, health: 100, isAlive: true, credits: 7900, armor: 50, shieldType: 3, weapon: 'Odin', weaponName: 'Odin', abilityState: { C: true, Q: true, E: true, X: false }, currUltPoints: 6, maxUltPoints: 8 },
+    { alias: 'Player 9', agentKey: 'aggrobot', agentName: 'Gekko', kills: 5, deaths: 8, assists: 4, health: 0, isAlive: false, credits: 1200, armor: 0, shieldType: 0, weapon: 'Ghost', weaponName: 'Ghost', abilityState: { C: false, Q: false, E: false, X: false }, currUltPoints: 0, maxUltPoints: 8 },
+    { alias: 'Player 10', agentKey: 'cashew', agentName: 'Tejo', kills: 8, deaths: 4, assists: 2, health: 85, isAlive: true, credits: 3700, armor: 50, shieldType: 2, weapon: 'Vandal', weaponName: 'Vandal', abilityState: { C: true, Q: true, E: false, X: false }, currUltPoints: 5, maxUltPoints: 8 },
+  ]
+  const padRoster = (arr: any[], side: string) => {
+    const out = (arr || []).map((p: any) => ({ ...p, agentKey: p.agentKey ?? (p.agent ? String(p.agent).toLowerCase() : null) }))
+    let di = side === 'right' ? 5 : 0
+    while (out.length < 5 && di < DEMO_POOL.length) {
+      out.push({ ...DEMO_POOL[di], id: `demo-${side}-${di}` })
+      di++
+    }
+    return out.slice(0, 5)
+  }
+  const leftRoster = padRoster((leftTeam?.players || []).map(function(p){ return { id: p.id, alias: p.alias || p.riotId || '', riotId: p.riotId || '', avatarUrl: p.avatarUrl || null, photoUrl: p.photoUrl || null } }), 'left')
+  const rightRoster = padRoster((rightTeam?.players || []).map(function(p){ return { id: p.id, alias: p.alias || p.riotId || '', riotId: p.riotId || '', avatarUrl: p.avatarUrl || null, photoUrl: p.photoUrl || null } }), 'right')
 
   const isToggled = (compId: string) => state.sceneToggles[compId] !== false
   const toggleComp = (compId: string) => setState(prev => ({ ...prev, sceneToggles: { ...prev.sceneToggles, [compId]: !isToggled(compId) } }))

@@ -356,30 +356,6 @@ function IngamePlayerCard({
     <div className={`w-full ${isRight ? 'team-stats-val-classic-flip' : 'team-stats-val-classic'}`}>
       <div className={`flex w-full transition-all ease-in-out ${isRight ? 'justify-end' : 'justify-start'} max-h-75 opacity-100 mb-2`}>
         <div className={`relative flex h-15.25 w-full items-end duration-300 ${isRight ? 'flex-row-reverse' : ''}`}>
-          {/* Agent portrait — absolutely positioned OUTSIDE the card body and
-              taller than the card so it pokes above it (never cropped).
-              VS player-combat-card parity: wrapper h-56 / img h-68 -top-2 z-2. */}
-          <div
-            className="absolute bottom-0 z-2 h-19 w-12.5"
-            style={{ [isRight ? 'right' : 'left']: 0 } as React.CSSProperties}
-          >
-            <img
-              className={`size-full object-contain object-bottom duration-200 ${isAlive ? '' : 'grayscale opacity-40 brightness-75'}`}
-              style={isRight ? { transform: 'scaleX(-1)' } : undefined}
-              src={agentIcon}
-              alt=""
-              onError={(e) => {
-                ;(e.target as HTMLImageElement).src = '/game/val/agents/wushu/icon.png'
-              }}
-            />
-            {!isAlive && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <svg viewBox="0 0 24 24" className="size-5 text-[#FF3549] drop-shadow-md opacity-95" fill="currentColor">
-                  <path d="M12 2a9 9 0 0 0-9 9c0 3.2 1.6 6 4 7.6V20a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1.4c2.4-1.6 4-4.4 4-7.6a9 9 0 0 0-9-9zm-3 10a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm6 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
-                </svg>
-              </div>
-            )}
-          </div>
           {/* Card Body */}
           <div
             className={`relative z-1 flex h-full flex-1 flex-col items-center justify-center duration-300 ease-in-out p-0.5 ${
@@ -392,20 +368,17 @@ function IngamePlayerCard({
               opacity: isAlive ? 1 : 0.65,
             }}
           >
-            {/* Health Bar progress row */}
+            {/* Health Bar progress row (VS parity: no overflow-hidden — the
+                50px agent pokes above the row and is never cropped) */}
             <div
-              className={`over font-semibold relative flex h-6 w-full items-center font-barlowCond overflow-hidden ${
+              className={`over font-semibold relative flex h-6 w-full items-center font-barlowCond ${
                 isRight ? 'flex-row-reverse' : ''
               }`}
               style={{ color: isAlive ? textColor : '#737373' }}
             >
-              {/* HP number (live health from GEP scoreboard / killfeed deaths) */}
-              <span className="relative z-1 ml-1 min-w-7 text-center font-barlowSemiCond text-[11px] font-bold leading-none text-white/80">
-                {health}
-              </span>
-              {/* Dynamic Health Fill Bar */}
-              <div className="absolute inset-0 overflow-hidden rounded-[3px]"><div
-                className="absolute top-0 size-full rounded-[3px] transition-all duration-300 ease-out"
+              {/* Dynamic Health Fill — full row height, behind content */}
+              <div
+                className="absolute top-0 size-full rounded-[3px] duration-300"
                 style={{
                   backgroundColor: isAlive
                     ? health > 60
@@ -417,52 +390,60 @@ function IngamePlayerCard({
                   width: `${isAlive ? Math.max(0, Math.min(100, health)) : 0}%`,
                   [isRight ? 'right' : 'left']: 0,
                 }}
-              /></div>
+              />
+              {/* HP number */}
+              <span className="relative z-1 ml-1 min-w-7 text-center font-barlowSemiCond text-[11px] font-bold leading-none text-white/80">
+                {health}
+              </span>
 
 
-              {/* Agent portrait slot — the portrait itself is rendered OUTSIDE the
-                  card body (absolute, poking above the card, VS player-combat-card
-                  parity) so the icon is never cropped by the health row. */}
-              <div className="h-full w-12.5 shrink-0" />
-
-              {/* Player Name */}
-              <div className={`h-full flex-1 min-w-0 px-1.5 flex items-center relative z-1 ${isRight ? 'justify-end text-right' : 'justify-start text-left'}`}>
-                <span className={`font-semibold text-lg truncate uppercase leading-none ${isAlive ? '' : 'line-through text-white/40'}`}>
-                  {alias}
-                </span>
+              {/* Agent — bottom-anchored 50px, pokes above the row (VS parity) */}
+              <div className="relative h-full w-[50px] shrink-0">
+                <div className="absolute bottom-0 left-0 h-[50px] w-[50px]">
+                  <img
+                    className={`size-full object-contain duration-200 ${isAlive ? '' : 'grayscale opacity-40 brightness-75'}`}
+                    style={isRight ? { transform: 'scaleX(-1)' } : undefined}
+                    src={agentIcon}
+                    alt=""
+                    onError={(e) => {
+                      ;(e.target as HTMLImageElement).src = '/game/val/agents/wushu/icon.png'
+                    }}
+                  />
+                  {!isAlive && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <svg viewBox="0 0 24 24" className="size-5 text-[#FF3549] drop-shadow-md opacity-95" fill="currentColor">
+                        <path d="M12 2a9 9 0 0 0-9 9c0 3.2 1.6 6 4 7.6V20a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1.4c2.4-1.6 4-4.4 4-7.6a9 9 0 0 0-9-9zm-3 10a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm6 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Economy (Credits) */}
+              {/* Player Name */}
+              <div className={`h-full flex-1 min-w-0 pr-1 ${isRight ? 'pl-1 text-right' : ''}`}>
+                <h1 className="font-semibold -translate-y-0.5 truncate pl-1.5 text-xl leading-none">{alias}</h1>
+              </div>
+
+              {/* Economy + Shield (VS parity: credits + credit icon + 27px shield) */}
               {showEco && (
-                <div className={`relative z-1 flex h-full items-center px-1.5 ${isRight ? 'flex-row-reverse mr-auto' : 'ml-auto'}`}>
-                  <div className="flex h-full items-center justify-center">
-                    <span className="font-semibold font-barlowSemiCond text-[15px]">{credits}</span>
+                <div className={`relative z-1 flex h-full items-center ${isRight ? 'mr-auto flex-row-reverse pl-1' : 'ml-auto pl-1'}`}>
+                  <div className="flex h-full items-center justify-center overflow-hidden">
+                    <h1 className="font-semibold font-barlowSemiCond text-[16px] leading-none">{credits}</h1>
                   </div>
-                  <div className={isRight ? 'pr-1' : 'pl-1'}>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="h-2.5 rotate-45 text-[#F9E4AB]">
+                  <div className="pl-1.5">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="h-[11px] rotate-45">
                       <circle cx="94.566" cy="94.574" r="54.425" stroke="currentColor" strokeWidth="22.41" />
                       <path fill="currentColor" d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z" />
                     </svg>
                   </div>
+                  <div className="flex h-full w-[27px] items-center justify-center">
+                    <img src={shieldSrc ?? '/game/val/shields/None.webp'} alt="shield" className="h-[17px] w-[18px] object-contain" />
+                  </div>
                 </div>
               )}
-
-              {/* Shield Icon + Armor value + armor progress bar */}
-              <div className="relative z-1 flex h-full w-9 items-center justify-center gap-0.5 overflow-hidden px-0.5">
-                <div
-                  className="absolute bottom-0 left-0 h-1 transition-all duration-300"
-                  style={{
-                    width: `${Math.min(100, (Number(player.armor ?? player.shield ?? 0) / 50) * 100)}%`,
-                    background: teamColor,
-                  }}
-                />
-                <img src={shieldSrc ?? '/game/val/shields/None.webp'} alt="shield" className="h-3.5 w-auto object-contain drop-shadow" />
-                <span className="font-barlowSemiCond text-[11px] font-bold leading-none text-white/80">
-                  {Number(player.armor ?? player.shield ?? 0)}
-                </span>
-              </div>
             </div>
 
+              
             {/* Bottom Row: Ult + K/D/A + Weapon */}
             <div className={`item relative flex w-full flex-1 items-center px-1 ${isRight ? 'flex-row-reverse justify-between' : 'justify-between'}`}>
               {/* Ult Icon */}
@@ -486,32 +467,51 @@ function IngamePlayerCard({
                     </span>
                   </div>
                   <div className="absolute inset-0 size-full flex items-center justify-center pointer-events-none z-20">
-                    <svg height="28" viewBox="0 0 30 30" width="28">
-                      <circle cx="15" cy="15" r="13" fill="none" stroke={teamColor} strokeWidth="1.5" strokeOpacity={isAlive ? "0.4" : "0.1"} />
+                    <svg height="30" viewBox="0 0 30 30" width="30">
+                      {/* Track */}
+                      <circle cx="15" cy="15" r="13" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="2" />
+                      {/* Progress — same dash ring as the buy-round scene */}
+                      <circle
+                        cx="15"
+                        cy="15"
+                        r="13"
+                        fill="none"
+                        stroke={ultReady ? '#FFD166' : teamColor}
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeDasharray={ultMax > 0 ? `${Math.max(0, Math.min(1, ultPoints / ultMax)) * 81.68} 81.68` : '0 81.68'}
+                        transform="rotate(-90 15 15)"
+                      />
                     </svg>
                   </div>
                 </div>
               )}
 
-              {/* K/D/A */}
-              <div className={`font-semibold flex items-center gap-2 font-barlowCond text-sm text-white/90 ${isRight ? 'flex-row-reverse' : ''}`}>
+              {/* K/D/A — VS icon parity (icon paths from the val-classic card) */}
+              <div className={`font-semibold flex translate-y-0.5 items-center gap-3 font-barlowCond text-lg text-white [&_h1]:-translate-y-px ${isRight ? 'flex-row-reverse' : ''}`}>
                 {showKills && (
-                  <span className="flex items-center gap-0.5">
-                    <span className="text-[11px] text-white/40">K</span>
-                    <span>{kills}</span>
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 384 249" height="12px" style={{ color: teamColor }}>
+                      <path fill="currentColor" fillRule="evenodd" d="m17.677 69.216.001-.002.002-.002C29.39 48.811 41.1 28.413 52.9 8.014c4.5-7.8 13.6-10.2 21.4-5.9 6 3.2 11.9 6.7 17.8 10.3 7.6 4.6 10.2 13.8 5.7 21.5-16.8 29.4-33.7 58.7-50.8 87.9-4.6 7.9-13.6 10.2-21.7 5.7-3.352-1.818-6.64-3.734-9.937-5.654-2.506-1.459-5.016-2.921-7.563-4.346-4-2.3-6-6.1-7.8-10.2v-7.5h.1c5.865-10.197 11.719-20.394 17.572-30.59zM66.8 119.415c9.3-16.2 18.6-32.3 28-48.5 2.7-4.65 5.375-9.275 8.05-13.9s5.35-9.25 8.05-13.9c2.7-4.7 4.6-9.7 4.6-15.2 0-2 .7-2.7 2.7-3.1 8-1.2 15.9-1 23.8 0 7.067.933 14.133 1.778 21.2 2.622 3.533.422 7.067.845 10.6 1.278-.153 1.223-.949 1.628-1.717 2.02-.237.12-.471.239-.683.38-3.741 2.367-7.498 4.705-11.252 7.042l-.002.001c-6.078 3.783-12.15 7.563-18.146 11.457-11.6 7.5-16.7 18.5-14.6 32 1.9 12.4 9.4 20.9 21.4 25.1 7.5 2.6 14.9 2 22.3-.9q8.79-3.488 17.576-6.96h.001l.002-.001h.001l.005-.002c14.031-5.55 28.048-11.094 42.015-16.737 2.2-.9 3.7-.8 5.6.8 14.528 12.606 29.12 25.148 43.722 37.699l.002.001a16333 16333 0 0 1 33.676 29c7.9 6.9 9 17.2 2.8 25.1-5.9 7.5-16.3 8.7-24.8 2.9-.193-.097-.363-.217-.566-.36-.217-.153-.472-.333-.834-.54 3.4 10.9 1.9 18.2-4.9 23.2-4.7 3.5-9.9 4.4-15.6 2.8-3.834-1.065-6.61-3.643-9.472-6.301-1.169-1.085-2.352-2.184-3.628-3.199 3 12.9 1.2 19.4-6.3 24.1-7.3 4.6-14.3 3.6-23.4-3.6 1.9 4.5 2.8 8.5 2.1 12.9-1.2 6.5-6.7 12.4-13.2 13.8-6.7 1.4-14.8-1.5-18.5-6.6-.8-1.1-.4-1.8.2-2.6 10.7-15.9 5.5-38.1-13.7-47.8-1.8-.9-2.2-2.1-2.5-3.8-1.6-11.5-8.2-19.5-18-25.1-1.7-1-2.9-1.8-3.2-4.1-2-16-16.9-29-33.1-28.9-2.8 0-4.6-.7-6.5-3.1-13.6-16.7-36.9-17.1-51.2-1.1-.36.412-.748.825-1.149 1.251-.376.401-.763.813-1.15 1.249l-.5-.5zm95.8 54.8c-6-7.9-14-9.8-23.5-5.4v-.2c7.5-12.3 7.4-19.5-.1-26.4-3.3-2.9-7-4.8-11.4-5-6.6-.3-11.4 3.3-16 8.9.2-1.6.3-2.2.4-2.8 1.8-8.3-2-16.2-9.9-20.1-7.2-3.6-15.2-1.7-20.8 4.9q-2.477 2.923-4.962 5.837c-4.969 5.831-9.938 11.663-14.738 17.663-8.4 10.4-3.4 24.7 9.6 28.3 5.1 1.4 9.6-.2 14.7-2.7-3.3 8.8-1.8 15.8 5 21.4s14 5.7 21.9.7c-3.3 8.6-2.2 15.8 4.5 21.5 6.8 5.9 14.2 6 22.2 1.1a59 59 0 0 1-.675 2.125v.001c-.2.6-.375 1.124-.525 1.674-2.1 7.6 1.3 15.3 8.6 19.8 6.5 4 15.1 3.4 20.3-2.3 6.1-6.5 11.9-13.4 17.3-20.6 4.6-6.2 3.6-15-1.8-20.6-6.3-6.6-13.7-8.2-22.3-4.2 6.2-7.6 8.3-15.5 2.2-23.6M316.9.115c6.6.1 11.2 3.4 14.4 9 9 15.7 18 31.3 27.1 46.9 2.828 4.92 5.672 9.84 8.518 14.767l.012.02.005.01c4.495 7.778 8.999 15.572 13.465 23.403 5.6 9.7 3.3 18.5-6.3 24.1q-2.093 1.209-4.171 2.415c-3.775 2.189-7.525 4.364-11.329 6.485-8.6 4.8-17.5 2.5-22.5-6.1-16.8-28.9-33.6-57.9-50.2-87-4.7-8.1-2.2-17.2 5.7-22 4.826-2.963 9.795-5.783 14.726-8.581h.001l.02-.012L309 2.015c2.4-1.4 5.1-2.1 7.9-1.9M238.342 30.3q-1.919.014-3.842.015c-1.563 0-3.137-.011-4.715-.022-3.166-.022-6.348-.045-9.485.022-9.6.2-18.9 2-27.3 6.7-12.578 6.913-24.6 14.729-36.588 22.522q-3.605 2.346-7.212 4.678c-5.4 3.4-7.2 9.1-6.1 15.4 1.1 6.1 4.7 10.1 10.4 12.2 4.2 1.5 8.3.9 12.4-.7q8.4-3.336 16.8-6.663c16.8-6.656 33.6-13.312 50.4-20.137 2.8-1.1 4.6-.9 6.9 1.1 15.267 13.133 30.623 26.267 45.979 39.401 7.677 6.566 15.355 13.132 23.021 19.699l.263.22c1.677 1.409 3.05 2.562 5.237.28.256-.269.512-.521.758-.762 1.581-1.553 2.759-2.709.942-5.738-12.826-21.787-25.42-43.728-37.987-65.62L273 43.816c-1.3-2.3-2.6-4.6-3.3-7.1-.7-2.3-1.9-3.2-4-3.8-9.042-2.722-18.162-2.668-27.358-2.615" clipRule="evenodd"></path>
+                    </svg>
+                    <h1>{kills}</h1>
+                  </div>
                 )}
                 {showDeaths && (
-                  <span className="flex items-center gap-0.5">
-                    <span className="text-[11px] text-white/40">D</span>
-                    <span>{deaths}</span>
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 16 15" height="14px" style={{ color: teamColor }}>
+                      <path fill="currentColor" d="M7.952.374C3.972.374.732 2.77.732 6.75v3.308a.74.74 0 0 0 .466.687l2.008.803a.74.74 0 0 1 .451.543l.389 1.94a.74.74 0 0 0 .726.594h.959v-2.221h1.11v2.221h.555v-2.221h1.11v2.221h.556v-2.221h1.11v2.221h.96a.74.74 0 0 0 .726-.595l.388-1.94a.74.74 0 0 1 .45-.541l2.01-.804a.74.74 0 0 0 .464-.687V6.75c0-3.98-3.238-6.377-7.218-6.377m-3.054 8.7a1.943 1.943 0 1 1 0-3.887 1.943 1.943 0 0 1 0 3.886m1.787 2.22.85-2.776h.833l.85 2.776zm4.32-2.22a1.943 1.943 0 1 1 0-3.887 1.943 1.943 0 0 1 0 3.886"></path>
+                    </svg>
+                    <h1>{deaths}</h1>
+                  </div>
                 )}
                 {showAssists && (
-                  <span className="flex items-center gap-0.5">
-                    <span className="text-[11px] text-white/40">A</span>
-                    <span>{assists}</span>
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 17 17" height="16px" style={{ color: teamColor }}>
+                      <path fill="currentColor" d="M1.483 7.938h.586a6.76 6.76 0 0 1 6.164-6.164v-.586a.563.563 0 1 1 1.125 0v.586a6.76 6.76 0 0 1 6.163 6.164h.587a.563.563 0 1 1 0 1.125h-.587a6.76 6.76 0 0 1-6.163 6.163v.586a.562.562 0 1 1-1.125 0v-.586a6.76 6.76 0 0 1-6.164-6.164h-.586a.563.563 0 1 1 0-1.124m2.25 1.125h-.534a5.636 5.636 0 0 0 5.034 5.034v-.534a.562.562 0 1 1 1.125 0v.534a5.636 5.636 0 0 0 5.034-5.034h-.534a.562.562 0 1 1 0-1.126h.534a5.636 5.636 0 0 0-5.034-5.034v.535a.563.563 0 1 1-1.125 0v-.535a5.636 5.636 0 0 0-5.034 5.034h.534a.563.563 0 1 1 0 1.125m2.25-.563a2.812 2.812 0 1 0 5.624 0 2.812 2.812 0 0 0-5.624 0"></path>
+                    </svg>
+                    <h1>{assists}</h1>
+                  </div>
                 )}
               </div>
 
@@ -626,19 +626,17 @@ export function IngameHudScene(props: IngameHudSceneProps) {
 
   const isObservedPlayer = (p: any, side: 'left' | 'right', index: number): boolean => {
     if (spectating && !currentlyObserving) return Boolean(side === 'left' && index === 0)
-    if (!currentlyObserving) return Boolean(side === 'left' && index === 0 && !liveOnly)
+    if (!currentlyObserving) return Boolean(side === 'left' && index === 0)
     const obs = String(currentlyObserving).toLowerCase().trim()
     const pName = String(p.name || p.alias || p.riotId || p.id || '').toLowerCase().trim()
     const pRiot = String(p.riotId || '').toLowerCase().trim()
     return Boolean(obs === pName || (pRiot && obs === pRiot) || (pName && obs.includes(pName)) || (pName && pName.includes(obs)))
   }
 
-  const ROUND_END_TEXT: Record<string, string> = { elimination: 'ELIMINATED', detonation: 'SPIKE DETONATED', defusion: 'SPIKE DEFUSED', time: 'TIME RAN OUT' }
-  const roundEndText = roundEnd ? ((ROUND_END_TEXT[roundEnd.reason || ''] || 'ROUND OVER') + (roundEnd.winner ? ' - ' + roundEnd.winner.toUpperCase() : '')) : null
   const isSpikeActive = spikeState === 'planted' || spikeState === 'defusing'
-  const displayTimerText = roundEndText
-    ? roundEndText
-    : isSpikeActive
+  // Endround: keep the plain clock in the timer slot (the banner tells the
+  // story — no ELIMINATED/SPIKE DETONATED words crowding the scoreline).
+  const displayTimerText = isSpikeActive
     ? (spikeState === 'defusing' ? 'DEFUSING' : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
     : timerText
   const displayTimerColor = isSpikeActive ? '#FF3549' : timerColor
@@ -763,7 +761,12 @@ export function IngameHudScene(props: IngameHudSceneProps) {
                       </div>
                     )}
                     {showBombTimer && (
-                      <h1 className="translate-y-1 text-[40px]" style={{ color: displayTimerColor }}>{displayTimerText}</h1>
+                      <h1 className="translate-y-1 flex items-center gap-2 text-[40px]" style={{ color: displayTimerColor }}>
+                        {spikeState === 'planted' && (
+                          <img src="/game/val/misc/Spike_Icon.svg" alt="" className="h-[30px] w-auto object-contain" />
+                        )}
+                        {displayTimerText}
+                      </h1>
                     )}
                     {scoreLineSmall && (
                       <div className="mx-6.75 flex h-full w-10 items-center justify-center">
