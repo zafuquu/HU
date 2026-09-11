@@ -15,7 +15,6 @@ import { CasterCard } from '../components/scenes/CasterCard'
 import { EconomyTracker } from '../components/scenes/EconomyTracker'
 import { PostgameMVP } from '../components/scenes/PostgameMVP'
 import { OverlayToast } from '../components/scenes/OverlayToast'
-import { audioCues } from '../lib/audioCues'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
 
 /**
@@ -60,46 +59,7 @@ export default function OverlayPopout() {
     return () => clearInterval(t)
   }, [isLocalTransport])
 
-  // Broadcast Audio Cues (#23)
-  const prevRoundRef = useRef<number | null>(null)
-  const prevSpikePlantedRef = useRef<boolean>(false)
-  const prevTimeoutRef = useRef<boolean>(false)
-  const prevKillBannerIdRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!liveScores) return
-    // Audio cues are OFF by default (user preference) - opt in via the bridge flag.\n    if (liveScores.audioCuesEnabled !== true) return
-
-    // Timeout alert
-    const isTimeoutActive = Boolean(liveScores.timeout?.active)
-    if (isTimeoutActive && !prevTimeoutRef.current) {
-      audioCues.playTimeout()
-    }
-    prevTimeoutRef.current = isTimeoutActive
-
-    // Kill banner / multi-kill alert
-    const killBannerId = liveScores.killBanner?.type ? `${liveScores.killBanner.type}-${liveScores.killBanner.player || ''}-${liveScores.killBanner.timestamp || ''}` : null
-    if (killBannerId && killBannerId !== prevKillBannerIdRef.current) {
-      audioCues.playKill()
-      prevKillBannerIdRef.current = killBannerId
-    }
-
-    // Spike plant alert
-    const isSpikePlanted = Boolean(liveScores.snapshot?.bombPlanted || liveScores.snapshot?.state?.bombPlanted)
-    if (isSpikePlanted && !prevSpikePlantedRef.current) {
-      audioCues.playSpikePlant()
-    }
-    prevSpikePlantedRef.current = isSpikePlanted
-
-    // Round end alert
-    const currentRound = Number(liveScores.scores?.roundNumber ?? liveScores.snapshot?.roundNumber)
-    if (prevRoundRef.current !== null && !isNaN(currentRound) && currentRound !== prevRoundRef.current) {
-      audioCues.playRoundEnd()
-    }
-    if (!isNaN(currentRound)) {
-      prevRoundRef.current = currentRound
-    }
-  }, [liveScores])
+  // (Audio cues removed — broadcast overlays must stay silent.)
 
   // Auto scene switching: the desktop producer publishes the scene its game data
   // implies (agent-select / buy-round / ingame-hud / post-game / map-interstitial),
@@ -378,6 +338,9 @@ export default function OverlayPopout() {
     return `${m}:${String(s).padStart(2, '0')}`
   })()
   const snapPlayers = Array.isArray(snapState?.players) ? snapState.players : null
+  // Buy phase: everyone is alive by definition — stale death evidence that
+  // trails the round reset must never grey out the freshly mounted cards.
+  const snapShopping = (snapState as any)?.roundPhase === 'shopping'
   const mapLivePlayers = (arr: any[]) => arr.map((p: any, idx: number) => ({
     id: p.playerId || p.name || Math.random(),
     alias: p.name || p.alias || p.agentName || `Player ${idx + 1}`,
@@ -391,8 +354,8 @@ export default function OverlayPopout() {
     img: null,
     photoUrl: null,
     avatarUrl: null,
-    health: p.health ?? (p.isAlive === false ? 0 : 100),
-    isAlive: p.isAlive ?? ((p.health ?? 100) === 0 ? false : true),
+    health: snapShopping ? 100 : (p.health ?? (p.isAlive === false ? 0 : 100)),
+    isAlive: snapShopping ? true : (p.isAlive ?? ((p.health ?? 100) === 0 ? false : true)),
     // Real desktop protocol carries shieldType (0 none / 1 light 25 / 2 heavy 50
     // / 3 enemy-heavy 50 / 4 regen 25) — derive the armor bar values from it.
     armor: p.armor ?? (p.shieldType === 2 || p.shieldType === 3 ? 50 : p.shieldType === 1 || p.shieldType === 4 ? 25 : 0),
@@ -421,6 +384,7 @@ export default function OverlayPopout() {
     const st = p.startTeam ?? p.teamIndex
     if (st === 0 || st === 1) return st
     const tid = String(p.teamId ?? p.team ?? '').toLowerCase()
+    if (tid === 'blue' || tid === 'team one' || tid === '1') return 0
     if (tid === 'red' || tid === 'team two' || tid === '2') return 1
     return 0
   }

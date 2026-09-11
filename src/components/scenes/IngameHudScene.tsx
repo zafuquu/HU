@@ -291,7 +291,7 @@ function EndroundBanner({ roundEnd, roundNumber, winType, leftName, rightName, l
             <p style={{ fontSize: 26, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>{win.name}</p>
             <p style={{ fontSize: 24, fontWeight: 800, color: '#fff', textTransform: 'uppercase', margin: '6px 0 0' }}>ROUND {roundNumber ?? ''}</p>
           </div>
-          <img alt="" src="/game/val/misc/logo.webp" style={{ maxHeight: '50%', objectFit: 'contain', opacity: 0.9 }} />
+          <img alt="" src="/sponsor/Sponsor-2.png" style={{ maxHeight: '50%', objectFit: 'contain', opacity: 0.9 }} />
         </div>
       </div>
     </div>
@@ -356,6 +356,30 @@ function IngamePlayerCard({
     <div className={`w-full ${isRight ? 'team-stats-val-classic-flip' : 'team-stats-val-classic'}`}>
       <div className={`flex w-full transition-all ease-in-out ${isRight ? 'justify-end' : 'justify-start'} max-h-75 opacity-100 mb-2`}>
         <div className={`relative flex h-15.25 w-full items-end duration-300 ${isRight ? 'flex-row-reverse' : ''}`}>
+          {/* Agent portrait — absolutely positioned OUTSIDE the card body and
+              taller than the card so it pokes above it (never cropped).
+              VS player-combat-card parity: wrapper h-56 / img h-68 -top-2 z-2. */}
+          <div
+            className="absolute bottom-0 z-2 h-19 w-12.5"
+            style={{ [isRight ? 'right' : 'left']: 0 } as React.CSSProperties}
+          >
+            <img
+              className={`size-full object-contain object-bottom duration-200 ${isAlive ? '' : 'grayscale opacity-40 brightness-75'}`}
+              style={isRight ? { transform: 'scaleX(-1)' } : undefined}
+              src={agentIcon}
+              alt=""
+              onError={(e) => {
+                ;(e.target as HTMLImageElement).src = '/game/val/agents/wushu/icon.png'
+              }}
+            />
+            {!isAlive && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <svg viewBox="0 0 24 24" className="size-5 text-[#FF3549] drop-shadow-md opacity-95" fill="currentColor">
+                  <path d="M12 2a9 9 0 0 0-9 9c0 3.2 1.6 6 4 7.6V20a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1.4c2.4-1.6 4-4.4 4-7.6a9 9 0 0 0-9-9zm-3 10a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm6 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
+                </svg>
+              </div>
+            )}
+          </div>
           {/* Card Body */}
           <div
             className={`relative z-1 flex h-full flex-1 flex-col items-center justify-center duration-300 ease-in-out p-0.5 ${
@@ -396,27 +420,10 @@ function IngamePlayerCard({
               /></div>
 
 
-              {/* Agent Icon */}
-              <div className="relative h-full w-12.5 shrink-0">
-                <div className="absolute bottom-0 left-0 h-12.5 w-12.5 flex items-center justify-center">
-                  <img
-                    className={`size-full object-contain duration-200 ${isAlive ? '' : 'grayscale opacity-40 brightness-75'}`}
-                    style={isRight ? { transform: 'scaleX(-1)' } : undefined}
-                    src={agentIcon}
-                    alt=""
-                    onError={(e) => {
-                      ;(e.target as HTMLImageElement).src = '/game/val/agents/wushu/icon.png'
-                    }}
-                  />
-                  {!isAlive && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <svg viewBox="0 0 24 24" className="size-5 text-[#FF3549] drop-shadow-md opacity-95" fill="currentColor">
-                        <path d="M12 2a9 9 0 0 0-9 9c0 3.2 1.6 6 4 7.6V20a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1.4c2.4-1.6 4-4.4 4-7.6a9 9 0 0 0-9-9zm-3 10a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm6 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
-                      </svg>
-                    </div>
-                  )}
-                </div>
-              </div>
+              {/* Agent portrait slot — the portrait itself is rendered OUTSIDE the
+                  card body (absolute, poking above the card, VS player-combat-card
+                  parity) so the icon is never cropped by the health row. */}
+              <div className="h-full w-12.5 shrink-0" />
 
               {/* Player Name */}
               <div className={`h-full flex-1 min-w-0 px-1.5 flex items-center relative z-1 ${isRight ? 'justify-end text-right' : 'justify-start text-left'}`}>
