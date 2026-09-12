@@ -99,6 +99,16 @@ export default function OverlayPopout() {
       ? phaseDerivedScene
       : urlSceneKey
   const [scale, setScale] = useState(1)
+  // Sponsor cycler: rotate through the tournament's sponsors every 8s
+  // (ValoSpectra sponsor-cycle parity). Logos are 1:1 square; backdrops 875x200.
+  const sponsorList = (state.sponsors || []).map((s: any) => s?.imageUrl).filter((u: any): u is string => !!u)
+  const [sponsorIdx, setSponsorIdx] = useState(0)
+  useEffect(() => {
+    if (sponsorList.length <= 1) return
+    const t = setInterval(() => setSponsorIdx((i) => (i + 1) % sponsorList.length), 8000)
+    return () => clearInterval(t)
+  }, [sponsorList.length])
+  const sponsorCycleUrl = sponsorList.length > 0 ? sponsorList[sponsorIdx % sponsorList.length] : null
   const fullTournamentIdRef = useRef<string | null>(null)
   // Sticky: once we have shown real data, never blank out mid-stream.
   const hasEverHadDataRef = useRef(false)
@@ -335,7 +345,16 @@ export default function OverlayPopout() {
     const t = setInterval(tickClock, 250)
     return () => clearInterval(t)
   }, [tickClock])
+  const timerRoundRef = useRef<number | null>(null)
+  const timerHoldUntilRef = useRef(0)
   const timerText = (function () {
+    // Round-clock hold: when the round number changes, the previous round's
+    // last timer value may still be in flight — suppress the clock for 2s so
+    // round 1 never shows a stale/unsynced time.
+    const roundNow = Number((snapState as any)?.roundNumber ?? scores?.roundNumber ?? 0)
+    if (timerRoundRef.current !== null && roundNow !== timerRoundRef.current) timerHoldUntilRef.current = Date.now() + 2000
+    timerRoundRef.current = roundNow
+    if (Date.now() < timerHoldUntilRef.current) return undefined
     const base = (snapState as any)?.roundTimer
     if (typeof base !== 'number' || !isFinite(base) || base <= 0) return undefined
     const elapsed = Math.max(0, Math.floor((Date.now() - ((liveScores as any)?.updatedAt ?? Date.now())) / 1000))
@@ -454,8 +473,8 @@ export default function OverlayPopout() {
   const hudSeriesRight = sideSwap ? seriesLeft : seriesRight
   const hudLeftLogo = sideSwap ? (teamB?.logoUrl || null) : (teamA?.logoUrl || null)
   const hudRightLogo = sideSwap ? (teamA?.logoUrl || null) : (teamB?.logoUrl || null)
-  // User-configured sponsor (default-flagged sponsor wins, else the first one).
-  const sponsorImageUrl = (state.sponsors || []).find((s: any) => s?.isDefault)?.imageUrl || (state.sponsors || [])[0]?.imageUrl || null
+  // User-configured sponsor, cycled (see sponsorList above).
+  const sponsorImageUrl = sponsorCycleUrl
   const hudLeftSeed = sideSwap ? (teamB as any)?.seed : (teamA as any)?.seed
   const hudRightSeed = sideSwap ? (teamA as any)?.seed : (teamB as any)?.seed
   const flipWinner = (w: any) => (w === 'blue' ? 'red' : w === 'red' ? 'blue' : w)
@@ -469,6 +488,20 @@ export default function OverlayPopout() {
   const attackingIdx = nativeRoundNumber != null && nativeRoundNumber > 0 && ((nativeRoundNumber - 1) % 24) < 12 ? 0 : 1
   const nativeWinnerIdx = baseRoundEnd?.winner === 'blue' ? 0 : baseRoundEnd?.winner === 'red' ? 1 : null
   const roundWinSide = nativeWinnerIdx == null ? null : (nativeWinnerIdx === attackingIdx ? 'ATTACKER WIN' : 'DEFENDER WIN')
+  // Round-ceremony text: a fresh bridge killBanner (FIRST BLOOD / ACE / CLUTCH /
+  // TEAM ACE / THRIFTY — the bridge auto-clears it after 6s) wins, else the
+  // engine's round-settlement ceremony from snapshot.state.gameEvent
+  // (ROUND WIN / CLUTCH / ACE / TEAM ACE / FLAWLESS).
+  const kb = (liveScores as any)?.killBanner || null
+  const kbFresh = kb && kb.at && Date.now() - Number(kb.at) < 6000 ? kb : null
+  const KB_TEXT: Record<string, string> = { first_blood: 'FIRST BLOOD', ace: 'ACE', clutch: 'CLUTCH', thrifty: 'THRIFTY', 'team ace': 'TEAM ACE', flawless: 'FLAWLESS' }
+  const ceremonyText = (kbFresh ? (KB_TEXT[String(kbFresh.type || '').toLowerCase()] || null) : null)
+    || (((snapState as any)?.gameEvent as string | null) ? String((snapState as any).gameEvent).toUpperCase() : null)
+  const ceremonyWinner: 'blue' | 'red' | null =
+    hudRoundEnd?.winner ?? (kbFresh ? (kbFresh.team === 'right' ? 'red' : 'blue') : null)
+  const ceremonyTrigger = hudRoundEnd
+    ? `rd:${nativeRoundNumber ?? 0}:${hudRoundEnd.winner}`
+    : (kbFresh ? `kb:${kbFresh.at}` : null)
   // Phantom-camera guard: only treat the configured player as a live publisher
   // when the desktop is connected AND they are in the current live roster.
   // Otherwise no camera box is rendered and no viewer connection is opened.
@@ -624,6 +657,9 @@ export default function OverlayPopout() {
             gameEvent={liveEventText}
             winSide={roundWinSide}
             sponsorImageUrl={sponsorImageUrl}
+            ceremonyText={ceremonyText}
+            ceremonyTrigger={ceremonyTrigger}
+            ceremonyWinner={ceremonyWinner}
             roundEnd={hudRoundEnd}
             roundNumber={liveRoundNumber || null}
             currentlyObserving={liveCurrentlyObserving}

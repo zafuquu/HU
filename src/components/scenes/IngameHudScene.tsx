@@ -56,6 +56,9 @@ interface IngameHudSceneProps {
   gameEvent?: string | null
   winSide?: string | null
   sponsorImageUrl?: string | null
+  ceremonyText?: string | null
+  ceremonyTrigger?: string | null
+  ceremonyWinner?: string | null
   activeComponentId?: string | null
   onSelectComponent?: (id: string) => void
   isToggled?: (componentId: string) => boolean
@@ -222,6 +225,9 @@ function getShieldImg(p: any) {
   // regen shield never renders as light.
   const raw = Number(p?.shieldType)
   const type = Number.isInteger(raw) && raw >= 0 && raw <= 4 ? raw : (armor >= 50 ? 2 : armor > 0 ? 1 : 0)
+  // Points first: a stale TIER with zero points must never render a shield
+  // ("shield icon even without shield" — stale shieldType from the last round).
+  if (armor <= 0) return '/game/val/shields/None.webp'
   if (type === 4) return '/game/val/shields/Regen_Shield.png'
   if (type === 2 || type === 3 || armor >= 50) return '/game/val/shields/Heavy_Armor.png'
   if (type === 1 || armor > 0) return '/game/val/shields/Light_Armor.png'
@@ -245,7 +251,6 @@ const DEMO_RIGHT = [
 ]
 
 
-const ENDROUND_CSS = '@keyframes endroundIn { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } } @keyframes endroundOutR { to { transform: translateX(100%); opacity: 0; } } @keyframes endroundOutL { to { transform: translateX(-100%); opacity: 0; } } .endround-in { animation: endroundIn 300ms ease-out; } .endround-out-right { animation: endroundOutR 300ms ease-in forwards; } .endround-out-left { animation: endroundOutL 300ms ease-in forwards; }'
 // VS spike-planted parity: the planted spike icon blinks faster as detonation
 // approaches (1s -> 0.5s -> 0.25s -> 0.125s over the 45s fuse).
 function useSpikeBlink(active: boolean) {
@@ -272,62 +277,77 @@ function useSpikeBlink(active: boolean) {
   return on
 }
 
-function EndroundBanner({ roundEnd, roundNumber, winType, winSide, sponsorIcon, leftName, rightName, leftLogo, rightLogo, leftColor, rightColor }: {
-  roundEnd: { winner: 'blue' | 'red' | null; reason: string | null } | null
+const CEREMONY_CSS = '@keyframes cerIn { from { opacity: 0; transform: translateY(-18px); } to { opacity: 1; transform: none; } } @keyframes cerFrame2 { from { opacity: 0; transform: translateY(26px); } to { opacity: 1; transform: none; } }'
+// Round ceremony, Havoc layout (user spec):
+//   Frame 1 — CENTERED: brand logo + reason text (ROUND WIN / ACE / CLUTCH ...)
+//   then the whole frame slides DOWN to the very bottom center, where
+//   Frame 2 — [team logo / team name / ATTACKER-DEFENDER]  [brand logo / ROUND n]
+function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, brandLogo }: {
+  trigger: string | null
+  reasonText: string | null
   roundNumber: number | null
-  winType: string | null
   winSide?: string | null
-  sponsorIcon?: string | null
-  leftName: string
-  rightName: string
-  leftLogo: string | null
-  rightLogo: string | null
-  leftColor: string
-  rightColor: string
+  winnerName: string
+  winnerLogo: string | null
+  winnerColor: string
+  brandLogo: string
 }) {
-  const key = roundEnd?.winner ? (roundNumber ?? 0) + ':' + roundEnd.winner : null
-  const [phase, setPhase] = React.useState<'hidden' | 'in' | 'shown' | 'out'>('hidden')
+  const [stage, setStage] = React.useState<'hidden' | 'center' | 'slide' | 'bottom' | 'out'>('hidden')
   const seen = React.useRef<string | null>(null)
   React.useEffect(() => {
-    if (!key || key === seen.current) return
-    seen.current = key
-    const t1 = setTimeout(() => setPhase('in'), 200)
-    const t2 = setTimeout(() => setPhase('shown'), 2000) // VS: animate-delay-2000
-    return () => { clearTimeout(t1); clearTimeout(t2) }
-  }, [key])
-  React.useEffect(() => {
-    if (phase !== 'shown' && phase !== 'in') return
-    if (roundEnd) return
-    setPhase('out')
-    const t = setTimeout(() => setPhase('hidden'), 320)
-    return () => clearTimeout(t)
-  }, [roundEnd, phase])
-  if (phase === 'hidden' || !roundEnd?.winner) return null
-  const leftWon = roundEnd.winner === 'blue'
-  const win = leftWon
-    ? { name: (leftName || 'TEAM A').toUpperCase(), color: leftColor, logo: leftLogo }
-    : { name: (rightName || 'TEAM B').toUpperCase(), color: rightColor, logo: rightLogo }
-  const slide = phase === 'in' ? 'endround-in' : phase === 'out' ? (leftWon ? 'endround-out-right' : 'endround-out-left') : ''
-  const winText = (winType || 'Round Win').toUpperCase()
+    if (!trigger || trigger === seen.current) return
+    seen.current = trigger
+    setStage('center')
+    const t1 = setTimeout(() => setStage('slide'), 1900)
+    const t2 = setTimeout(() => setStage('bottom'), 2400)
+    const t3 = setTimeout(() => setStage('out'), 6200)
+    const t4 = setTimeout(() => setStage('hidden'), 6600)
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4) }
+  }, [trigger])
+  if (stage === 'hidden') return null
+  // Frame 1 sits centered; from the slide phase on, the box moves to the
+  // bottom-center (box bottom lands 120px above the screen bottom).
+  const boxTop = stage === 'center' ? 'calc(50% - 120px)' : 'calc(100% - 320px)'
+  const frame2Visible = stage === 'bottom' || stage === 'out'
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 120 }}>
-      <style>{ENDROUND_CSS}</style>
-      <div className={slide} style={{ width: 875, height: 200, position: 'relative', overflow: 'hidden', borderRadius: 4, boxShadow: '0 12px 40px rgba(0,0,0,0.55)' }}>
-        {/* Phase 1 — round win reason (VS: faint side logos + reason text) */}
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, ' + leftColor + '55 0%, rgba(10,14,22,0.92) 30%, rgba(10,14,22,0.92) 70%, ' + rightColor + '55 100%)' }}>
-          <img src={leftLogo ?? undefined} alt="" style={{ position: 'absolute', left: 32, maxHeight: '50%', opacity: 0.2, filter: 'grayscale(1)' }} />
-          {sponsorIcon && <img alt="" src={sponsorIcon} style={{ maxHeight: '30%', objectFit: 'contain', marginBottom: 6 }} />}
-          <p style={{ fontSize: 30, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>{winText}</p>
-          <img src={rightLogo ?? undefined} alt="" style={{ position: 'absolute', right: 32, maxHeight: '50%', opacity: 0.2, filter: 'grayscale(1)' }} />
+    <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none' }}>
+      <style>{CEREMONY_CSS}</style>
+      <div
+        style={{
+          position: 'absolute', left: '50%', top: boxTop, width: 875, height: 200,
+          transform: 'translateX(-50%)', transition: 'top 480ms cubic-bezier(0.4, 0, 0.2, 1)',
+          opacity: stage === 'out' ? 0 : 1, transitionProperty: 'top, opacity',
+          animation: stage === 'center' ? 'cerIn 300ms ease-out' : undefined,
+          borderRadius: 4, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
+        }}
+      >
+        {/* Frame 1 — brand logo + reason text */}
+        <div
+          style={{
+            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            background: 'linear-gradient(90deg, rgba(10,14,22,0.6) 0%, rgba(10,14,22,0.92) 30%, rgba(10,14,22,0.92) 70%, rgba(10,14,22,0.6) 100%)',
+            opacity: frame2Visible ? 0 : 1, transition: 'opacity 250ms ease',
+          }}
+        >
+          <img alt="" src={brandLogo} style={{ maxHeight: 76, objectFit: 'contain', marginBottom: 8 }} />
+          <p style={{ fontSize: 34, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 3, margin: 0 }}>{reasonText || 'ROUND WIN'}</p>
         </div>
-        {/* Phase 2 — winner reveal (VS: winner logo + ATTACKER/DEFENDER WIN left of center ROUND n) */}
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', background: 'linear-gradient(90deg, ' + win.color + 'dd 0%, rgba(10,14,22,0.92) 55%)', transition: 'transform 300ms ease, opacity 300ms ease', transform: phase === 'shown' ? 'translateX(0)' : leftWon ? 'translateX(-100%)' : 'translateX(100%)', opacity: phase === 'shown' ? 1 : 0 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <img src={win.logo ?? undefined} alt="" style={{ maxHeight: 110, maxWidth: 140, objectFit: 'contain' }} />
-            <p style={{ fontSize: 24, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: '6px 0 0' }}>{winSide || win.name}</p>
+        {/* Frame 2 — winner block + brand/ROUND n block */}
+        <div
+          style={{
+            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
+            background: 'linear-gradient(90deg, ' + winnerColor + 'dd 0%, rgba(10,14,22,0.92) 55%)',
+            opacity: frame2Visible ? 1 : 0, animation: stage === 'bottom' ? 'cerFrame2 300ms ease-out' : undefined,
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <img src={winnerLogo ?? undefined} alt="" style={{ maxHeight: 92, maxWidth: 150, objectFit: 'contain' }} />
+            <p style={{ fontSize: 24, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>{winnerName}</p>
+            {winSide && <p style={{ fontSize: 18, fontWeight: 800, color: '#FFD166', textTransform: 'uppercase', letterSpacing: 3, margin: 0 }}>{winSide}</p>}
           </div>
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: 28, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>ROUND {roundNumber ?? ''}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <img alt="" src={brandLogo} style={{ maxHeight: 62, objectFit: 'contain' }} />
+            <p style={{ fontSize: 26, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>ROUND {roundNumber ?? ''}</p>
           </div>
         </div>
       </div>
@@ -630,6 +650,9 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     gameEvent = null,
     winSide = null,
     sponsorImageUrl = null,
+    ceremonyText = null,
+    ceremonyTrigger = null,
+    ceremonyWinner = null,
     leftTeamName: leftTeamNameProp,
     rightTeamName: rightTeamNameProp,
     activeComponentId,
@@ -695,7 +718,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   const shouldRenderWebcam = showWebcam && (!liveOnly || (webcamActive && (webcamStream || webcamPlayerPhoto)))
 
   // Scoreline Team B guard: don't show phantom Team B when testing solo
-  const hasRightTeam = !liveOnly ? true : (rightRoster.length > 0 || (!!rightTeamName && rightTeamName.trim() !== '' && rightTeamName !== 'Right Team' && rightTeamName !== 'Team B' && !hasLiveMatch))
+  const hasRightTeam = !liveOnly ? true : (rightRoster.length > 0 || (!!rightTeamName && rightTeamName.trim() !== '' && rightTeamName !== 'Right Team' && rightTeamName !== 'Team B'))
 
   const webcamVideoRef = React.useRef<HTMLVideoElement | null>(null)
   React.useEffect(() => {
@@ -718,18 +741,16 @@ export function IngameHudScene(props: IngameHudSceneProps) {
       } as React.CSSProperties}
     >
             {/* ===== ENDROUND BANNER (ValoSpectra endround-banner parity) ===== */}
-      <EndroundBanner
-        roundEnd={roundEnd}
+      {/* ===== ROUND CEREMONY (frame 1 centered → slides to bottom center → frame 2) ===== */}
+      <RoundCeremony
+        trigger={ceremonyTrigger || (roundEnd?.winner ? 'rd:' + (roundNumber ?? 0) + ':' + roundEnd.winner : null)}
+        reasonText={ceremonyText || roundEndReasonText}
         roundNumber={roundNumber}
-        winType={roundEndReasonText}
         winSide={winSide}
-        sponsorIcon={sponsorImageUrl || undefined}
-        leftName={bannerLeftName}
-        rightName={bannerRightName}
-        leftLogo={leftTeamLogo ?? null}
-        rightLogo={rightTeamLogo ?? null}
-        leftColor={leftTeamColor}
-        rightColor={rightTeamColor}
+        winnerName={(ceremonyWinner || roundEnd?.winner) === 'blue' ? bannerLeftName : bannerRightName}
+        winnerLogo={((ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamLogo : rightTeamLogo) ?? null}
+        winnerColor={(ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamColor : rightTeamColor}
+        brandLogo={sponsorImageUrl || '/sponsor/Sponsor-2.png'}
       />
       {/* Top Map History */}
       {showMapHistory && activeMapHistory.length > 0 && (
