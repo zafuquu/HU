@@ -386,7 +386,7 @@ export default function OverlayPopout() {
     // / 3 enemy-heavy 50 / 4 regen 25) — derive the armor bar values from it.
     armor: p.armor ?? (p.shieldType === 2 || p.shieldType === 3 ? 50 : p.shieldType === 1 || p.shieldType === 4 ? 25 : 0),
     armorType: p.armorType ?? (p.shieldType === 2 || p.shieldType === 3 ? 'Heavy' : p.shieldType === 1 || p.shieldType === 4 ? 'Light' : 'None'),
-    credits: p.credits ?? p.money ?? 800,
+    credits: p.credits ?? p.money ?? null,
     spent: p.loadoutValue != null ? p.loadoutValue : null,
     weaponName: p.weaponName || p.scoreboardWeaponInternal || p.weapon || null,
     shieldType: p.shieldType,

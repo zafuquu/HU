@@ -283,7 +283,7 @@ const CEREMONY_CSS = '@keyframes cerIn { from { opacity: 0; transform: translate
 //   Frame 1 — CENTERED: brand logo + reason text (ROUND WIN / ACE / CLUTCH ...)
 //   then the whole frame slides DOWN to the very bottom center, where
 //   Frame 2 — [team logo / team name / ATTACKER-DEFENDER]  [brand logo / ROUND n]
-function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, leftColor, rightColor, gameEventLogo, tournamentLogo }: {
+function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, winnerFromLeft, leftColor, rightColor, gameEventLogo, tournamentLogo }: {
   trigger: string | null
   reasonText: string | null
   roundNumber: number | null
@@ -291,6 +291,8 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
   winnerName: string
   winnerLogo: string | null
   winnerColor: string
+  /** True when the winner is the LEFT panel team — anchors the reveal gradient on that side. */
+  winnerFromLeft?: boolean
   leftColor: string
   rightColor: string
   /** Logo shown above the round-end reason in frame 1 (tournament logo; default Game Event.png). */
@@ -342,7 +344,11 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
         <div
           style={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
-            background: 'linear-gradient(90deg, ' + winnerColor + 'dd 0%, rgba(10,14,22,0.92) 55%)',
+            // Reveal gradient anchored on the WINNING team's side — when the
+            // right team wins, the color sweeps from the right edge (the old
+            // always-left gradient put the right team's color on the wrong
+            // side of the banner).
+            background: 'linear-gradient(' + (winnerFromLeft ? '90deg' : '270deg') + ', ' + winnerColor + 'dd 0%, rgba(10,14,22,0.92) 55%)',
             opacity: frame2Visible ? 1 : 0, animation: stage === 'bottom' ? 'cerFrame2 300ms ease-out' : undefined,
           }}
         >
@@ -758,6 +764,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
         winnerName={(ceremonyWinner || roundEnd?.winner) === 'blue' ? bannerLeftName : bannerRightName}
         winnerLogo={((ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamLogo : rightTeamLogo) ?? null}
         winnerColor={(ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamColor : rightTeamColor}
+        winnerFromLeft={(ceremonyWinner || roundEnd?.winner) === 'blue'}
         leftColor={leftTeamColor}
         rightColor={rightTeamColor}
         gameEventLogo={tournamentLogo}

@@ -23,13 +23,13 @@ function loadInitialState(base: AppState): AppState {
       for (const t of saved.teams) {
         for (const k of ['logoUrl', 'logoSecondaryUrl', 'logoTertiaryUrl']) {
           const v = t?.[k]
-          if (typeof v === 'string' && (v.startsWith('blob:') || (v.startsWith('data:') && v.length > 400_000))) t[k] = null
+          if (typeof v === 'string' && (v.startsWith('blob:') || (v.startsWith('data:') && v.length > 1_500_000))) t[k] = null
         }
         if (Array.isArray(t?.players)) {
           for (const p of t.players) {
             for (const k of ['photoUrl', 'avatarUrl']) {
               const v = p?.[k]
-              if (typeof v === 'string' && (v.startsWith('blob:') || (v.startsWith('data:') && v.length > 400_000))) p[k] = null
+              if (typeof v === 'string' && (v.startsWith('blob:') || (v.startsWith('data:') && v.length > 1_500_000))) p[k] = null
             }
           }
         }
@@ -37,11 +37,11 @@ function loadInitialState(base: AppState): AppState {
     }
     if (Array.isArray(saved.tournamentLogoUrls)) {
       saved.tournamentLogoUrls = saved.tournamentLogoUrls.map((v: any) =>
-        typeof v === 'string' && !v.startsWith('blob:') && !(v.startsWith('data:') && v.length > 400_000) ? v : null)
+        typeof v === 'string' && !v.startsWith('blob:') && !(v.startsWith('data:') && v.length > 1_500_000) ? v : null)
     }
     if (Array.isArray(saved.sponsors)) {
       for (const s of saved.sponsors) {
-        if (typeof s?.imageUrl === 'string' && (s.imageUrl.startsWith('blob:') || (s.imageUrl.startsWith('data:') && s.imageUrl.length > 400_000))) s.imageUrl = null
+        if (typeof s?.imageUrl === 'string' && (s.imageUrl.startsWith('blob:') || (s.imageUrl.startsWith('data:') && s.imageUrl.length > 1_500_000))) s.imageUrl = null
       }
     }
     return sanitizeWorkspaceIds({ ...base, ...saved })
