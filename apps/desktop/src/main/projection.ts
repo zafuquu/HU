@@ -605,16 +605,20 @@ export class ValProjectionSession {
             }
           } else if (gepTeam !== s.viewerGepTeam) {
             // The viewer's own GEP team number changed mid-match (halftime
-            // side flip or squad re-index). Re-anchor to the viewer so the
-            // viewer stays LEFT and everyone re-sides from their own team.
-            s.viewerGepTeam = gepTeam;
-            for (const p of s.roster ?? []) {
-              const gt = this.lastGepTeam.get(this.normalizeName(p.displayName));
-              if (gt != null) {
-                p.teamIndex = gt === s.viewerGepTeam ? 0 : 1;
-                p.teamId = p.teamIndex === 0 ? "Blue" : "Red";
-              }
+            // side flip or squad re-index). Hysteresis: only commit the
+            // re-anchor once the new team has been reported consistently for
+            // 1.5s — alternating team facts used to re-side the whole board
+            // on every cycle ("score switches to the other team and back").
+            if (this.pendingAnchorTeam === gepTeam && Date.now() - this.pendingAnchorSince > 1500) {
+              this.pendingAnchorTeam = null;
+              s.viewerGepTeam = gepTeam;
+              this.reSideRoster();
+            } else if (this.pendingAnchorTeam !== gepTeam) {
+              this.pendingAnchorTeam = gepTeam;
+              this.pendingAnchorSince = Date.now();
             }
+          } else {
+            this.pendingAnchorTeam = null;
           }
         }
         if (!entry) {
@@ -910,6 +914,21 @@ export class ValProjectionSession {
   // WITHOUT their gun+shield (Valorant rules); tracked so the buy-round cards
   // stop showing a dead player's old Vandal ("gun doesn't update").
   private diedLastRound = new Set<string>();
+  // Anchor hysteresis: GEP's team field can alternate between facts; only a
+  // team value that persists commits a re-anchor (stops scoreline side swaps).
+  private pendingAnchorTeam: number | null = null;
+  private pendingAnchorSince = 0;
+
+  private reSideRoster(): void {
+    const s = this.s;
+    for (const p of s.roster ?? []) {
+      const gt = this.lastGepTeam.get(this.normalizeName(p.displayName));
+      if (gt != null) {
+        p.teamIndex = gt === s.viewerGepTeam ? 0 : 1;
+        p.teamId = p.teamIndex === 0 ? "Blue" : "Red";
+      }
+    }
+  }
 
   private normalizeName(name: string): string {
     return name.split("#")[0]!.trim().toLowerCase();
