@@ -116,7 +116,7 @@ export default function OverlayPopout() {
 
   // Full-field authority: the room workspace havoc wins wholesale on overlay
   // pages (OBS/browser sources have no local workspace worth preserving).
-  const HAVOC_FIELDS = ['teams','teamAId','teamBId','sponsors','mapPicks','connectedTournamentId',
+  const HAVOC_FIELDS = ['teams','teamAId','teamBId','sponsors','tournamentLogoUrls','mapPicks','connectedTournamentId',
     'scoreA','scoreB','seriesScoreA','seriesScoreB','roundTitle','eventTitle','seriesTitle',
     'gameSeries','matchFormat','bestOf'] as const
   const applyHavoc = (saved: any) => {

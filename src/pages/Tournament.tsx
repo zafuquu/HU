@@ -180,13 +180,39 @@ export default function Tournament() {
                     onChange={e => {
                       const file = e.target.files?.[0]
                       if (file) {
-                        const fakeUrl = URL.createObjectURL(file)
-                        setState(p => {
-                          const urls = [...p.tournamentLogoUrls]
-                          urls[i] = fakeUrl
-                          return { ...p, tournamentLogoUrls: urls }
-                        })
-                        showToast(`${label} logo uploaded`)
+                        if (file.size > 5_000_000) {
+                          showToast('Logo too large — use an image under 5 MB')
+                          return
+                        }
+                        // Persist as a compressed data URL — blob: URLs die on refresh
+                        // ("uploaded the tournament logo, refreshed, it's gone").
+                        const reader = new FileReader()
+                        reader.onload = () => {
+                          const img = new Image()
+                          img.onload = () => {
+                            try {
+                              const max = 512
+                              const scale = Math.min(1, max / Math.max(img.width, img.height))
+                              const canvas = document.createElement('canvas')
+                              canvas.width = Math.max(1, Math.round(img.width * scale))
+                              canvas.height = Math.max(1, Math.round(img.height * scale))
+                              canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
+                              const dataUrl = canvas.toDataURL('image/png')
+                              setState(p => {
+                                const urls = [...p.tournamentLogoUrls]
+                                urls[i] = dataUrl
+                                return { ...p, tournamentLogoUrls: urls }
+                              })
+                              showToast(`${label} logo uploaded`)
+                            } catch {
+                              showToast('Failed to process logo image')
+                            }
+                          }
+                          img.onerror = () => showToast('Failed to read logo file')
+                          img.src = String(reader.result)
+                        }
+                        reader.onerror = () => showToast('Failed to read logo file')
+                        reader.readAsDataURL(file)
                       }
                     }}
                   />

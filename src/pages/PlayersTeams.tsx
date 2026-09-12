@@ -411,8 +411,25 @@ export default function PlayersTeams() {
                           onChange={e => {
                             const file = e.target.files?.[0]
                             if (file) {
-                              const fakeUrl = URL.createObjectURL(file)
-                              updatePlayer(selectedTeam.id, player.id, { photoUrl: fakeUrl })
+                              // Persist as a data URL — blob: URLs die on refresh.
+                              const reader = new FileReader()
+                              reader.onload = () => {
+                                const img = new Image()
+                                img.onload = () => {
+                                  try {
+                                    const max = 512
+                                    const scale = Math.min(1, max / Math.max(img.width, img.height))
+                                    const canvas = document.createElement('canvas')
+                                    canvas.width = Math.max(1, Math.round(img.width * scale))
+                                    canvas.height = Math.max(1, Math.round(img.height * scale))
+                                    canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
+                                    updatePlayer(selectedTeam.id, player.id, { photoUrl: canvas.toDataURL('image/png') })
+                                  } catch { /* ignore */ }
+                                }
+                                img.onerror = () => { /* ignore */ }
+                                img.src = String(reader.result)
+                              }
+                              reader.readAsDataURL(file)
                             }
                           }}
                         />

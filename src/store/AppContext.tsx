@@ -18,13 +18,30 @@ function loadInitialState(base: AppState): AppState {
     const saved = JSON.parse(raw)
     if (!saved || typeof saved !== 'object') return base
     // Logo migration: legacy blob: URLs die on reload and oversized data URLs
-    // used to blow the localStorage quota — drop them so teams still load.
+    // used to blow the localStorage quota — drop them so state still loads.
     if (Array.isArray(saved.teams)) {
       for (const t of saved.teams) {
         for (const k of ['logoUrl', 'logoSecondaryUrl', 'logoTertiaryUrl']) {
           const v = t?.[k]
           if (typeof v === 'string' && (v.startsWith('blob:') || (v.startsWith('data:') && v.length > 400_000))) t[k] = null
         }
+        if (Array.isArray(t?.players)) {
+          for (const p of t.players) {
+            for (const k of ['photoUrl', 'avatarUrl']) {
+              const v = p?.[k]
+              if (typeof v === 'string' && (v.startsWith('blob:') || (v.startsWith('data:') && v.length > 400_000))) p[k] = null
+            }
+          }
+        }
+      }
+    }
+    if (Array.isArray(saved.tournamentLogoUrls)) {
+      saved.tournamentLogoUrls = saved.tournamentLogoUrls.map((v: any) =>
+        typeof v === 'string' && !v.startsWith('blob:') && !(v.startsWith('data:') && v.length > 400_000) ? v : null)
+    }
+    if (Array.isArray(saved.sponsors)) {
+      for (const s of saved.sponsors) {
+        if (typeof s?.imageUrl === 'string' && (s.imageUrl.startsWith('blob:') || (s.imageUrl.startsWith('data:') && s.imageUrl.length > 400_000))) s.imageUrl = null
       }
     }
     return sanitizeWorkspaceIds({ ...base, ...saved })
