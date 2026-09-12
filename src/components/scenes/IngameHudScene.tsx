@@ -56,6 +56,7 @@ interface IngameHudSceneProps {
   gameEvent?: string | null
   winSide?: string | null
   sponsorImageUrl?: string | null
+  tournamentLogo?: string | null
   ceremonyText?: string | null
   ceremonyTrigger?: string | null
   ceremonyWinner?: string | null
@@ -282,7 +283,7 @@ const CEREMONY_CSS = '@keyframes cerIn { from { opacity: 0; transform: translate
 //   Frame 1 — CENTERED: brand logo + reason text (ROUND WIN / ACE / CLUTCH ...)
 //   then the whole frame slides DOWN to the very bottom center, where
 //   Frame 2 — [team logo / team name / ATTACKER-DEFENDER]  [brand logo / ROUND n]
-function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, brandLogo }: {
+function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, gameEventLogo, tournamentLogo }: {
   trigger: string | null
   reasonText: string | null
   roundNumber: number | null
@@ -290,7 +291,10 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
   winnerName: string
   winnerLogo: string | null
   winnerColor: string
-  brandLogo: string
+  /** Logo shown above the round-end reason in frame 1 (tournament logo; default Game Event.png). */
+  gameEventLogo?: string | null
+  /** Logo shown above ROUND n in frame 2 (tournament logo; default Sponsor-1.png). */
+  tournamentLogo?: string | null
 }) {
   const [stage, setStage] = React.useState<'hidden' | 'center' | 'slide' | 'bottom' | 'out'>('hidden')
   const seen = React.useRef<string | null>(null)
@@ -329,7 +333,7 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
             opacity: frame2Visible ? 0 : 1, transition: 'opacity 250ms ease',
           }}
         >
-          <img alt="" src={brandLogo} style={{ maxHeight: 76, objectFit: 'contain', marginBottom: 8 }} />
+          <img alt="" src={gameEventLogo || '/sponsor/Game Event.png'} style={{ maxHeight: 76, objectFit: 'contain', marginBottom: 8 }} />
           <p style={{ fontSize: 34, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 3, margin: 0 }}>{reasonText || 'ROUND WIN'}</p>
         </div>
         {/* Frame 2 — winner block + brand/ROUND n block */}
@@ -341,12 +345,12 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <img src={winnerLogo ?? undefined} alt="" style={{ maxHeight: 92, maxWidth: 150, objectFit: 'contain' }} />
+            {winnerLogo && <img src={winnerLogo} alt="" style={{ maxHeight: 92, maxWidth: 150, objectFit: 'contain' }} />}
             <p style={{ fontSize: 24, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>{winnerName}</p>
             {winSide && <p style={{ fontSize: 18, fontWeight: 800, color: '#FFD166', textTransform: 'uppercase', letterSpacing: 3, margin: 0 }}>{winSide}</p>}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <img alt="" src={brandLogo} style={{ maxHeight: 62, objectFit: 'contain' }} />
+            <img alt="" src={tournamentLogo || '/sponsor/Sponsor-1.png'} style={{ maxHeight: 62, objectFit: 'contain' }} />
             <p style={{ fontSize: 26, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>ROUND {roundNumber ?? ''}</p>
           </div>
         </div>
@@ -650,6 +654,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     gameEvent = null,
     winSide = null,
     sponsorImageUrl = null,
+    tournamentLogo = null,
     ceremonyText = null,
     ceremonyTrigger = null,
     ceremonyWinner = null,
@@ -662,6 +667,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     spectating = false,
     spikeSite = null,
     spikeState = null,
+    eventsBg,
   } = props
 
   // ===== Endround banner names (ValoSpectra endround-banner parity) =====
@@ -718,7 +724,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   const shouldRenderWebcam = showWebcam && (!liveOnly || (webcamActive && (webcamStream || webcamPlayerPhoto)))
 
   // Scoreline Team B guard: don't show phantom Team B when testing solo
-  const hasRightTeam = !liveOnly ? true : (rightRoster.length > 0 || (!!rightTeamName && rightTeamName.trim() !== '' && rightTeamName !== 'Right Team' && rightTeamName !== 'Team B'))
+  const hasRightTeam = !liveOnly ? true : (rightRoster.length > 0 || (scoreRight ?? 0) > 0 || (seriesScoreRight ?? 0) > 0 || (!!rightTeamName && rightTeamName.trim() !== '' && rightTeamName !== 'Right Team' && rightTeamName !== 'Team B'))
 
   const webcamVideoRef = React.useRef<HTMLVideoElement | null>(null)
   React.useEffect(() => {
@@ -750,7 +756,8 @@ export function IngameHudScene(props: IngameHudSceneProps) {
         winnerName={(ceremonyWinner || roundEnd?.winner) === 'blue' ? bannerLeftName : bannerRightName}
         winnerLogo={((ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamLogo : rightTeamLogo) ?? null}
         winnerColor={(ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamColor : rightTeamColor}
-        brandLogo={sponsorImageUrl || '/sponsor/Sponsor-2.png'}
+        gameEventLogo={tournamentLogo}
+        tournamentLogo={tournamentLogo}
       />
       {/* Top Map History */}
       {showMapHistory && activeMapHistory.length > 0 && (
@@ -975,13 +982,15 @@ export function IngameHudScene(props: IngameHudSceneProps) {
         </div>
       )}
 
-      {/* Ceremony Banner / Game Event (Ace, Clutch, Defused, Detonated, etc.) */}
-      {(showGameEvents || liveOnly) && gameEvent && (
+      {/* Ceremony Banner / Game Event (Spike Defused/Detonated, pauses, etc.)
+          — round-end ceremonies live in RoundCeremony; spike outcomes are
+          suppressed here so the same event never renders twice. */}
+      {(showGameEvents || liveOnly) && gameEvent && !(roundEnd && (roundEnd.reason === 'detonation' || roundEnd.reason === 'defusion')) && (
         <div
-          className={`clickable-component absolute top-48 z-40 flex items-center justify-center px-12 py-4 rounded-md border border-white/20 bg-black/90 backdrop-blur-md shadow-2xl${
+          className={`clickable-component absolute top-48 z-40 overflow-hidden flex flex-col items-center justify-center px-12 py-4 rounded-md border border-white/20 shadow-2xl${
             activeComponentId === 'game-events' ? ' selected' : ''
           }`}
-          style={{ left: '50%', transform: 'translateX(-50%)' }}
+          style={{ left: '50%', transform: 'translateX(-50%)', background: eventsBg ? `url(${eventsBg}) center/cover no-repeat` : 'rgba(0,0,0,0.9)' }}
           data-component-id="game-events"
           onClick={(e) => {
             e.stopPropagation()
@@ -991,11 +1000,9 @@ export function IngameHudScene(props: IngameHudSceneProps) {
           {/* Opacity-only enter animation — a transform-based animation would
               override the translateX(-50%) centering above. */}
           <style>{`@keyframes geIn { from { opacity: 0; } to { opacity: 1; } } .ge-in { animation: geIn 300ms ease-out; }`}</style>
-          <div
-            className="ge-in absolute inset-0 opacity-20 pointer-events-none rounded-md"
-            style={{ background: `radial-gradient(circle, ${leftTeamColor} 0%, transparent 70%)` }}
-          />
-          <h1 className="font-schabo text-[72px] text-white uppercase drop-shadow-lg tracking-wider">
+          {eventsBg && <div className="ge-in absolute inset-0 pointer-events-none" style={{ background: 'rgba(0,0,0,0.45)' }} />}
+          <img alt="" src="/sponsor/Game Event.png" className="ge-in relative z-1 object-contain" style={{ maxHeight: 56, marginBottom: 4 }} />
+          <h1 className="ge-in relative z-1 font-schabo text-[64px] text-white uppercase drop-shadow-lg tracking-wider leading-none">
             {gameEvent}
           </h1>
         </div>

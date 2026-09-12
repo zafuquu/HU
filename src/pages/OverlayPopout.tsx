@@ -475,6 +475,9 @@ export default function OverlayPopout() {
   const hudRightLogo = sideSwap ? (teamA?.logoUrl || null) : (teamB?.logoUrl || null)
   // User-configured sponsor, cycled (see sponsorList above).
   const sponsorImageUrl = sponsorCycleUrl
+  // Tournament/event logo (workspace-configured) — used by the round ceremony
+  // and post-game; falls back to the bundled Game Event / Sponsor-1 assets.
+  const tournamentLogoUrl = (state.tournamentLogoUrls || []).find((u: any): u is string => !!u) || null
   const hudLeftSeed = sideSwap ? (teamB as any)?.seed : (teamA as any)?.seed
   const hudRightSeed = sideSwap ? (teamA as any)?.seed : (teamB as any)?.seed
   const flipWinner = (w: any) => (w === 'blue' ? 'red' : w === 'red' ? 'blue' : w)
@@ -657,6 +660,7 @@ export default function OverlayPopout() {
             gameEvent={liveEventText}
             winSide={roundWinSide}
             sponsorImageUrl={sponsorImageUrl}
+            tournamentLogo={tournamentLogoUrl}
             ceremonyText={ceremonyText}
             ceremonyTrigger={ceremonyTrigger}
             ceremonyWinner={ceremonyWinner}
@@ -714,6 +718,9 @@ export default function OverlayPopout() {
             rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamColor={teamA?.color || '#28D091'}
             rightTeamColor={teamB?.color || '#FF3549'}
+            leftTeamLogo={teamA?.logoUrl || null}
+            rightTeamLogo={teamB?.logoUrl || null}
+            tournamentLogo={tournamentLogoUrl}
             scoreLeft={scoreLeft}
             scoreRight={scoreRight}
             leftTeamPlayers={leftPlayers}

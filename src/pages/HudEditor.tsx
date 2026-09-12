@@ -609,6 +609,10 @@ export default function HudEditor() {
                     teamStatsLeftColor={getFieldValue('team-stats', 'team-stats-left-color', '#EFF1FF')}
                     teamStatsRightColor={getFieldValue('team-stats', 'team-stats-right-color', '#EFF1FF')}
                     activeComponentId={activeComponentId}
+                    gameEvent="ACE"
+                    roundNumber={13}
+                    roundEnd={{ winner: 'blue', reason: 'elimination' }}
+                    tournamentLogo={state.tournamentLogoUrls?.[0] || null}
                     onSelectComponent={setActiveComponentId}
                     isToggled={isToggled}
                   />
