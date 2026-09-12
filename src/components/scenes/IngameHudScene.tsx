@@ -283,7 +283,7 @@ const CEREMONY_CSS = '@keyframes cerIn { from { opacity: 0; transform: translate
 //   Frame 1 — CENTERED: brand logo + reason text (ROUND WIN / ACE / CLUTCH ...)
 //   then the whole frame slides DOWN to the very bottom center, where
 //   Frame 2 — [team logo / team name / ATTACKER-DEFENDER]  [brand logo / ROUND n]
-function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, gameEventLogo, tournamentLogo }: {
+function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, leftColor, rightColor, gameEventLogo, tournamentLogo }: {
   trigger: string | null
   reasonText: string | null
   roundNumber: number | null
@@ -291,6 +291,8 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
   winnerName: string
   winnerLogo: string | null
   winnerColor: string
+  leftColor: string
+  rightColor: string
   /** Logo shown above the round-end reason in frame 1 (tournament logo; default Game Event.png). */
   gameEventLogo?: string | null
   /** Logo shown above ROUND n in frame 2 (tournament logo; default Sponsor-1.png). */
@@ -329,7 +331,7 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
         <div
           style={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            background: 'linear-gradient(90deg, rgba(10,14,22,0.6) 0%, rgba(10,14,22,0.92) 30%, rgba(10,14,22,0.92) 70%, rgba(10,14,22,0.6) 100%)',
+            background: 'linear-gradient(90deg, ' + leftColor + '55 0%, rgba(10,14,22,0.92) 30%, rgba(10,14,22,0.92) 70%, ' + rightColor + '55 100%)',
             opacity: frame2Visible ? 0 : 1, transition: 'opacity 250ms ease',
           }}
         >
@@ -756,6 +758,8 @@ export function IngameHudScene(props: IngameHudSceneProps) {
         winnerName={(ceremonyWinner || roundEnd?.winner) === 'blue' ? bannerLeftName : bannerRightName}
         winnerLogo={((ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamLogo : rightTeamLogo) ?? null}
         winnerColor={(ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamColor : rightTeamColor}
+        leftColor={leftTeamColor}
+        rightColor={rightTeamColor}
         gameEventLogo={tournamentLogo}
         tournamentLogo={tournamentLogo}
       />
