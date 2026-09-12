@@ -498,7 +498,7 @@ export default function OverlayPopout() {
   // (ROUND WIN / CLUTCH / ACE / TEAM ACE / FLAWLESS).
   const kb = (liveScores as any)?.killBanner || null
   const kbFresh = kb && kb.at && Date.now() - Number(kb.at) < 6000 ? kb : null
-  const KB_TEXT: Record<string, string> = { first_blood: 'FIRST BLOOD', ace: 'ACE', clutch: 'CLUTCH', thrifty: 'THRIFTY', 'team ace': 'TEAM ACE', flawless: 'FLAWLESS' }
+  const KB_TEXT: Record<string, string> = { ace: 'ACE', clutch: 'CLUTCH', thrifty: 'THRIFTY', 'team ace': 'TEAM ACE', flawless: 'FLAWLESS' }
   const ceremonyText = (kbFresh ? (KB_TEXT[String(kbFresh.type || '').toLowerCase()] || null) : null)
     || (((snapState as any)?.gameEvent as string | null) ? String((snapState as any).gameEvent).toUpperCase() : null)
   const ceremonyWinner: 'blue' | 'red' | null =

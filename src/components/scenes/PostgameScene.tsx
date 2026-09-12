@@ -351,7 +351,7 @@ export function PostGameScene(props: PostGameSceneProps) {
 
   return (
     <div
-      className="relative size-full min-h-full bg-[#1B1D1F] overflow-hidden select-none"
+      className="scene-root relative size-full min-h-full bg-[#1B1D1F] overflow-hidden select-none"
       style={{
         width: 1920,
         height: 1080,
