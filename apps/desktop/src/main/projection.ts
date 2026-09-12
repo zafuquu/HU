@@ -223,6 +223,9 @@ export class ValProjectionSession {
         const fallbackIndex = isBlue ? 0 : isRed ? 1 : undefined;
         // HUD color/split logic keys on "Blue"/"Red" strings.
         const normalizedTeamId = isBlue ? "Blue" : isRed ? "Red" : team.teamId;
+        // Agent-select cache gate: suppress stale agent evidence while it is
+        // active (see agentGateUntil).
+        const agentGate = this.agentGateUntil > Date.now();
         return team.players.map((p) => ({
           displayName:
             p.player.name?.displayName ??
@@ -230,9 +233,9 @@ export class ValProjectionSession {
             p.player.identity?.gameName ??
             p.player.puuid ??
             "?",
-          agentName: p.agent?.name ?? null,
-          agentIcon: p.agent?.riotId ? agentIconUrl(p.agent.riotId) ?? null : undefined,
-          agentKey: p.agent?.key ?? undefined,
+          agentName: agentGate ? null : (p.agent?.name ?? null),
+          agentIcon: agentGate ? null : (p.agent?.riotId ? agentIconUrl(p.agent.riotId) ?? null : undefined),
+          agentKey: agentGate ? undefined : (p.agent?.key ?? undefined),
           teamId: normalizedTeamId,
           teamIndex: p.teamIndex ?? fallbackIndex,
           slot: p.observerSlot ?? undefined,
@@ -407,7 +410,12 @@ export class ValProjectionSession {
             p.agentKey = undefined;
             p.agentIcon = null;
             p.agentName = null;
+            // Ability charges are per-round too — stale {C,Q,E,X} from the
+            // previous game made every skill icon render as bought/available.
+            p.abilityState = undefined;
+            p.abilities = undefined;
           }
+          this.diedLastRound.clear();
         }
         s.roundNumber = n;
         if (s.pendingPhase !== null && n > s.publishedNumber) this.publishRound();
@@ -516,6 +524,14 @@ export class ValProjectionSession {
       case "scene": {
         const sc = String(value ?? "").toLowerCase().replace(/_/g, "-");
         if (sc === "agent-select" || sc === "character-select" || sc === "lobby" || sc === "pregame") {
+          if (s.sessionPhase !== "pregame") {
+            this.agentGateUntil = Date.now() + 3000;
+            for (const p of s.roster ?? []) {
+              p.agentKey = undefined;
+              p.agentIcon = null;
+              p.agentName = null;
+            }
+          }
           s.sessionPhase = "pregame";
         } else if (sc === "in-game" || sc === "combat" || sc === "live") {
           s.sessionPhase = "live";
@@ -652,13 +668,15 @@ export class ValProjectionSession {
         // dialect names the agent `agentInternal` ("Clay_PC_C") instead of
         // `character` ("Clay") — accept both.
         const agentInternal = str(rec.character) ?? str(rec.agentInternal) ?? null;
-        entry.agentName = agentDisplayName(agentInternal) ?? entry.agentName ?? null;
-        entry.agentKey =
-          typeof agentInternal === "string" && agentInternal.length > 0
-            ? agentInternal.toLowerCase().replace(/_pc(_c)?$/i, "")
-            : (entry.agentKey ?? undefined);
-        entry.agentIcon =
-          agentIconUrl(agentInternal) ?? agentIconUrl(rec.agentUuid) ?? entry.agentIcon ?? null;
+        if (Date.now() >= this.agentGateUntil) {
+          entry.agentName = agentDisplayName(agentInternal) ?? entry.agentName ?? null;
+          entry.agentKey =
+            typeof agentInternal === "string" && agentInternal.length > 0
+              ? agentInternal.toLowerCase().replace(/_pc(_c)?$/i, "")
+              : (entry.agentKey ?? undefined);
+          entry.agentIcon =
+            agentIconUrl(agentInternal) ?? agentIconUrl(rec.agentUuid) ?? entry.agentIcon ?? null;
+        }
         const wNew =
           weaponDisplayName(rec.weapon ?? rec.weaponName ?? rec.scoreboardWeaponInternal) ?? null;
         // Knife equipped while a primary is still owned: keep the gun visible
@@ -709,7 +727,10 @@ export class ValProjectionSession {
             entry.health = 100;
           } else {
             entry.isAlive = aliveEvidence;
-            if (!aliveEvidence) entry.health = 0;
+            if (!aliveEvidence) {
+              entry.health = 0;
+              this.diedLastRound.add(this.normalizeName(name));
+            }
           }
         }
         // Health is applied AFTER the alive flag: a positive health reading is
@@ -805,7 +826,21 @@ export class ValProjectionSession {
       for (const p of s.roster ?? []) {
         p.isAlive = true;
         p.health = 100;
+        // Per-round buy hygiene: players who DIED last round respawn WITHOUT
+        // gun+shield (Valorant rules) — without this the buy-round cards kept
+        // showing a dead player's old Vandal ("gun doesn't update"). Spent
+        // credits and ability charges ALWAYS reset — stale values made every
+        // fresh-game round-1 card render in the already-bought state.
+        if (this.diedLastRound.has(this.normalizeName(p.displayName))) {
+          p.weapon = null;
+          p.shield = null;
+          p.shieldType = 0;
+        }
+        p.spentCredits = null;
+        p.abilityState = undefined;
+        p.abilities = undefined;
       }
+      this.diedLastRound.clear();
       // wipe per-round evidence (the round-end banner survives into the buy
       // phase so the endround animation is never cut off — it is cleared when
       // the next round's combat phase publishes below).
@@ -847,6 +882,17 @@ export class ValProjectionSession {
     return 0;
   }
 
+  // Agent-select cache gate: when the session enters pregame (agent select),
+  // the GEP scoreboard cache still re-reports the PREVIOUS game's agents for
+  // players who haven't locked in — portraits would render as if already
+  // selected. Stored agents are cleared and character evidence is ignored for
+  // a short cache-flush window; locked-in players re-report after it.
+  private agentGateUntil = 0;
+  // Players observed dead this round — they respawn at the next buy phase
+  // WITHOUT their gun+shield (Valorant rules); tracked so the buy-round cards
+  // stop showing a dead player's old Vandal ("gun doesn't update").
+  private diedLastRound = new Set<string>();
+
   private normalizeName(name: string): string {
     return name.split("#")[0]!.trim().toLowerCase();
   }
@@ -870,6 +916,7 @@ export class ValProjectionSession {
         p.isAlive = false;
         p.health = 0;
         p.deaths = (p.deaths ?? 0) + 1;
+        this.diedLastRound.add(pName);
       }
       if (isAttacker) {
         p.kills = (p.kills ?? 0) + 1;
