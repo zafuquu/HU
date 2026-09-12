@@ -1011,16 +1011,17 @@ export class ValProjectionSession {
     if (s.gameEvent !== null && s.roundEnd !== null) return;
     const winner = this.resolveWinnerTeam();
     if (winner !== null && s.roundEnd === null) {
-      // Round-end reason: spike outcome wins, then team wipe, then time expiry
-      // (GEP exposes no round timer; OCR would be required for precision).
+      // Round-end reason: spike outcome wins, then team wipe. GEP exposes no
+      // round timer — timeout.webp must NEVER show as a guess (it rendered
+      // randomly when the settlement ran on a late score fact with the
+      // per-round kill maps already wiped by the next buy phase). Elimination
+      // is the overwhelmingly common outcome, so it is the neutral default.
       const reason: "elimination" | "detonation" | "defusion" | "time" =
         s.spike === "detonated"
           ? "detonation"
           : s.spike === "defused"
             ? "defusion"
-            : this.losersWiped(winner)
-              ? "elimination"
-              : "time";
+            : "elimination";
       s.roundEnd = { winner: winner === 0 ? "blue" : "red", reason };
       // Stamp the settlement time — deriveScene holds the HUD (and the
       // endround banner) on screen for a grace period after this.
@@ -1049,9 +1050,13 @@ export class ValProjectionSession {
       (p) => !s.roundDeaths.has(this.normalizeName(p.displayName)),
     );
     const losers = roster.filter((p) => p.teamIndex === (winner === 0 ? 1 : 0));
+    // Ceremony classification needs a FULL board — with GEP rosters partially
+    // populated, alive counts were garbage and CLUTCH/FLAWLESS fired randomly
+    // on incomplete teams ("game event roundwinreason are complete random").
+    const fullBoard = winners.length === 5 && losers.length === 5;
 
     // 1) Clutch: single survivor who was last alive vs >= 2 enemies.
-    if (aliveWinners.length === 1) {
+    if (fullBoard && aliveWinners.length === 1) {
       const size = s.clutchMax.get(this.normalizeName(aliveWinners[0]!.displayName)) ?? 0;
       if (size > 1) {
         s.gameEvent = "Clutch";
@@ -1068,8 +1073,8 @@ export class ValProjectionSession {
       s.gameEvent = "Team Ace";
       return;
     }
-    // 4) Flawless: no winner died.
-    if (winners.length > 0 && winners.every((p) => aliveWinners.includes(p))) {
+    // 4) Flawless: no winner died (full board only — same garbage-alive guard).
+    if (fullBoard && winners.length > 0 && winners.every((p) => aliveWinners.includes(p))) {
       s.gameEvent = "Flawless";
       return;
     }
@@ -1079,9 +1084,13 @@ export class ValProjectionSession {
   }
 
   private losersWiped(winner: 0 | 1): boolean {
-    if ((this.s.roster ?? []).length === 0) return false;
-    const alive = this.aliveByTeam();
-    return alive[1 - winner].size === 0;
+    const roster = this.s.roster ?? [];
+    if (roster.length === 0) return false;
+    // The roster's isAlive persists through the buy-phase wipe (roundDeaths is
+    // cleared there) — late score-fact settlements still see the real wipe.
+    return !roster.some(
+      (p) => p.teamIndex === (1 - winner) && p.isAlive !== false,
+    );
   }
 
   private resolveWinnerTeam(): 0 | 1 | null {
