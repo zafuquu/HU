@@ -7,6 +7,8 @@ interface AgentSelectSceneProps {
   rightTeamName?: string
   leftTeamColor?: string
   rightTeamColor?: string
+  leftTeamLogo?: string | null
+  rightTeamLogo?: string | null
   mapName?: string
   mapImage?: string
   leftTeamPlayers?: { id: string; alias: string; riotId: string; avatarUrl?: string | null; photoUrl?: string | null; agentName?: string | null; agent?: string | null; character?: string | null; role?: string | null }[]
@@ -53,6 +55,8 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
     rightTeamName = '',
     leftTeamColor = '#1DCD9B',
     rightTeamColor = '#FF4848',
+    leftTeamLogo = null,
+    rightTeamLogo = null,
     mapName = 'Sunset',
     mapImage = '/game/val/maps/juliett/splash-small.png',
     leftTeamPlayers = [],
@@ -146,7 +150,9 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
           <div className="relative flex h-[363px] flex-col items-end">
             {/* Left Team Header Card */}
             <div className="mb-2 flex h-[77px] w-[337px] items-center rounded-[2px] border-[2px] border-[#F5F5F5] bg-[#171717] p-0.5 shadow-xl">
-              <div className="relative aspect-square h-full overflow-hidden rounded-[2px] p-1" style={{ background: leftTeamColor }} />
+              <div className="relative aspect-square h-full overflow-hidden rounded-[2px] p-1" style={{ background: leftTeamColor }}>
+                {leftTeamLogo && <img alt="" src={leftTeamLogo} className="absolute inset-0 size-full object-contain" />}
+              </div>
               <div className="flex h-full flex-1 items-center justify-center px-4">
                 <h1 className="font-schabo text-[48px] leading-none text-white uppercase">{leftTeamName}</h1>
               </div>
@@ -230,7 +236,9 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
           <div className="relative flex h-[363px] flex-col items-start">
             {/* Right Team Header Card */}
             <div className="mb-2 flex h-[77px] w-[337px] items-center rounded-[2px] border-[2px] border-[#F5F5F5] bg-[#171717] p-0.5 shadow-xl flex-row-reverse">
-              <div className="relative aspect-square h-full overflow-hidden rounded-[2px] p-1" style={{ background: rightTeamColor }} />
+              <div className="relative aspect-square h-full overflow-hidden rounded-[2px] p-1" style={{ background: rightTeamColor }}>
+              {rightTeamLogo && <img alt="" src={rightTeamLogo} className="absolute inset-0 size-full object-contain" />}
+            </div>
               <div className="flex h-full flex-1 items-center justify-center px-4">
                 <h1 className="font-schabo text-[48px] leading-none text-white uppercase">{rightTeamName}</h1>
               </div>

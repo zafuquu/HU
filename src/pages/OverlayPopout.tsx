@@ -422,15 +422,17 @@ export default function OverlayPopout() {
   if (liveLeft && liveLeft.length > 0) stickyRosterRef.current.left = liveLeft
   if (liveRight && liveRight.length > 0) stickyRosterRef.current.right = liveRight
 
-  // ===== Halftime / overtime side swap (automatic, VS parity) =====
-  // VALORANT flips attack/defense sides every 12 rounds (and again in
-  // overtime). The overlay mirrors the in-game HUD: the whole team panel
-  // (name, color, logo, score, roster) moves to the other side.
+  // NOTE: the desktop ENGINE already re-anchors sides at halftime (the viewer
+  // stays LEFT/blue for the whole match — see projection.ts re-anchor). This
+  // overlay must NOT swap panels again: the old round>=13 swap double-applied
+  // the flip and inverted every team attribution for rounds 13-24/37+ (wrong
+  // winner block, wrong logo/name, DEFENDER WIN on your own logo, strip icons
+  // on the wrong team, right-side name vanishing at OT). The engine is the
+  // single source of truth for sides.
   const liveRoundNumber = (function () {
     const st = (snapState as any) || {}
     return Number(st?.round?.number ?? st?.currentRound?.roundNumber ?? st?.roundNumber ?? liveScores?.scores?.roundNumber ?? 0) || 0
   })()
-  const sideSwap = liveRoundNumber >= 13 && Math.floor((liveRoundNumber - 1) / 12) % 2 === 1
 
   // New-match reset: GEP keeps the same match_id across games, so round 1
   // arriving after a played match (or a return to agent select) is the only
@@ -461,30 +463,29 @@ export default function OverlayPopout() {
   const baseRightName = teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'
   const baseLeftColor = teamA?.color || '#28D091'
   const baseRightColor = teamB?.color || '#FF3549'
-  const hudLeftName = sideSwap ? baseRightName : baseLeftName
-  const hudRightName = sideSwap ? baseLeftName : baseRightName
-  const hudLeftColor = sideSwap ? baseRightColor : baseLeftColor
-  const hudRightColor = sideSwap ? baseLeftColor : baseRightColor
-  const hudLeftPlayers = sideSwap ? rightPlayers : leftPlayers
-  const hudRightPlayers = sideSwap ? leftPlayers : rightPlayers
-  const hudScoreLeft = sideSwap ? scoreRight : scoreLeft
-  const hudScoreRight = sideSwap ? scoreLeft : scoreRight
-  const hudSeriesLeft = sideSwap ? seriesRight : seriesLeft
-  const hudSeriesRight = sideSwap ? seriesLeft : seriesRight
-  const hudLeftLogo = sideSwap ? (teamB?.logoUrl || null) : (teamA?.logoUrl || null)
-  const hudRightLogo = sideSwap ? (teamA?.logoUrl || null) : (teamB?.logoUrl || null)
+  const hudLeftName = baseLeftName
+  const hudRightName = baseRightName
+  const hudLeftColor = baseLeftColor
+  const hudRightColor = baseRightColor
+  const hudLeftPlayers = leftPlayers
+  const hudRightPlayers = rightPlayers
+  const hudScoreLeft = scoreLeft
+  const hudScoreRight = scoreRight
+  const hudSeriesLeft = seriesLeft
+  const hudSeriesRight = seriesRight
+  const hudLeftLogo = teamA?.logoUrl || null
+  const hudRightLogo = teamB?.logoUrl || null
   // User-configured sponsor, cycled (see sponsorList above).
   const sponsorImageUrl = sponsorCycleUrl
   // Tournament/event logo (workspace-configured) — used by the round ceremony
   // and post-game; falls back to the bundled Game Event / Sponsor-1 assets.
   const tournamentLogoUrl = (state.tournamentLogoUrls || []).find((u: any): u is string => !!u) || null
-  const hudLeftSeed = sideSwap ? (teamB as any)?.seed : (teamA as any)?.seed
-  const hudRightSeed = sideSwap ? (teamA as any)?.seed : (teamB as any)?.seed
-  const flipWinner = (w: any) => (w === 'blue' ? 'red' : w === 'red' ? 'blue' : w)
+  const hudLeftSeed = (teamA as any)?.seed
+  const hudRightSeed = (teamB as any)?.seed
   const baseRoundEnd = (snapState as any)?.roundEnd || null
-  const hudRoundEnd = sideSwap && baseRoundEnd ? { ...baseRoundEnd, winner: flipWinner(baseRoundEnd.winner) } : baseRoundEnd
+  const hudRoundEnd = baseRoundEnd
   const baseRoundHistory = ((snapState as any)?.roundHistory || []) as Array<{ round: number; winner: 'blue' | 'red'; reason: string }>
-  const hudRoundHistory = sideSwap ? baseRoundHistory.map((h) => ({ ...h, winner: flipWinner(h.winner) })) : baseRoundHistory
+  const hudRoundHistory = baseRoundHistory
   // ValoSpectra endround parity: label the round win by SIDE. GEP native team 0
   // starts on attack; sides flip every 12 rounds (rounds 1-12 / 13-24, OT ignored).
   const nativeRoundNumber = (snapState as any)?.roundNumber ?? scores?.roundNumber ?? null
@@ -629,6 +630,8 @@ export default function OverlayPopout() {
             mapImage={liveMapImage}
             leftTeamPlayers={hudLeftPlayers}
             rightTeamPlayers={hudRightPlayers}
+            leftTeamLogo={hudLeftLogo}
+            rightTeamLogo={hudRightLogo}
           />
         )}
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && !(liveScores && (gamePhase === 'shopping' || gamePhase === 'game_start')) && (
@@ -684,6 +687,8 @@ export default function OverlayPopout() {
             mapImage={liveMapImage}
             leftTeamPlayers={hudLeftPlayers}
             rightTeamPlayers={hudRightPlayers}
+            leftTeamLogo={hudLeftLogo}
+            rightTeamLogo={hudRightLogo}
           />
         )}
         {sceneKey === 'buy-round' && (
@@ -720,7 +725,6 @@ export default function OverlayPopout() {
             rightTeamColor={teamB?.color || '#FF3549'}
             leftTeamLogo={teamA?.logoUrl || null}
             rightTeamLogo={teamB?.logoUrl || null}
-            tournamentLogo={tournamentLogoUrl}
             scoreLeft={scoreLeft}
             scoreRight={scoreRight}
             leftTeamPlayers={leftPlayers}
