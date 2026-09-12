@@ -923,7 +923,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
                 loading="eager"
                 className="relative z-1 size-full object-contain"
                 onError={e => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = '/sponsor/Sponsor-1.png' } }}
-                src={sponsorImageUrl || '/sponsor/Sponsor-1.png'}
+                src={tournamentLogo || sponsorImageUrl || '/sponsor/Sponsor-1.png'}
               />
             </div>
           </div>

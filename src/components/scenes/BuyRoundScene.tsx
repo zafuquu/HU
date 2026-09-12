@@ -75,7 +75,7 @@ export function BuyRoundScene(props: BuyRoundSceneProps) {
 const showBuyRound = isToggled('buy-round')
   const lp = function(i: number){ return (leftTeamPlayers && leftTeamPlayers[i]) || null }
   const rp = function(i: number){ return (rightTeamPlayers && rightTeamPlayers[i]) || null }
-  const abilityOpacity = function(p: any, key: string){ const st = p?.abilityState; if (!st) return 1; const v = st[key]; return v === true ? 1 : v === false ? 0.3 : 1 }
+  const abilityOpacity = function(p: any, key: string){ const st = p?.abilityState; if (!st) return 0.35; const v = st[key]; return v === true ? 1 : v === false ? 0.3 : 1 }
   const WEAPON_ALIAS: Record<string, string> = { "tactical knife": "melee", "heavy sniper": "operator", "lever sniper": "marshal", "double barrel": "outlaw", "auto shotgun": "judge" }
   const weaponImg = (w: any) => { const n = String(w || 'classic').toLowerCase(); const k = WEAPON_ALIAS[n] || n.replace(/[^a-z0-9]/g, ''); return '/game/val/weapons/' + k + '.png' }
   const shieldImg = (p: any) => { const v = Number(p?.shield ?? 0); if (v <= 0) return '/game/val/shields/None.webp'; const t = p?.shieldType ?? (v >= 50 ? 2 : 1); return t === 4 ? '/game/val/shields/Regen_Shield.png' : v >= 40 || t === 2 || t === 3 ? '/game/val/shields/Heavy_Armor.png' : '/game/val/shields/Light_Armor.png' }
