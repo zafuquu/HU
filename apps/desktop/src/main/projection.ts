@@ -12,6 +12,10 @@ import {
 
 import { agentDisplayName, agentIconUrl, weaponDisplayName } from "./valorant-identity";
 
+import * as nodeFs from "fs";
+import * as nodeOs from "os";
+import * as nodePath from "path";
+
 const PHASE_ORDER: Record<string, number> = { shopping: 0, combat: 1, end: 2 };
 
 /**
@@ -124,6 +128,13 @@ export class ValProjectionSession {
   /** Last GEP team number seen per player — the team-side source of truth. */
   private lastGepTeam = new Map<string, number>();
   private readonly listeners = new Set<(state: HudRelayState) => void>();
+
+  constructor() {
+    // Crash/reconnect recovery: restore the last known board so a desktop-app
+    // crash or Valorant restart never blanks the overlay — restored data holds
+    // until GEP's live stream refreshes it.
+    this.restoreCache();
+  }
 
   public reset(): void {
     this.s = initial();
@@ -329,11 +340,17 @@ export class ValProjectionSession {
         let viewerScore: number | null = null;
         let enemyScore: number | null = null;
         if (rec?.team_0 !== undefined || rec?.team_1 !== undefined) {
-          const b = Number(rec?.team_0);
-          const r = Number(rec?.team_1);
-          if (Number.isFinite(b) && Number.isFinite(r)) {
-            s.blue = b;
-            s.red = r;
+          const t0 = Number(rec?.team_0);
+          const t1 = Number(rec?.team_1);
+          if (Number.isFinite(t0) && Number.isFinite(t1)) {
+            // Viewer-relative attribution — the whole HUD (roster, panels,
+            // logos) anchors the VIEWER'S team to blue/left. Treating the
+            // fork dialect's absolute {team_0, team_1} as blue/red directly
+            // inverted scores and round winners whenever the viewer's native
+            // GEP team was 1 ("the other side won but MY logo showed").
+            const vi = this.viewerTeamIndex();
+            s.blue = vi === 1 ? t1 : t0;
+            s.red = vi === 1 ? t0 : t1;
           } else return;
         } else if (rec?.won !== undefined || rec?.lost !== undefined) {
           viewerScore = Number(rec?.won);
@@ -348,10 +365,10 @@ export class ValProjectionSession {
             s.red = enemyScore;
           }
         } else return;
-        // Match point reached -> the side with more rounds is the winner.
-        if (s.blue >= 13 || s.red >= 13) {
-          s.matchWinner = s.blue >= s.red ? "blue" : "red";
-        }
+        // Match won: first to 13 WITH a 2-round lead — the bare >=13 check
+        // fired post-game mid-OVERTIME (13-12 is not a finished match).
+        if (s.blue >= 13 && s.blue - s.red >= 2) s.matchWinner = "blue";
+        else if (s.red >= 13 && s.red - s.blue >= 2) s.matchWinner = "red";
         // The engine delivers match_score AFTER round_phase:end - settle now
         // so the round winner/reason is never lost to the shopping wipe.
         if (s.roundPhase === "end" && s.gameEvent === null) this.settle();
@@ -416,6 +433,7 @@ export class ValProjectionSession {
             p.abilities = undefined;
           }
           this.diedLastRound.clear();
+          this.clearCache();
         }
         s.roundNumber = n;
         if (s.pendingPhase !== null && n > s.publishedNumber) this.publishRound();
@@ -783,9 +801,9 @@ export class ValProjectionSession {
     s.blue = blue;
     s.red = red;
     // Provider publishes the score AFTER the end phase; resolve winner now.
-    if (blue >= 13 || red >= 13) {
-      s.matchWinner = blue >= 13 ? "blue" : "red";
-    }
+    // Win-by-2: a bare >=13 fired post-game mid-OVERTIME (13-12 is not over).
+    if (blue >= 13 && blue - red >= 2) s.matchWinner = "blue";
+    else if (red >= 13 && red - blue >= 2) s.matchWinner = "red";
     // If the end-phase classification could not pick a winner yet (equal alive
     // counts), resolve now.
     if (s.roundPhase === "end" && s.gameEvent === null) this.settle();
@@ -1176,7 +1194,118 @@ export class ValProjectionSession {
 
   private lastLoggedScene: string | null = null;
 
+  // --- Crash/reconnect cache (disk mirror of the live board) ---------------
+  private static readonly CACHE_FILE = nodePath.join(nodeOs.tmpdir(), "havoc-unleash-last-state.json");
+  private lastCacheWrite = 0;
+
+  private saveCache(): void {
+    const now = Date.now();
+    if (now - this.lastCacheWrite < 4000) return; // throttle
+    this.lastCacheWrite = now;
+    try {
+      const s = this.s;
+      const payload = {
+        savedAt: now,
+        matchId: s.matchId,
+        mapKey: s.mapKey,
+        mapName: s.mapName,
+        viewerName: s.viewerName,
+        viewerGepTeam: s.viewerGepTeam,
+        blue: s.blue,
+        red: s.red,
+        roundNumber: s.roundNumber,
+        roundPhase: s.roundPhase,
+        gameEvent: s.gameEvent,
+        roundEnd: s.roundEnd,
+        matchWinner: s.matchWinner,
+        roundHistory: s.roundHistory,
+        roundStartScore: s.roundStartScore,
+        roster: (s.roster ?? []).map((p) => ({
+          displayName: p.displayName,
+          teamIndex: p.teamIndex,
+          teamId: p.teamId,
+          agentKey: p.agentKey,
+          agentName: p.agentName,
+          kills: p.kills,
+          deaths: p.deaths,
+          assists: p.assists,
+          credits: p.credits,
+          weapon: p.weapon,
+          shield: p.shield,
+          shieldType: p.shieldType,
+        })),
+      };
+      nodeFs.writeFileSync(ValProjectionSession.CACHE_FILE, JSON.stringify(payload), "utf8");
+    } catch {
+      // best-effort — a cache failure must never affect the live projection
+    }
+  }
+
+  private restoreCache(): void {
+    try {
+      if (!nodeFs.existsSync(ValProjectionSession.CACHE_FILE)) return;
+      const raw = JSON.parse(nodeFs.readFileSync(ValProjectionSession.CACHE_FILE, "utf8"));
+      const age = Date.now() - Number(raw?.savedAt ?? 0);
+      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) return; // stale — discard
+      const s = this.s;
+      if (typeof raw.viewerName === "string") s.viewerName = raw.viewerName;
+      if (typeof raw.viewerGepTeam === "number") s.viewerGepTeam = raw.viewerGepTeam;
+      if (typeof raw.blue === "number") s.blue = raw.blue;
+      if (typeof raw.red === "number") s.red = raw.red;
+      if (typeof raw.roundNumber === "number") {
+        s.roundNumber = raw.roundNumber;
+        s.publishedNumber = raw.roundNumber;
+      }
+      if (typeof raw.roundPhase === "string") {
+        s.roundPhase = raw.roundPhase;
+        s.publishedPhase = raw.roundPhase;
+      }
+      if (typeof raw.gameEvent === "string") s.gameEvent = raw.gameEvent;
+      if (raw.roundEnd) s.roundEnd = raw.roundEnd;
+      if (raw.matchWinner) s.matchWinner = raw.matchWinner;
+      if (Array.isArray(raw.roundHistory)) s.roundHistory = raw.roundHistory;
+      if (raw.roundStartScore) s.roundStartScore = raw.roundStartScore;
+      if (typeof raw.mapName === "string") s.mapName = raw.mapName;
+      if (typeof raw.mapKey === "string") s.mapKey = raw.mapKey;
+      if (Array.isArray(raw.roster)) {
+        s.roster = raw.roster.map(
+          (p: Record<string, unknown>, idx: number) =>
+            ({
+              displayName: String(p?.displayName ?? `Player ${idx + 1}`),
+              teamId: (p?.teamId as string) ?? (p?.teamIndex === 1 ? "Red" : "Blue"),
+              teamIndex: (p?.teamIndex as number) ?? (idx < 5 ? 0 : 1),
+              agentKey: (p?.agentKey as string) ?? undefined,
+              agentName: (p?.agentName as string) ?? null,
+              kills: (p?.kills as number) ?? null,
+              deaths: (p?.deaths as number) ?? null,
+              assists: (p?.assists as number) ?? null,
+              credits: (p?.credits as number) ?? null,
+              weapon: (p?.weapon as string) ?? null,
+              shield: (p?.shield as number) ?? null,
+              shieldType: (p?.shieldType as number) ?? null,
+              health: 100,
+              isAlive: true,
+            }),
+        ) as HudRelayState["roster"];
+      }
+      s.sessionPhase = "live";
+      s.liveSince = Date.now();
+      s.revision += 1;
+    } catch {
+      // corrupted cache — start clean
+    }
+  }
+
+  private clearCache(): void {
+    try {
+      nodeFs.unlinkSync(ValProjectionSession.CACHE_FILE);
+    } catch {
+      // already gone
+    }
+  }
+
   private emitChange(): void {
+    this.saveCache();
     const state = this.build();
     // Boundary telemetry: the scene-switch decision (deriveScene output).
     if (state.scene !== this.lastLoggedScene) {
