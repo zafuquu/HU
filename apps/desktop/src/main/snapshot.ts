@@ -87,7 +87,7 @@ export interface GameSnapshot {
       mvp: { name: string; teamId: string; kills: number; deaths: number; assists: number } | null;
     };
     /** How the last round ended (winner + reason), cleared at next round start. */
-    roundEnd?: { winner: "blue" | "red" | null; reason: string | null } | null;
+    roundEnd?: { winner: "blue" | "red" | null; reason: string | null; winnerSide?: "attacker" | "defender" | null } | null;
     /** Per-round win history (ValoSpectra app-roundreasons parity, max 24). */
     roundHistory?: Array<{
       round: number;

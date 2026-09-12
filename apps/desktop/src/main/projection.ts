@@ -76,7 +76,7 @@ interface WorkingState {
   roundEndedAt: number | null;
   matchWinner: "blue" | "red" | null;
   matchMvp: { name: string; teamId: string; kills: number; deaths: number; assists: number } | null;
-  roundEnd: { winner: "blue" | "red"; reason: "elimination" | "detonation" | "defusion" | "time" } | null;
+  roundEnd: { winner: "blue" | "red"; reason: "elimination" | "detonation" | "defusion" | "time"; winnerSide?: "attacker" | "defender" | null } | null;
   roundHistory: Array<{
     round: number;
     winner: "blue" | "red";
@@ -343,14 +343,15 @@ export class ValProjectionSession {
           const t0 = Number(rec?.team_0);
           const t1 = Number(rec?.team_1);
           if (Number.isFinite(t0) && Number.isFinite(t1)) {
-            // GEP score contract: team_0 is the LOCAL PLAYER'S team (the plain
-            // "a-b" string form GEP emits is viewer-perspective; the JSON forms
-            // normalize into the same order). The roster is anchored with the
-            // viewer on blue/left, so blue = team_0 ALWAYS. Remapping this
-            // through the viewer anchor double-flipped perspective-form scores
-            // ("I won but it scored the other team" — randomly, per emission).
-            s.blue = t0;
-            s.red = t1;
+            // GEP score contract (verified against the user's own provider log:
+            // won r1 -> {team_0:0, team_1:1}; lost r2 -> {1,1}; won r3 -> {1,2}
+            // with round_outcome {won,lost} as the viewer's cumulative W/L):
+            // team_1 = LOCAL PLAYER'S score, team_0 = enemy. The roster is
+            // anchored with the viewer on blue/left, so blue = team_1 ALWAYS.
+            // (The previous anchor remap AND a direct blue=t0 both flipped —
+            // randomly, per emission form.)
+            s.blue = t1;
+            s.red = t0;
           } else return;
         } else if (rec?.won !== undefined || rec?.lost !== undefined) {
           viewerScore = Number(rec?.won);
@@ -438,6 +439,64 @@ export class ValProjectionSession {
         s.roundNumber = n;
         if (s.pendingPhase !== null && n > s.publishedNumber) this.publishRound();
         break;
+      }
+      case "round_settled": {
+        // GROUND TRUTH from the runtime's ValRoundEngine (round_settled event):
+        // the winner's GEP start team + the winning SIDE (attacker/defender).
+        // This replaces every heuristic — score deltas, alive counts, parity.
+        const rec = value as {
+          roundNumber?: unknown;
+          winnerStartTeam?: unknown;
+          winningSide?: unknown;
+          winningReason?: unknown;
+          winType?: unknown;
+          winTypeLabel?: unknown;
+        };
+        const winnerStart = Number(rec?.winnerStartTeam);
+        const rn = Number(rec?.roundNumber);
+        const reasonRaw = String(rec?.winningReason ?? "").toLowerCase();
+        const reason: "elimination" | "detonation" | "defusion" | "time" =
+          reasonRaw.includes("defus") ? "defusion"
+          : reasonRaw.includes("detonat") ? "detonation"
+          : reasonRaw.includes("eliminat") ? "elimination"
+          : reasonRaw.includes("time") ? "time"
+          : "elimination";
+        // Winner → blue iff its start team matches the viewer's GEP team
+        // (fallback: GEP team 1 = the viewer, proven by the provider log's
+        // match_score↔round_outcome correlation).
+        const winner: "blue" | "red" | null =
+          !Number.isFinite(winnerStart) ? null
+          : winnerStart === (s.viewerGepTeam ?? 1) ? "blue" : "red";
+        const sideRaw = String(rec?.winningSide ?? "").toLowerCase();
+        const winnerSide: "attacker" | "defender" | null =
+          sideRaw.includes("attack") ? "attacker"
+          : sideRaw.includes("defen") ? "defender"
+          : null;
+        if (winner) {
+          s.roundEnd = { winner, reason, winnerSide: winnerSide ?? null };
+          s.roundEndedAt = Date.now();
+          if (
+            Number.isFinite(rn) && rn > 0 &&
+            !s.roundHistory.some((h) => h.round === rn)
+          ) {
+            s.roundHistory.push({ round: rn, winner, reason });
+            if (s.roundHistory.length > 24) s.roundHistory.shift();
+          }
+          // Special ceremony labels only from the engine's winType — never
+          // invent one (winType: Eliminated/Defuse/Detonate/... from ValRoundEngine).
+          const wt = String(rec?.winType ?? "").toLowerCase();
+          const label =
+            wt.includes("clutch") ? "Clutch"
+            : wt.includes("ace") && wt.includes("team") ? "Team Ace"
+            : wt === "ace" || wt.includes("ace") ? "Ace"
+            : wt.includes("flawless") ? "Flawless"
+            : wt.includes("thrifty") ? "Thrifty"
+            : null;
+          if (label) s.gameEvent = label;
+        }
+        s.revision += 1;
+        this.emitChange();
+        return; // fully handled
       }
       case "round_phase": {
         if (typeof value !== "string") return;

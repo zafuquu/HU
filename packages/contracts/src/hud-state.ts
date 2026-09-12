@@ -100,6 +100,7 @@ export const hudRelayStateSchema = z.object({
     .object({
       winner: z.enum(["blue", "red"]).nullable(),
       reason: z.enum(["elimination", "detonation", "defusion", "time"]).nullable(),
+      winnerSide: z.enum(["attacker", "defender"]).nullable().optional(),
     })
     .nullable()
     .default(null),
