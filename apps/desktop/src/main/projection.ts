@@ -343,14 +343,14 @@ export class ValProjectionSession {
           const t0 = Number(rec?.team_0);
           const t1 = Number(rec?.team_1);
           if (Number.isFinite(t0) && Number.isFinite(t1)) {
-            // Viewer-relative attribution — the whole HUD (roster, panels,
-            // logos) anchors the VIEWER'S team to blue/left. Treating the
-            // fork dialect's absolute {team_0, team_1} as blue/red directly
-            // inverted scores and round winners whenever the viewer's native
-            // GEP team was 1 ("the other side won but MY logo showed").
-            const vi = this.viewerTeamIndex();
-            s.blue = vi === 1 ? t1 : t0;
-            s.red = vi === 1 ? t0 : t1;
+            // GEP score contract: team_0 is the LOCAL PLAYER'S team (the plain
+            // "a-b" string form GEP emits is viewer-perspective; the JSON forms
+            // normalize into the same order). The roster is anchored with the
+            // viewer on blue/left, so blue = team_0 ALWAYS. Remapping this
+            // through the viewer anchor double-flipped perspective-form scores
+            // ("I won but it scored the other team" — randomly, per emission).
+            s.blue = t0;
+            s.red = t1;
           } else return;
         } else if (rec?.won !== undefined || rec?.lost !== undefined) {
           viewerScore = Number(rec?.won);
