@@ -182,7 +182,7 @@ export function MapBanScene(props: MapBanSceneProps) {
   const usedCards = allCards.filter(c => c && !!c.mapName)
   return (
     <div
-      className="relative size-full min-h-full bg-[#1B1D1F]"
+      className="scene-root relative size-full min-h-full bg-[#1B1D1F]"
       style={{
         width: 1920,
         height: 1080,

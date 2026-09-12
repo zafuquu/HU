@@ -69,14 +69,22 @@ export default function OverlayPopout() {
   const overlayHidden = liveScores?.overlayHidden === true
   const livePhase = (function () {
     const st = (liveScores?.snapshot?.state || liveScores?.snapshot || {}) as any
-    return (
+    const raw = (
       st.roundPhase ||
       (st.roundInfo && st.roundInfo.roundPhase) ||
       st.phase ||
       (st.currentRound && st.currentRound.roundPhase) ||
       (st.isAgentSelectPhase === true ? 'game_start' : null) ||
       null
-    )
+    ) as string | null
+    // Engine dialect aliases → the overlay's scene phases (auto-switching must
+    // not stall when the engine says 'buy' / 'planning' / 'agent_select').
+    if (!raw) return null
+    const s = String(raw).toLowerCase()
+    if (s === 'buy' || s === 'buy_phase' || s === 'buytime' || s === 'planning' || s === 'buytime_start') return 'shopping'
+    if (s === 'agent_select' || s === 'select' || s === 'lock_in') return 'game_start'
+    if (s === 'matchend' || s === 'ended' || s === 'postgame') return 'game_end'
+    return s
   })()
   const phaseDerivedScene =
     livePhase === 'game_end' ? 'post-game'
@@ -446,6 +454,8 @@ export default function OverlayPopout() {
   const hudSeriesRight = sideSwap ? seriesLeft : seriesRight
   const hudLeftLogo = sideSwap ? (teamB?.logoUrl || null) : (teamA?.logoUrl || null)
   const hudRightLogo = sideSwap ? (teamA?.logoUrl || null) : (teamB?.logoUrl || null)
+  // User-configured sponsor (default-flagged sponsor wins, else the first one).
+  const sponsorImageUrl = (state.sponsors || []).find((s: any) => s?.isDefault)?.imageUrl || (state.sponsors || [])[0]?.imageUrl || null
   const hudLeftSeed = sideSwap ? (teamB as any)?.seed : (teamA as any)?.seed
   const hudRightSeed = sideSwap ? (teamA as any)?.seed : (teamB as any)?.seed
   const flipWinner = (w: any) => (w === 'blue' ? 'red' : w === 'red' ? 'blue' : w)
@@ -474,7 +484,11 @@ export default function OverlayPopout() {
     'val:pause': 'PAUSE',
   }
   const liveEventKind = liveScores?.event?.event || liveScores?.event?.kind || null
-  const liveEventText = liveEventKind ? ((EVENT_TEXT as Record<string, string>)[liveEventKind] || null) : null
+  // Expire the ceremony event 8s after it fired — the bridge keeps lastEvent
+  // forever, which made the banner stick on screen ("stuck game event").
+  const liveEventText = liveEventKind && liveScores?.event?.at && (Date.now() - Number(liveScores.event.at)) < 8000
+    ? ((EVENT_TEXT as Record<string, string>)[liveEventKind] || null)
+    : null
 
     const gamePhase = (function(){
     const st = snapState || {}
@@ -513,6 +527,9 @@ export default function OverlayPopout() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
+      {/* Scene-change fade — must live OUTSIDE any conditional render (it used
+          to sit inside the stale badge, so the animation never played). */}
+      <style>{`.scene-fade { animation: sceneFade 320ms ease; will-change: opacity, transform; } @keyframes sceneFade { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }`}</style>
       {/* Spectator badge: shown while the desktop reports an observing role */}
       {spectating && (
         <div style={{
@@ -535,7 +552,6 @@ export default function OverlayPopout() {
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#FF6B35', animation: 'timeout-blink 1s ease-in-out infinite' }} />
           RECONNECTING…
           <style>{`@keyframes timeout-blink { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
-        <style>{`.scene-fade { animation: sceneFade 320ms ease; will-change: opacity, transform; } @keyframes sceneFade { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }`}</style>
         </div>
       )}
       {/* Desktop connection badge (top-right, subtle) */}
@@ -551,7 +567,7 @@ export default function OverlayPopout() {
           top: `calc(50% - ${(1080 * scale) / 2}px)`,
         }}
       >
-        <div key={sceneKey + ':' + (gamePhase || '')} className="scene-fade">
+        <div key={sceneKey} className="scene-fade">
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'shopping' && (
           <BuyRoundScene
             leftTeamName={hudLeftName}
@@ -563,6 +579,7 @@ export default function OverlayPopout() {
             leftTeamPlayers={hudLeftPlayers}
             rightTeamPlayers={hudRightPlayers}
             economy={liveEconomy}
+            sponsorImageUrl={sponsorImageUrl}
             roundHistory={hudRoundHistory}
           />
         )}
@@ -606,8 +623,9 @@ export default function OverlayPopout() {
             liveOnly={true}
             gameEvent={liveEventText}
             winSide={roundWinSide}
+            sponsorImageUrl={sponsorImageUrl}
             roundEnd={hudRoundEnd}
-            roundNumber={snapState?.currentRound?.roundNumber ?? snapState?.roundNumber ?? null}
+            roundNumber={liveRoundNumber || null}
             currentlyObserving={liveCurrentlyObserving}
             spectating={spectating}
             spikeSite={spikeSite}
@@ -637,6 +655,7 @@ export default function OverlayPopout() {
             leftTeamPlayers={hudLeftPlayers}
             rightTeamPlayers={hudRightPlayers}
             economy={liveEconomy}
+            sponsorImageUrl={sponsorImageUrl}
             roundHistory={hudRoundHistory}
           />
         )}

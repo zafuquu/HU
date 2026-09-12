@@ -109,7 +109,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
 
   return (
     <div
-      className={`clickable-component relative size-full min-h-full bg-[#1B1D1F] overflow-hidden select-none${activeComponentId === 'background' ? ' selected' : ''}`}
+      className={`clickable-component scene-root relative size-full min-h-full bg-[#1B1D1F] overflow-hidden select-none${activeComponentId === 'background' ? ' selected' : ''}`}
       data-make-transparent="true"
       data-component-id="background"
       style={{

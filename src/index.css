@@ -56,8 +56,11 @@ html.overlay-popout #root {
 }
 
 /* The scene roots paint an opaque 1920x1080 backdrop for the editor preview;
-   in popout/OBS mode only the HUD elements themselves should be visible. */
-html.overlay-popout .hud-stage > div:first-child {
+   in popout/OBS mode only the HUD elements themselves should be visible.
+   (.scene-root is set on every scene root: IngameHud / BuyRound / AgentSelect /
+   MapBan / Postgame — the old `> div:first-child` selector missed because the
+   scene root sits inside the .scene-fade wrapper.) */
+html.overlay-popout .hud-stage .scene-root {
   background: transparent !important;
 }
 

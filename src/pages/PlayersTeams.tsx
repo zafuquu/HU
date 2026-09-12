@@ -286,16 +286,35 @@ export default function PlayersTeams() {
                         onChange={e => {
                           const file = e.target.files?.[0]
                           if (file) {
-                            if (file.size > 1_500_000) {
-                              showToast('Logo too large — use an image under 1.5 MB')
+                            if (file.size > 5_000_000) {
+                              showToast('Logo too large — use an image under 5 MB')
                               return
                             }
-                            // Store as a data URL: blob: URLs die on reload and
-                            // never resolve inside the OBS overlay popout.
+                            // Store as a compressed data URL (canvas-resized to
+                            // ≤512px): blob: URLs die on reload and never resolve
+                            // in the OBS popout, and raw base64 of large files
+                            // blows the 5MB localStorage quota (logos then never
+                            // persist → "broken logos in OBS").
                             const reader = new FileReader()
                             reader.onload = () => {
-                              updateTeam(selectedTeam.id, { [item.key]: String(reader.result) })
-                              showToast(`${item.label} logo updated`)
+                              const img = new Image()
+                              img.onload = () => {
+                                try {
+                                  const max = 512
+                                  const scale = Math.min(1, max / Math.max(img.width, img.height))
+                                  const canvas = document.createElement('canvas')
+                                  canvas.width = Math.max(1, Math.round(img.width * scale))
+                                  canvas.height = Math.max(1, Math.round(img.height * scale))
+                                  canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
+                                  const dataUrl = canvas.toDataURL('image/png')
+                                  updateTeam(selectedTeam.id, { [item.key]: dataUrl })
+                                  showToast(`${item.label} logo updated`)
+                                } catch {
+                                  showToast('Failed to process logo image')
+                                }
+                              }
+                              img.onerror = () => showToast('Failed to read logo file')
+                              img.src = String(reader.result)
                             }
                             reader.onerror = () => showToast('Failed to read logo file')
                             reader.readAsDataURL(file)

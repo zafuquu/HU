@@ -55,6 +55,7 @@ interface IngameHudSceneProps {
   roundNumber?: number | null
   gameEvent?: string | null
   winSide?: string | null
+  sponsorImageUrl?: string | null
   activeComponentId?: string | null
   onSelectComponent?: (id: string) => void
   isToggled?: (componentId: string) => boolean
@@ -271,11 +272,12 @@ function useSpikeBlink(active: boolean) {
   return on
 }
 
-function EndroundBanner({ roundEnd, roundNumber, winType, winSide, leftName, rightName, leftLogo, rightLogo, leftColor, rightColor }: {
+function EndroundBanner({ roundEnd, roundNumber, winType, winSide, sponsorIcon, leftName, rightName, leftLogo, rightLogo, leftColor, rightColor }: {
   roundEnd: { winner: 'blue' | 'red' | null; reason: string | null } | null
   roundNumber: number | null
   winType: string | null
   winSide?: string | null
+  sponsorIcon?: string | null
   leftName: string
   rightName: string
   leftLogo: string | null
@@ -290,7 +292,7 @@ function EndroundBanner({ roundEnd, roundNumber, winType, winSide, leftName, rig
     if (!key || key === seen.current) return
     seen.current = key
     const t1 = setTimeout(() => setPhase('in'), 200)
-    const t2 = setTimeout(() => setPhase('shown'), 2800)
+    const t2 = setTimeout(() => setPhase('shown'), 2000) // VS: animate-delay-2000
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [key])
   React.useEffect(() => {
@@ -308,24 +310,24 @@ function EndroundBanner({ roundEnd, roundNumber, winType, winSide, leftName, rig
   const slide = phase === 'in' ? 'endround-in' : phase === 'out' ? (leftWon ? 'endround-out-right' : 'endround-out-left') : ''
   const winText = (winType || 'Round Win').toUpperCase()
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 140 }}>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 120 }}>
       <style>{ENDROUND_CSS}</style>
-      <div className={slide} style={{ width: 875, height: 170, position: 'relative', overflow: 'hidden', borderRadius: 4, boxShadow: '0 12px 40px rgba(0,0,0,0.55)' }}>
+      <div className={slide} style={{ width: 875, height: 200, position: 'relative', overflow: 'hidden', borderRadius: 4, boxShadow: '0 12px 40px rgba(0,0,0,0.55)' }}>
+        {/* Phase 1 — round win reason (VS: faint side logos + reason text) */}
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(90deg, ' + leftColor + '55 0%, rgba(10,14,22,0.92) 30%, rgba(10,14,22,0.92) 70%, ' + rightColor + '55 100%)' }}>
           <img src={leftLogo ?? undefined} alt="" style={{ position: 'absolute', left: 32, maxHeight: '50%', opacity: 0.2, filter: 'grayscale(1)' }} />
-          <img alt="" src="/sponsor/Sponsor-2.png" style={{ maxHeight: '56%', objectFit: 'contain' }} />
-          <p style={{ fontSize: 30, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: '10px 0 0' }}>{winText}</p>
+          {sponsorIcon && <img alt="" src={sponsorIcon} style={{ maxHeight: '30%', objectFit: 'contain', marginBottom: 6 }} />}
+          <p style={{ fontSize: 30, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>{winText}</p>
           <img src={rightLogo ?? undefined} alt="" style={{ position: 'absolute', right: 32, maxHeight: '50%', opacity: 0.2, filter: 'grayscale(1)' }} />
         </div>
+        {/* Phase 2 — winner reveal (VS: winner logo + ATTACKER/DEFENDER WIN left of center ROUND n) */}
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', background: 'linear-gradient(90deg, ' + win.color + 'dd 0%, rgba(10,14,22,0.92) 55%)', transition: 'transform 300ms ease, opacity 300ms ease', transform: phase === 'shown' ? 'translateX(0)' : leftWon ? 'translateX(-100%)' : 'translateX(100%)', opacity: phase === 'shown' ? 1 : 0 }}>
-          <img src={win.logo ?? undefined} alt="" style={{ maxHeight: '55%', maxWidth: 160, objectFit: 'contain' }} />
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ fontSize: 26, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>{win.name}</p>
-            {winSide && <p style={{ fontSize: 22, fontWeight: 800, color: '#FFD166', textTransform: 'uppercase', letterSpacing: 3, margin: '4px 0 0' }}>{winSide}</p>}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <img src={win.logo ?? undefined} alt="" style={{ maxHeight: 110, maxWidth: 140, objectFit: 'contain' }} />
+            <p style={{ fontSize: 24, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: '6px 0 0' }}>{winSide || win.name}</p>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <img alt="" src="/sponsor/Sponsor-2.png" style={{ maxHeight: '38%', objectFit: 'contain', opacity: 0.9 }} />
-            <p style={{ fontSize: 24, fontWeight: 800, color: '#fff', textTransform: 'uppercase', margin: '4px 0 0' }}>ROUND {roundNumber ?? ''}</p>
+            <p style={{ fontSize: 28, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>ROUND {roundNumber ?? ''}</p>
           </div>
         </div>
       </div>
@@ -626,6 +628,8 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     roundEnd = null,
     roundNumber = null,
     gameEvent = null,
+    winSide = null,
+    sponsorImageUrl = null,
     leftTeamName: leftTeamNameProp,
     rightTeamName: rightTeamNameProp,
     activeComponentId,
@@ -640,6 +644,12 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   // ===== Endround banner names (ValoSpectra endround-banner parity) =====
   const bannerLeftName = (leftTeamNameProp || leftTeamName || '').toUpperCase()
   const bannerRightName = (rightTeamNameProp || rightTeamName || '').toUpperCase()
+  // Round-win banner text comes from the SETTLED round reason — never from the
+  // ceremony gameEvent (which shows MATCH END / tech pauses and pollutes it).
+  const roundEndReasonText =
+    roundEnd?.reason === 'detonation' ? 'SPIKE DETONATED'
+    : roundEnd?.reason === 'defusion' ? 'SPIKE DEFUSED'
+    : 'ROUND WIN'
 
   const hasLiveMatch = (leftTeamPlayers && leftTeamPlayers.length > 0) || (rightTeamPlayers && rightTeamPlayers.length > 0)
   const leftRoster = leftTeamPlayers && leftTeamPlayers.length > 0 ? leftTeamPlayers : (hasLiveMatch || liveOnly ? [] : DEMO_LEFT)
@@ -697,7 +707,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
 
   return (
     <div
-      className="relative size-full min-h-full bg-[#1B1D1F] overflow-hidden select-none font-schabo text-[#DADBE3]"
+      className="scene-root relative size-full min-h-full bg-[#1B1D1F] overflow-hidden select-none font-schabo text-[#DADBE3]"
       style={{
         width: 1920,
         height: 1080,
@@ -711,7 +721,9 @@ export function IngameHudScene(props: IngameHudSceneProps) {
       <EndroundBanner
         roundEnd={roundEnd}
         roundNumber={roundNumber}
-        winType={gameEvent}
+        winType={roundEndReasonText}
+        winSide={winSide}
+        sponsorIcon={sponsorImageUrl || undefined}
         leftName={bannerLeftName}
         rightName={bannerRightName}
         leftLogo={leftTeamLogo ?? null}
@@ -722,7 +734,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
       {/* Top Map History */}
       {showMapHistory && activeMapHistory.length > 0 && (
         <div
-          className={`clickable-component absolute top-3 left-4 z-30 flex items-center gap-2 cursor-pointer${activeComponentId === 'map-history' ? ' selected' : ''}`}
+          className={`clickable-component absolute top-3 right-4 z-30 flex items-center gap-2 cursor-pointer${activeComponentId === 'map-history' ? ' selected' : ''}`}
           data-component-id="map-history"
           onClick={(e) => {
             e.stopPropagation()
@@ -878,7 +890,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
                 decoding="sync"
                 loading="eager"
                 className="relative z-1 size-full object-contain"
-                src="/sponsor/Sponsor-1.png"
+                src={sponsorImageUrl || '/sponsor/Sponsor-1.png'}
               />
             </div>
           </div>
@@ -945,17 +957,21 @@ export function IngameHudScene(props: IngameHudSceneProps) {
       {/* Ceremony Banner / Game Event (Ace, Clutch, Defused, Detonated, etc.) */}
       {(showGameEvents || liveOnly) && gameEvent && (
         <div
-          className={`clickable-component absolute top-48 left-1/2 -translate-x-1/2 z-40 flex items-center justify-center px-12 py-4 rounded-md border border-white/20 bg-black/90 backdrop-blur-md shadow-2xl transition-all duration-300 animate-in fade-in zoom-in-95${
+          className={`clickable-component absolute top-48 z-40 flex items-center justify-center px-12 py-4 rounded-md border border-white/20 bg-black/90 backdrop-blur-md shadow-2xl${
             activeComponentId === 'game-events' ? ' selected' : ''
           }`}
+          style={{ left: '50%', transform: 'translateX(-50%)' }}
           data-component-id="game-events"
           onClick={(e) => {
             e.stopPropagation()
             onSelectComponent?.('game-events')
           }}
         >
+          {/* Opacity-only enter animation — a transform-based animation would
+              override the translateX(-50%) centering above. */}
+          <style>{`@keyframes geIn { from { opacity: 0; } to { opacity: 1; } } .ge-in { animation: geIn 300ms ease-out; }`}</style>
           <div
-            className="absolute inset-0 opacity-20 pointer-events-none rounded-md"
+            className="ge-in absolute inset-0 opacity-20 pointer-events-none rounded-md"
             style={{ background: `radial-gradient(circle, ${leftTeamColor} 0%, transparent 70%)` }}
           />
           <h1 className="font-schabo text-[72px] text-white uppercase drop-shadow-lg tracking-wider">

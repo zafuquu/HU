@@ -17,6 +17,16 @@ function loadInitialState(base: AppState): AppState {
     if (!raw) return base
     const saved = JSON.parse(raw)
     if (!saved || typeof saved !== 'object') return base
+    // Logo migration: legacy blob: URLs die on reload and oversized data URLs
+    // used to blow the localStorage quota — drop them so teams still load.
+    if (Array.isArray(saved.teams)) {
+      for (const t of saved.teams) {
+        for (const k of ['logoUrl', 'logoSecondaryUrl', 'logoTertiaryUrl']) {
+          const v = t?.[k]
+          if (typeof v === 'string' && (v.startsWith('blob:') || (v.startsWith('data:') && v.length > 400_000))) t[k] = null
+        }
+      }
+    }
     return sanitizeWorkspaceIds({ ...base, ...saved })
   } catch {
     return base
@@ -505,7 +515,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!dirtyRef.current) return
     const h = setTimeout(() => {
-      try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)) } catch { /* ignore quota/security errors */ }
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)) } catch (err) {
+        console.warn('[state] localStorage save failed (quota?) — oversized logos can cause this:', err)
+      }
     }, 400)
     return () => clearTimeout(h)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -573,7 +585,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     savedRef.current = JSON.parse(snapshot)
     dirtyRef.current = false
     setHasChanges(false)
-    try { localStorage.setItem(SAVE_KEY, snapshot) } catch { /* ignore quota/security errors */ }
+    try { localStorage.setItem(SAVE_KEY, snapshot) } catch (err) {
+      console.warn('[state] localStorage save failed (quota?) — oversized logos can cause this:', err)
+    }
     if (state.serverCode) {
       apiSaveRoomBroadcast(state.serverCode, { ...state, _rev: bumpRev() }).catch(e => console.warn('room broadcast save failed', e))
     }

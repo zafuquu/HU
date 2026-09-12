@@ -35,7 +35,7 @@ export function PostGameScene(props: PostGameSceneProps) {
   const pgRp = function(i: number){ return (rightTeamPlayers && rightTeamPlayers[i] && (rightTeamPlayers[i].alias || rightTeamPlayers[i].riotId)) || '' }
   return (
     <div
-      className="relative size-full min-h-full bg-[#1B1D1F]"
+      className="scene-root relative size-full min-h-full bg-[#1B1D1F]"
       style={{
         width: 1920,
         height: 1080,
