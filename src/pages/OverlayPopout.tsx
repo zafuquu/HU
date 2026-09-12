@@ -457,12 +457,34 @@ export default function OverlayPopout() {
   const leftPlayers = stickyRosterRef.current.left.length > 0 ? mapLivePlayers(stickyRosterRef.current.left) : []
   const rightPlayers = stickyRosterRef.current.right.length > 0 ? mapLivePlayers(stickyRosterRef.current.right) : []
 
+  // ===== Panel identity auto-match =====
+  // GEP anchors the VIEWER'S team to blue/left for the whole match, but the
+  // dashboard's Team A / Team B order has no guaranteed relation to that — a
+  // mismatch put the wrong name/logo/color on every panel ("DEFENDER WIN" with
+  // MY logo, strip icons on the wrong team, my score under the enemy's name).
+  // Match workspace teams to the live rosters by player-name overlap; the
+  // dashboard order is only the fallback. Sticky so one odd frame can't flip.
+  const panelSideRef = useRef<'A' | 'B' | null>(null)
+  if (leftPlayers.length > 0 && rightPlayers.length > 0) {
+    const norm = (v: string) => String(v || '').split('#')[0].trim().toLowerCase()
+    const leftNames = new Set(leftPlayers.map((p: any) => norm(p.alias || p.name || p.riotId)))
+    const overlap = (team: any) => (team?.players || []).filter((p: any) => {
+      const candidates = [p?.riotId, p?.alias, p?.name].map((v: any) => norm(v))
+      return candidates.some((v: string) => leftNames.has(v))
+    }).length
+    const aLeft = overlap(teamA)
+    const bLeft = overlap(teamB)
+    if (aLeft !== bLeft) panelSideRef.current = aLeft > bLeft ? 'A' : 'B'
+  }
+  const leftTeam = panelSideRef.current === 'B' ? teamB : teamA
+  const rightTeam = panelSideRef.current === 'B' ? teamA : teamB
+
   // Team-attributed props under the side swap (everything moves with the
   // panel: names, colors, logos, round + series scores, rosters).
-  const baseLeftName = teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'
-  const baseRightName = teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'
-  const baseLeftColor = teamA?.color || '#28D091'
-  const baseRightColor = teamB?.color || '#FF3549'
+  const baseLeftName = leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'
+  const baseRightName = rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'
+  const baseLeftColor = leftTeam?.color || '#28D091'
+  const baseRightColor = rightTeam?.color || '#FF3549'
   const hudLeftName = baseLeftName
   const hudRightName = baseRightName
   const hudLeftColor = baseLeftColor
@@ -473,15 +495,15 @@ export default function OverlayPopout() {
   const hudScoreRight = scoreRight
   const hudSeriesLeft = seriesLeft
   const hudSeriesRight = seriesRight
-  const hudLeftLogo = teamA?.logoUrl || null
-  const hudRightLogo = teamB?.logoUrl || null
+  const hudLeftLogo = leftTeam?.logoUrl || null
+  const hudRightLogo = rightTeam?.logoUrl || null
   // User-configured sponsor, cycled (see sponsorList above).
   const sponsorImageUrl = sponsorCycleUrl
   // Tournament/event logo (workspace-configured) — used by the round ceremony
   // and post-game; falls back to the bundled Game Event / Sponsor-1 assets.
   const tournamentLogoUrl = (state.tournamentLogoUrls || []).find((u: any): u is string => !!u) || null
-  const hudLeftSeed = (teamA as any)?.seed
-  const hudRightSeed = (teamB as any)?.seed
+  const hudLeftSeed = (leftTeam as any)?.seed
+  const hudRightSeed = (rightTeam as any)?.seed
   const baseRoundEnd = (snapState as any)?.roundEnd || null
   const hudRoundEnd = baseRoundEnd
   const baseRoundHistory = ((snapState as any)?.roundHistory || []) as Array<{ round: number; winner: 'blue' | 'red'; reason: string }>
@@ -706,12 +728,12 @@ export default function OverlayPopout() {
         )}
         {sceneKey === 'map-ban' && (
           <MapBanScene
-            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-            leftTeamColor={teamA?.color || '#28D091'}
-            rightTeamColor={teamB?.color || '#FF3549'}
-            leftTeamLogo={teamA?.logoUrl || null}
-            rightTeamLogo={teamB?.logoUrl || null}
+            leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
+            leftTeamColor={leftTeam?.color || '#28D091'}
+            rightTeamColor={rightTeam?.color || '#FF3549'}
+            leftTeamLogo={leftTeam?.logoUrl || null}
+            rightTeamLogo={rightTeam?.logoUrl || null}
             mapBans={(state.mapBans || []).map((m: any) => VAL_MAPS.find(v => v.mapId === m.mapId)).filter((v): v is (typeof VAL_MAPS)[number] => !!v)}
             mapPicks={(state.mapPicks || []).map((m: any) => VAL_MAPS.find(v => v.mapId === m.mapId)).filter((v): v is (typeof VAL_MAPS)[number] => !!v)}
             mapDecider={VAL_MAPS.find(v => v.mapId === state.vetoSelectedMapIds?.[0]) || undefined}
@@ -719,12 +741,12 @@ export default function OverlayPopout() {
         )}
         {sceneKey === 'post-game' && (
           <PostgameScene
-            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-            leftTeamColor={teamA?.color || '#28D091'}
-            rightTeamColor={teamB?.color || '#FF3549'}
-            leftTeamLogo={teamA?.logoUrl || null}
-            rightTeamLogo={teamB?.logoUrl || null}
+            leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
+            leftTeamColor={leftTeam?.color || '#28D091'}
+            rightTeamColor={rightTeam?.color || '#FF3549'}
+            leftTeamLogo={leftTeam?.logoUrl || null}
+            rightTeamLogo={rightTeam?.logoUrl || null}
             scoreLeft={scoreLeft}
             scoreRight={scoreRight}
             leftTeamPlayers={leftPlayers}
@@ -739,12 +761,12 @@ export default function OverlayPopout() {
         {/* Timeout overlay — shows during tactical timeouts and tech pauses */}
         <TimeoutOverlay
           timeout={liveTimeout}
-          leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-          rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-          leftTeamColor={teamA?.color || '#28D091'}
-          rightTeamColor={teamB?.color || '#FF3549'}
-          leftTeamLogo={teamA?.logoUrl || null}
-          rightTeamLogo={teamB?.logoUrl || null}
+          leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+          rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
+          leftTeamColor={leftTeam?.color || '#28D091'}
+          rightTeamColor={rightTeam?.color || '#FF3549'}
+          leftTeamLogo={leftTeam?.logoUrl || null}
+          rightTeamLogo={rightTeam?.logoUrl || null}
         />
 
         {/* (Kill banner / first-blood popup removed by request) */}
@@ -752,7 +774,7 @@ export default function OverlayPopout() {
         {/* Caster cards — lower-third name plates */}
         <CasterCard
           casters={liveCasterCards}
-          leftTeamColor={teamA?.color || '#28D091'}
+          leftTeamColor={leftTeam?.color || '#28D091'}
         />
 
         {/* Economy tracker fallback if BuyRoundScene not active during shopping */}
@@ -760,10 +782,10 @@ export default function OverlayPopout() {
           <div style={{ position: 'absolute', bottom: 295, left: 0, width: 1920, zIndex: 50 }}>
             <EconomyTracker
               economy={liveEconomy}
-              leftTeamColor={teamA?.color || '#28D091'}
-              rightTeamColor={teamB?.color || '#FF3549'}
-              leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-              rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
+              leftTeamColor={leftTeam?.color || '#28D091'}
+              rightTeamColor={rightTeam?.color || '#FF3549'}
+              leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+              rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             />
           </div>
         )}
@@ -772,10 +794,10 @@ export default function OverlayPopout() {
         {(sceneKey === 'post-game' || sceneKey === 'default') && liveMvpPlayer && (
           <PostgameMVP
             mvp={liveMvpPlayer}
-            leftTeamName={teamA?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-            rightTeamName={teamB?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-            leftTeamColor={teamA?.color || '#28D091'}
-            rightTeamColor={teamB?.color || '#FF3549'}
+            leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+            rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
+            leftTeamColor={leftTeam?.color || '#28D091'}
+            rightTeamColor={rightTeam?.color || '#FF3549'}
           />
         )}
 
