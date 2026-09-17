@@ -88,6 +88,8 @@ export interface GameSnapshot {
     };
     /** How the last round ended (winner + reason), cleared at next round start. */
     roundEnd?: { winner: "blue" | "red" | null; reason: string | null; winnerSide?: "attacker" | "defender" | null } | null;
+    /** Viewer's side this round (from the snapshot's team startingSide). */
+    viewerSide?: "attack" | "defense" | null;
     /** Per-round win history (ValoSpectra app-roundreasons parity, max 24). */
     roundHistory?: Array<{
       round: number;
@@ -209,6 +211,9 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
         mvp: state.match?.mvp ?? null,
       },
       roundEnd: state.roundEnd ?? null,
+      // Viewer's side this round (snapshot startingSide ground truth) — the
+      // site uses it as the ATTACKER/DEFENDER WIN label fallback.
+      viewerSide: state.viewerSide ?? null,
       // ValoSpectra app-roundreasons parity: per-round win history for the
       // site's timeline strip (kills/detonated/defused/timeout icons).
       roundHistory: state.roundHistory ?? [],

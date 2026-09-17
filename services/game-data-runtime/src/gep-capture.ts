@@ -197,6 +197,40 @@ function factFromInfoUpdate(item: GepItem, emit: ProviderEmit): void {
     emit({ kind: "new_game_event", key: "match_end", value: { reason: "match_outcome", outcome: value } });
     return;
   }
+  if (low === "team") {
+    // GEP game_info/team — the LOCAL player's side THIS round ("attack" /
+    // "defense"). Definitive attack/defender ground truth; flips at halftime.
+    if (value === "attack" || value === "defense") pushInfo("viewer_side", value);
+    return;
+  }
+  if (low === "abilities") {
+    // GEP "me" feature ability charges — {C,Q,E,X} as 0/1 NUMBERS (not
+    // booleans). Normalize to booleans: >=1 means the charge is available.
+    const rec = parseMaybeJsonObject(value);
+    if (rec) {
+      const n = (v: unknown): boolean => v === true || Number(v) >= 1;
+      pushInfo("abilities", {
+        C: n((rec as Record<string, unknown>).C),
+        Q: n((rec as Record<string, unknown>).Q),
+        E: n((rec as Record<string, unknown>).E),
+        X: n((rec as Record<string, unknown>).X),
+      });
+    }
+    return;
+  }
+  if (low === "round_outcome") {
+    // GEP viewer-perspective round result {won, lost} — cumulative. A delta
+    // tells us DEFINITIVELY who won the round without any score-delta or
+    // alive-count guessing. Forward the raw numbers; the projector compares.
+    const rec = parseMaybeJsonObject(value);
+    if (rec) {
+      pushInfo("round_outcome", {
+        won: Number((rec as Record<string, unknown>).won ?? 0),
+        lost: Number((rec as Record<string, unknown>).lost ?? 0),
+      });
+    }
+    return;
+  }
   if (low === "health") {
     // GEP "me" feature: the LOCAL player's HP, streamed live (ValoSpectra's
     // setPlayerHealth parity). GEP never streams per-player health for the

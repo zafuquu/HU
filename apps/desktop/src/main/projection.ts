@@ -77,6 +77,12 @@ interface WorkingState {
   matchWinner: "blue" | "red" | null;
   matchMvp: { name: string; teamId: string; kills: number; deaths: number; assists: number } | null;
   roundEnd: { winner: "blue" | "red"; reason: "elimination" | "detonation" | "defusion" | "time"; winnerSide?: "attacker" | "defender" | null } | null;
+  /** The viewer's START side from the snapshot (defense/attack) — side label ground truth. */
+  viewerStartSide: "attack" | "defense" | null;
+  /** The viewer's side THIS round — GEP `game_info/team` ground truth ("attack"/"defense"). */
+  viewerSide: "attack" | "defense" | null;
+  /** Last seen GEP round_outcome {won,lost} — viewer-perspective round result. */
+  roundOutcome: { won: number; lost: number } | null;
   roundHistory: Array<{
     round: number;
     winner: "blue" | "red";
@@ -116,6 +122,9 @@ function initial(): WorkingState {
     matchWinner: null,
     matchMvp: null,
     roundEnd: null,
+    viewerStartSide: null,
+    viewerSide: null,
+    roundOutcome: null,
     roundHistory: [],
   };
 }
@@ -182,6 +191,9 @@ export class ValProjectionSession {
       s.gameEvent = null;
       s.viewerGepTeam = null;
       s.viewerName = null;
+      s.viewerStartSide = null;
+      s.viewerSide = null;
+      s.roundOutcome = null;
       this.rosterSeq.clear();
       this.lastGepTeam.clear();
     }
@@ -221,6 +233,26 @@ export class ValProjectionSession {
     if (snap.viewer?.role) s.viewerRole = snap.viewer.role;
     else if (snap.session?.viewer?.role) s.viewerRole = snap.session.viewer.role;
     const teams = snap.teams ?? snap.session?.teams;
+    // SIDE GROUND TRUTH: the upstream snapshot carries each team's starting
+    // side (defense/attack). Find the viewer's team by player name and record
+    // their START side — this replaces the inverted parity heuristic for the
+    // ATTACKER WIN/DEFENDER WIN label (the user's matches start on defense,
+    // so the assumption "team_0 attacks rounds 1-12" was inverted 100% of
+    // the time for them).
+    if (teams && teams.length > 0 && s.viewerName) {
+      const vName = s.viewerName.split("#")[0].trim().toLowerCase();
+      for (const team of teams) {
+        const players = Array.isArray(team.players) ? team.players : [];
+        const isViewersTeam = players.some((p: any) => {
+          const pn = p?.player?.identity?.displayName ?? p?.player?.name?.gameName ?? p?.player?.name?.displayName ?? p?.player?.puuid ?? "";
+          return String(pn).split("#")[0].trim().toLowerCase() === vName;
+        });
+        if (isViewersTeam && team.startingSide != null) {
+          s.viewerStartSide = team.startingSide;
+          break;
+        }
+      }
+    }
     // Capture the pre-refresh roster first: snapshot refreshes must not wipe
     // stats merged from scoreboard facts between heartbeats.
     const previousRoster = s.roster;
@@ -1065,6 +1097,28 @@ export class ValProjectionSession {
     return this.s.roundKills.get(this.normalizeName(name)) ?? 0;
   }
 
+  /** The viewer's side for a given round, derived from the snapshot's start side. */
+  /** Side of the WINNING team for the round — from the snapshot's start side. */
+  private winnerSideFor(winner: 0 | 1, round: number): "attacker" | "defender" | null {
+    const viewerSide = this.viewerSideForRound(round);
+    if (!viewerSide) return null;
+    const viewerWon = (winner === 0 && this.viewerTeamIsTeam0()) || (winner === 1 && !this.viewerTeamIsTeam0());
+    const side = viewerWon ? viewerSide : viewerSide === "attack" ? "defense" : "attack";
+    return side === "attack" ? "attacker" : "defender";
+  }
+
+  private viewerSideForRound(round: number): "attack" | "defense" | null {
+    const s = this.s;
+    if (!s.viewerStartSide) return null;
+    const viewerIsTeam0 = s.viewerStartSide === "attack"; // team_0 attacks rounds 1-12
+    if (round > 24) return round % 2 === 1 === viewerIsTeam0 ? "attack" : "defense";
+    return (round <= 12) === viewerIsTeam0 ? "attack" : "defense";
+  }
+
+  private viewerTeamIsTeam0(): boolean {
+    return this.s.viewerStartSide === "attack";
+  }
+
   private settle(): void {
     const s = this.s;
     if (s.gameEvent !== null && s.roundEnd !== null) return;
@@ -1081,7 +1135,7 @@ export class ValProjectionSession {
           : s.spike === "defused"
             ? "defusion"
             : "elimination";
-      s.roundEnd = { winner: winner === 0 ? "blue" : "red", reason };
+      s.roundEnd = { winner: winner === 0 ? "blue" : "red", reason, winnerSide: this.winnerSideFor(winner, s.roundNumber) };
       // Stamp the settlement time — deriveScene holds the HUD (and the
       // endround banner) on screen for a grace period after this.
       s.roundEndedAt = Date.now();
