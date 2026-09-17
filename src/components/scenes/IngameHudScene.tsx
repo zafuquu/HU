@@ -409,7 +409,7 @@ function IngamePlayerCard({
   const kills = player.kills ?? 0
   const deaths = player.deaths ?? 0
   const assists = player.assists ?? 0
-  const credits = player.credits ?? player.money ?? 800
+  const credits = player.credits ?? player.money ?? null
   const shieldSrc = isAlive ? getShieldImg(player) : null
   const weaponSrc = getWeaponImg(player.weapon || player.weaponName)
   // Ult points: the desktop publishes ultPoints/ultMax (GEP scoreboard).

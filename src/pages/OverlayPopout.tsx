@@ -388,6 +388,9 @@ export default function OverlayPopout() {
     armorType: p.armorType ?? (p.shieldType === 2 || p.shieldType === 3 ? 'Heavy' : p.shieldType === 1 || p.shieldType === 4 ? 'Light' : 'None'),
     credits: p.credits ?? p.money ?? null,
     spent: p.loadoutValue != null ? p.loadoutValue : null,
+    // Authoritative spent/loadout (snapshot publishes spentCredits; tolerate
+    // the legacy `spent`/`loadoutValue` spellings for compatibility).
+    spentCredits: p.spentCredits ?? p.spent ?? p.loadoutValue ?? null,
     weaponName: p.weaponName || p.scoreboardWeaponInternal || p.weapon || null,
     shieldType: p.shieldType,
     currUltPoints: p.currUltPoints ?? p.ultPoints ?? p.ultimate ?? 0,
@@ -398,7 +401,8 @@ export default function OverlayPopout() {
     kills: p.kills ?? 0,
     deaths: p.deaths ?? 0,
     assists: p.assists ?? 0,
-    weapon: p.weapon ?? p.scoreboardWeaponInternal ?? p.weaponKillfeedInternal ?? p.loadout ?? 'Classic',
+    // No fake weapon fallback — blank until GEP reports the real carried gun.
+    weapon: p.weapon ?? p.weaponName ?? null,
     ultimate: p.ultimate ?? p.currUltPoints ?? p.ultPoints ?? 0,
     ultimateMax: p.ultimateMax ?? p.maxUltPoints ?? p.ultMax ?? 8,
     isUltReady: p.isUltReady ?? ((p.currUltPoints ?? p.ultPoints ?? 0) >= (p.maxUltPoints ?? p.ultMax ?? 8) && (p.maxUltPoints ?? p.ultMax ?? 8) > 0),
