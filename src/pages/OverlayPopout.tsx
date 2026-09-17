@@ -121,6 +121,8 @@ export default function OverlayPopout() {
   // Sticky: once we have shown real data, never blank out mid-stream.
   const hasEverHadDataRef = useRef(false)
   const lastRevRef = useRef(0)
+  /** Monotonic observation gate — stale/out-of-order snapshots are rejected whole. */
+  const obsGateRef = useRef(0)
 
   // Full-field authority: the room workspace havoc wins wholesale on overlay
   // pages (OBS/browser sources have no local workspace worth preserving).
@@ -211,6 +213,11 @@ export default function OverlayPopout() {
           try {
             const data = JSON.parse(evt.data)
             if (data && (data.snapshot || data.scores || data.updatedAt)) {
+              // Monotonic staleness gate — reject older snapshots whole (never
+              // merge fields from different sources).
+              const obs = Number(data.snapshot?.state?.observedAt ?? data.updatedAt ?? 0)
+              if (obs && obs < obsGateRef.current) return
+              if (obs) obsGateRef.current = obs
               setLiveScores(data)
             }
           } catch {}
@@ -234,6 +241,56 @@ export default function OverlayPopout() {
     return () => {
       isMounted = false
       if (reconnectTimeout) clearTimeout(reconnectTimeout)
+      if (ws) ws.close()
+    }
+  }, [])
+
+  // ── Local authoritative source (migration flag ?local=1) ────────────────────
+  // Consumes the desktop HudServer's broadcast channel (:7103/ws/broadcast),
+  // which pushes the SAME revisioned GameSnapshot the bridge distributes.
+  // Whole-snapshot switching only — never field-merged with bridge/mirror.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('local') !== '1') return
+    let ws: WebSocket | null = null
+    let reconnect: ReturnType<typeof setTimeout> | null = null
+    let isMounted = true
+    const connect = () => {
+      if (!isMounted) return
+      try {
+        ws = new WebSocket('ws://127.0.0.1:7103/ws/broadcast')
+        ws.onmessage = (evt) => {
+          if (!isMounted) return
+          try {
+            const frame = JSON.parse(evt.data)
+            if (frame?.kind !== 'broadcast' || !frame.snapshot) return
+            const obs = Number(frame.observedAt ?? frame.snapshot?.state?.observedAt ?? 0)
+            if (obs && obs < obsGateRef.current) return // stale/out-of-order
+            if (obs) obsGateRef.current = obs
+            setIsLocalTransport(true)
+            const st = frame.snapshot.state || {}
+            setLiveScores({
+              snapshot: frame.snapshot,
+              updatedAt: frame.observedAt ?? Date.now(),
+              scores: st.gameScore
+                ? { roundLeft: st.gameScore.left, roundRight: st.gameScore.right, roundNumber: st.currentRound?.roundNumber }
+                : undefined,
+            })
+          } catch {}
+        }
+        ws.onclose = () => {
+          if (!isMounted) return
+          setIsLocalTransport(false)
+          reconnect = setTimeout(connect, 2000)
+        }
+        ws.onerror = () => ws?.close()
+      } catch {
+        reconnect = setTimeout(connect, 2000)
+      }
+    }
+    connect()
+    return () => {
+      isMounted = false
+      if (reconnect) clearTimeout(reconnect)
       if (ws) ws.close()
     }
   }, [])
