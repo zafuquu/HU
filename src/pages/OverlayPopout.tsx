@@ -9,6 +9,7 @@ import { AgentSelectScene } from '../components/scenes/AgentSelectScene'
 import { BuyRoundScene } from '../components/scenes/BuyRoundScene'
 import { MapBanScene } from '../components/scenes/MapBanScene'
 import { PostgameScene } from '../components/scenes/PostgameScene'
+import { pickSource } from '../lib/sourceSelection'
 import { TimeoutOverlay } from '../components/scenes/TimeoutOverlay'
 import { CasterCard } from '../components/scenes/CasterCard'
 import { EconomyTracker } from '../components/scenes/EconomyTracker'
@@ -121,8 +122,6 @@ export default function OverlayPopout() {
   // Sticky: once we have shown real data, never blank out mid-stream.
   const hasEverHadDataRef = useRef(false)
   const lastRevRef = useRef(0)
-  /** Monotonic observation gate — stale/out-of-order snapshots are rejected whole. */
-  const obsGateRef = useRef(0)
 
   // Full-field authority: the room workspace havoc wins wholesale on overlay
   // pages (OBS/browser sources have no local workspace worth preserving).
@@ -160,6 +159,98 @@ export default function OverlayPopout() {
     })
   }
 
+  // ── Broadcast source model (Phase 12) ──────────────────────────────────────
+  // Three whole-snapshot sources — LOCAL (:7103/ws/broadcast) > BRIDGE
+  // (/ws/live) > MIRROR (Supabase live:<room>). Frames are stored per source
+  // and ONE selector (src/lib/sourceSelection.ts) decides which COMPLETE
+  // snapshot is displayed. Never field-merged.
+  type SourceIdT = 'local' | 'bridge' | 'mirror'
+  const bridgeWsUrl =
+    new URLSearchParams(window.location.search).get('bridgeWs') || 'ws://localhost:7180/ws/live'
+  // LOCAL-first is automatic when the bridge itself is on this machine
+  // (production PC). Remote OBS (custom remote bridgeWs) never probes
+  // 127.0.0.1:7103. ?local=1 forces local-first; ?local=0 disables.
+  const localParam = new URLSearchParams(window.location.search).get('local')
+  const bridgeIsLocal = /localhost|127\.0\.0\.1/.test(bridgeWsUrl)
+  const wantLocalSource = localParam === '1' || (localParam === null && bridgeIsLocal)
+  const srcFramesRef = useRef<Partial<Record<SourceIdT, any>>>({})
+  const srcSlotsRef = useRef<Partial<Record<SourceIdT, { connected: boolean; observedAt: number; lastAt: number; freshSince?: number }>>>({})
+  const sourceOfTruthRef = useRef<'local' | 'bridge' | 'mirror' | null>(null)
+  const displayedObsRef = useRef(0)
+  const lastAppliedFrameRef = useRef<any>(null)
+  const [sourceOfTruth, setSourceOfTruth] = useState<'local' | 'bridge' | 'mirror' | null>(null)
+
+  const publishSourceDiagnostics = () => {
+    // Internal diagnostics only — no credentials or secrets.
+    const s = srcSlotsRef.current
+    const f = srcFramesRef.current
+    ;(window as any).__HU_SOURCES = {
+      sourceOfTruth: sourceOfTruthRef.current,
+      localConnected: !!s.local?.connected,
+      localLastObservedAt: s.local?.observedAt ?? null,
+      localLastRevision: (f.local?.snapshot?.revision as number) ?? null,
+      bridgeConnected: !!s.bridge?.connected,
+      bridgeLastObservedAt: s.bridge?.observedAt ?? null,
+      bridgeLastRevision: (f.bridge?.snapshot?.revision as number) ?? null,
+      mirrorLastObservedAt: s.mirror?.observedAt ?? null,
+      mirrorLastRevision: (f.mirror?.snapshot?.revision as number) ?? null,
+    }
+  }
+
+  const setSourceConnected = (id: SourceIdT, connected: boolean) => {
+    const slot = srcSlotsRef.current[id] || { observedAt: 0, lastAt: 0, freshSince: 0 }
+    srcSlotsRef.current[id] = { ...slot, connected }
+    if (connected) slot.freshSince = Date.now()
+    publishSourceDiagnostics()
+    runSelection()
+  }
+
+  const updateSource = (id: SourceIdT, frame: any) => {
+    if (!frame) return
+    const now = Date.now()
+    const observedAt = Number(frame?.snapshot?.state?.observedAt ?? frame?.updatedAt ?? 0)
+    const slot = srcSlotsRef.current[id]
+    const wasFresh = slot ? now - slot.lastAt <= 10_000 : false
+    srcFramesRef.current[id] = frame
+    srcSlotsRef.current[id] = {
+      connected: true,
+      observedAt,
+      lastAt: now,
+      freshSince: wasFresh ? slot?.freshSince ?? now : now,
+    }
+    publishSourceDiagnostics()
+    runSelection()
+  }
+
+  const runSelection = () => {
+    const now = Date.now()
+    const pick = pickSource(srcSlotsRef.current as any, {
+      now,
+      current: sourceOfTruthRef.current,
+      displayedObservedAt: displayedObsRef.current,
+    })
+    if (!pick.source) return
+    const frame = srcFramesRef.current[pick.source]
+    if (!frame) return
+    const changed = pick.source !== sourceOfTruthRef.current || frame !== lastAppliedFrameRef.current
+    if (!changed) return
+    const obs = Number(frame?.snapshot?.state?.observedAt ?? frame?.updatedAt ?? 0)
+    if (sourceOfTruthRef.current && obs && obs < displayedObsRef.current && pick.reason !== 'failover-down') return
+    sourceOfTruthRef.current = pick.source
+    displayedObsRef.current = obs || displayedObsRef.current
+    lastAppliedFrameRef.current = frame
+    setSourceOfTruth(pick.source)
+    setIsLocalTransport(pick.source === 'local' || (pick.source === 'bridge' && bridgeIsLocal))
+    lastUpdateRef.current = now
+    hasEverHadDataRef.current = true
+    setLiveScores(frame)
+    console.debug('[HU sources]', pick.source, '<=', pick.reason, 'observedAt', obs)
+  }
+  useEffect(() => {
+    const t = setInterval(runSelection, 1000)
+    return () => clearInterval(t)
+  }, [])
+
   // Subscribe to the bridge's live snapshot mirror
   useEffect(() => {
     if (!roomCode) return
@@ -172,7 +263,7 @@ export default function OverlayPopout() {
         { event: '*', schema: 'public', table: 'site_settings', filter: `id=eq.${key}` },
         (payload) => {
           const value = (payload.new as any)?.value
-          if (value && !cancelled) setLiveScores(value)
+          if (value && !cancelled) updateSource('mirror', value)
         },
       )
       .subscribe()
@@ -182,7 +273,7 @@ export default function OverlayPopout() {
       .eq('id', key)
       .maybeSingle()
       .then(({ data }) => {
-        if (!cancelled && data?.value) setLiveScores(data.value as any)
+        if (!cancelled && data?.value) updateSource('mirror', data.value as any)
       })
     return () => {
       cancelled = true
@@ -196,9 +287,6 @@ export default function OverlayPopout() {
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
     let isMounted = true
 
-    const bridgeWsUrl =
-      new URLSearchParams(window.location.search).get('bridgeWs') || 'ws://localhost:7180/ws/live'
-
     const connectLocalWs = () => {
       if (!isMounted) return
       try {
@@ -206,6 +294,7 @@ export default function OverlayPopout() {
         ws.onopen = () => {
           if (!isMounted) return
           setIsLocalTransport(true)
+          setSourceConnected('bridge', true)
           console.log('[OBS-Driver] Connected directly to local bridge:', bridgeWsUrl)
         }
         ws.onmessage = (evt) => {
@@ -213,12 +302,7 @@ export default function OverlayPopout() {
           try {
             const data = JSON.parse(evt.data)
             if (data && (data.snapshot || data.scores || data.updatedAt)) {
-              // Monotonic staleness gate — reject older snapshots whole (never
-              // merge fields from different sources).
-              const obs = Number(data.snapshot?.state?.observedAt ?? data.updatedAt ?? 0)
-              if (obs && obs < obsGateRef.current) return
-              if (obs) obsGateRef.current = obs
-              setLiveScores(data)
+              updateSource('bridge', data)
             }
           } catch {}
         }
@@ -228,6 +312,7 @@ export default function OverlayPopout() {
         ws.onclose = () => {
           if (!isMounted) return
           setIsLocalTransport(false)
+          setSourceConnected('bridge', false)
           reconnectTimeout = setTimeout(connectLocalWs, 5000)
         }
       } catch {
@@ -245,12 +330,12 @@ export default function OverlayPopout() {
     }
   }, [])
 
-  // ── Local authoritative source (migration flag ?local=1) ────────────────────
+  // ── Local authoritative source (automatic local-first; ?local=0 disables) ──
   // Consumes the desktop HudServer's broadcast channel (:7103/ws/broadcast),
   // which pushes the SAME revisioned GameSnapshot the bridge distributes.
   // Whole-snapshot switching only — never field-merged with bridge/mirror.
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('local') !== '1') return
+    if (!wantLocalSource) return
     let ws: WebSocket | null = null
     let reconnect: ReturnType<typeof setTimeout> | null = null
     let isMounted = true
@@ -258,17 +343,17 @@ export default function OverlayPopout() {
       if (!isMounted) return
       try {
         ws = new WebSocket('ws://127.0.0.1:7103/ws/broadcast')
+        ws.onopen = () => {
+          if (!isMounted) return
+          setSourceConnected('local', true)
+        }
         ws.onmessage = (evt) => {
           if (!isMounted) return
           try {
             const frame = JSON.parse(evt.data)
             if (frame?.kind !== 'broadcast' || !frame.snapshot) return
-            const obs = Number(frame.observedAt ?? frame.snapshot?.state?.observedAt ?? 0)
-            if (obs && obs < obsGateRef.current) return // stale/out-of-order
-            if (obs) obsGateRef.current = obs
-            setIsLocalTransport(true)
             const st = frame.snapshot.state || {}
-            setLiveScores({
+            updateSource('local', {
               snapshot: frame.snapshot,
               updatedAt: frame.observedAt ?? Date.now(),
               scores: st.gameScore
@@ -279,7 +364,7 @@ export default function OverlayPopout() {
         }
         ws.onclose = () => {
           if (!isMounted) return
-          setIsLocalTransport(false)
+          setSourceConnected('local', false)
           reconnect = setTimeout(connect, 2000)
         }
         ws.onerror = () => ws?.close()
@@ -367,7 +452,7 @@ export default function OverlayPopout() {
     if (!roomCode) return
     const t = setInterval(() => {
       supabase.from('site_settings').select('value').eq('id', `live:${roomCode}`).maybeSingle()
-        .then(({ data }) => { if (data?.value) setLiveScores(data.value as any) })
+        .then(({ data }) => { if (data?.value) updateSource('mirror', data.value as any) })
       supabase.from('site_settings').select('value').eq('id', `broadcast-room:${roomCode}`).maybeSingle()
         .then(({ data }) => { applyHavoc(data?.value) })
       supabase.from('site_settings').select('value').eq('id', `desktop:${roomCode}`).maybeSingle()
@@ -689,7 +774,7 @@ export default function OverlayPopout() {
   const spikeState = (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null) || ((snapState as any)?.bombPlanted ? 'planted' : null)) as 'none' | 'planted' | 'defusing' | null
 
   return (
-    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
+    <div data-source-of-truth={sourceOfTruth ?? ''} style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
       {/* Scene-change fade — must live OUTSIDE any conditional render (it used
           to sit inside the stale badge, so the animation never played). */}
       <style>{`.scene-fade { animation: sceneFade 320ms ease; will-change: opacity, transform; } @keyframes sceneFade { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }`}</style>
