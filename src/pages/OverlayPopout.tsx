@@ -91,13 +91,21 @@ export default function OverlayPopout() {
     : livePhase === 'shopping' ? 'buy-round'
     : livePhase === 'game_start' ? 'agent-select'
     : null
-  const sceneKey =
-    forceScene ? String(forceScene)
-    : liveScene && ['agent-select', 'buy-round', 'ingame-hud', 'post-game', 'map-interstitial'].includes(String(liveScene))
-      ? String(liveScene)
-      : phaseDerivedScene
-      ? phaseDerivedScene
-      : urlSceneKey
+  // Map Veto persistence (production operator requirement): when the browser
+  // source IS the veto scene, the veto sequence completing must NEVER auto-
+  // advance — hold Map Veto until genuine agent-select evidence arrives or
+  // the operator picks another scene (forceScene stays highest priority and
+  // fully releasable).
+  const isVetoSource = urlSceneKey === 'map-ban' || urlSceneKey === 'map-veto'
+  const sceneKey = (() => {
+    if (forceScene) return String(forceScene)
+    if (isVetoSource) {
+      return (livePhase === 'game_start' || liveScene === 'agent-select') ? 'agent-select' : 'map-ban'
+    }
+    if (liveScene && ['agent-select', 'buy-round', 'ingame-hud', 'post-game', 'map-interstitial'].includes(String(liveScene))) return String(liveScene)
+    if (phaseDerivedScene) return phaseDerivedScene
+    return urlSceneKey
+  })()
   const [scale, setScale] = useState(1)
   // Sponsor cycler: rotate through the tournament's sponsors every 8s
   // (ValoSpectra sponsor-cycle parity). Logos are 1:1 square; backdrops 875x200.
