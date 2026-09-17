@@ -1339,6 +1339,11 @@ export class ValProjectionSession {
    */
   private deriveScene(): "agent-select" | "buy-round" | "ingame-hud" | "post-game" | null {
     const s = this.s;
+    // A settled match ALWAYS wins over generic idle/unknown session state —
+    // the old order let sessionPhase 'idle' (after the match ends) erase
+    // Post Game and drop the popout back to the HUD scene. Post Game stays
+    // until a genuine new match resets matchWinner (or a production reset).
+    if (s.matchWinner) return "post-game";
     if (s.sessionPhase === "idle") return null;
     if (s.sessionPhase === "unknown") return null;
     // GEP round facts are the real-time truth for the current phase — they
