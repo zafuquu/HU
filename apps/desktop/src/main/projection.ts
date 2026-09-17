@@ -637,6 +637,22 @@ export class ValProjectionSession {
         s.spike = "detonated";
         s.spikePlantedAt = null;
         break;
+      // GEP-raw spike event names (verified from the provider log: newEvent
+      // frames named planted_location/defused/detonated — the spike_*-prefixed
+      // keys above never appear in the raw stream).
+      case "planted_location":
+      case "planted":
+        if (s.spike !== "planted") s.spikePlantedAt = Date.now(); // re-emits must not skew the countdown
+        s.spike = "planted";
+        break;
+      case "defused":
+        s.spike = "defused";
+        s.spikePlantedAt = null;
+        break;
+      case "detonated":
+        s.spike = "detonated";
+        s.spikePlantedAt = null;
+        break;
       case "match_end": {
         // Upstream engine emits match_end when the match settles. Resolve the
         // winner from the score if the end-phase classification has not yet —
@@ -655,7 +671,13 @@ export class ValProjectionSession {
       }
       case "scene": {
         const sc = String(value ?? "").toLowerCase().replace(/_/g, "-");
-        if (sc === "agent-select" || sc === "character-select" || sc === "lobby" || sc === "pregame") {
+        if (
+          sc === "agent-select" || sc === "character-select" || sc === "lobby" || sc === "pregame" ||
+          // GEP-raw scene names (verified from the provider log): the agent
+          // select scene is "CharacterSelectPersistentLevel". Reading CURRENT
+          // state — HU starting mid-agent-select must enter Agent Select.
+          sc.startsWith("characterselect")
+        ) {
           if (s.sessionPhase !== "pregame") {
             this.agentGateUntil = Date.now() + 3000;
             for (const p of s.roster ?? []) {
@@ -669,6 +691,11 @@ export class ValProjectionSession {
           s.sessionPhase = "live";
         } else if (sc === "post-game" || sc === "game-end" || sc === "match-end") {
           s.sessionPhase = "ending";
+        } else if (sc === "mainmenu") {
+          // GEP-raw: back at the main menu. A settled match keeps its Post
+          // Game latch (matchWinner wins in deriveScene); only a clean menu
+          // with no settled match drops to idle.
+          if (s.matchWinner === null) s.sessionPhase = "idle";
         }
         break;
       }
