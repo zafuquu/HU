@@ -351,7 +351,7 @@ export function PostGameScene(props: PostGameSceneProps) {
 
   return (
     <div
-      className="scene-root relative size-full min-h-full bg-[#1B1D1F] overflow-hidden select-none"
+      className="scene-root pg-anim relative size-full min-h-full bg-[#1B1D1F] overflow-hidden select-none"
       style={{
         width: 1920,
         height: 1080,
@@ -359,6 +359,15 @@ export function PostGameScene(props: PostGameSceneProps) {
         '--right-team-color': rightTeamColor,
       } as React.CSSProperties}
     >
+      {/* Broadcast entrance: staggered reveal of the team blocks, score and MVP cards */}
+      <style>{`
+        @keyframes pgIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+        .pg-anim > * { animation: pgIn 440ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .pg-anim > * > *:nth-child(1) { animation: pgIn 440ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 60ms; }
+        .pg-anim > * > *:nth-child(2) { animation: pgIn 440ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 160ms; }
+        .pg-anim > * > *:nth-child(3) { animation: pgIn 440ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 260ms; }
+        .pg-anim > * > *:nth-child(n+4) { animation: pgIn 440ms cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: 360ms; }
+      `}</style>
       <div
         className={`clickable-component relative flex size-full min-h-full flex-col items-center justify-center text-white uppercase ${
           activeComponentId === 'card' ? ' selected' : ''

@@ -2,6 +2,37 @@ import React, { useEffect, useState } from 'react'
 const BLANK_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
 import { resolveAgent as resolveAgentMeta, preloadAgentPortraits, type AgentMeta } from '../../data/valAgentMeta'
 
+/** Auto-fit team name: measures the rendered text and scales down ONLY when
+ *  it overflows its box (e.g. "HAVOC UNLEASH") — short names render at 100%. */
+function FitTeamName({ name, origin, className }: { name: string; origin: 'left' | 'right'; className: string }) {
+  const ref = React.useRef<HTMLHeadingElement | null>(null)
+  const [scale, setScale] = React.useState(1)
+  React.useLayoutEffect(() => {
+    const el = ref.current
+    const box = el?.parentElement
+    if (!el || !box) return
+    const fit = () => {
+      el.style.transform = 'scale(1)'
+      const w = el.scrollWidth
+      const avail = box.clientWidth
+      setScale(avail > 0 && w > avail ? Math.max(0.35, avail / w) : 1)
+    }
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [name])
+  return (
+    <h1
+      ref={ref}
+      className={className}
+      style={{ transform: `scale(${scale})`, transformOrigin: origin === 'left' ? 'left center' : 'right center', whiteSpace: 'nowrap', width: 'fit-content' }}
+    >
+      {name}
+    </h1>
+  )
+}
+
 interface AgentSelectSceneProps {
   leftTeamName?: string
   rightTeamName?: string
@@ -154,7 +185,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
                 {leftTeamLogo && <img alt="" src={leftTeamLogo} className="absolute inset-0 size-full object-contain" onError={e => { e.currentTarget.style.display = 'none' }} />}
               </div>
               <div className="flex h-full flex-1 items-center justify-center px-4">
-                <h1 className="font-schabo text-[48px] leading-none text-white uppercase">{leftTeamName}</h1>
+                <FitTeamName name={leftTeamName} origin="left" className="font-schabo text-[48px] leading-none text-white uppercase" />
               </div>
             </div>
 
@@ -240,7 +271,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
               {rightTeamLogo && <img alt="" src={rightTeamLogo} className="absolute inset-0 size-full object-contain" onError={e => { e.currentTarget.style.display = 'none' }} />}
             </div>
               <div className="flex h-full flex-1 items-center justify-center px-4">
-                <h1 className="font-schabo text-[48px] leading-none text-white uppercase">{rightTeamName}</h1>
+                <FitTeamName name={rightTeamName} origin="right" className="font-schabo text-[48px] leading-none text-white uppercase" />
               </div>
             </div>
 

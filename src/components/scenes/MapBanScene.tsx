@@ -182,7 +182,7 @@ export function MapBanScene(props: MapBanSceneProps) {
   const usedCards = allCards.filter(c => c && !!c.mapName)
   return (
     <div
-      className="scene-root relative size-full min-h-full bg-[#1B1D1F]"
+      className="scene-root mv-anim relative size-full min-h-full bg-[#1B1D1F]"
       style={{
         width: 1920,
         height: 1080,
@@ -190,6 +190,17 @@ export function MapBanScene(props: MapBanSceneProps) {
         '--right-team-color': rightTeamColor,
       } as React.CSSProperties}
     >
+      {/* Broadcast entrance: staggered reveal of the title, card racks and footer */}
+      <style>{`
+        @keyframes mvIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+        .mv-anim > * { animation: mvIn 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .mv-anim > *:nth-child(1) { animation-delay: 40ms; }
+        .mv-anim > *:nth-child(2) { animation-delay: 120ms; }
+        .mv-anim > *:nth-child(3) { animation-delay: 200ms; }
+        .mv-anim > *:nth-child(4) { animation-delay: 280ms; }
+        .mv-anim > *:nth-child(5) { animation-delay: 360ms; }
+        .mv-anim > *:nth-child(n+6) { animation-delay: 440ms; }
+      `}</style>
       <div className={`clickable-component cursor-pointer transition-opacity relative size-full overflow-hidden text-[#F5F5F5]${activeComponentId === 'card' ? ' selected' : ''}${isToggled('card') ? '' : ' opacity-50 [&>*]:invisible'}`} data-component-id="card" data-make-transparent="true" onClick={(e) => { e.stopPropagation(); onSelectComponent?.('card'); }}>
         {/* Title */}
         <div className="absolute top-[118px] left-60 flex h-[190px] w-[1575px] flex-col justify-center overflow-hidden" style={!showTitle ? ({ display: 'none' } as React.CSSProperties) : undefined}>
