@@ -867,7 +867,11 @@ export class ValProjectionSession {
         break;
       }
       case "abilities": {
-        // GEP emits the LOCAL player's ability charges: {C,Q,E,X} booleans.
+        // GEP emits the LOCAL player's ability charges. Values arrive as 0/1
+        // NUMBERS (provider log: {C:0,Q:0,E:1,X:0}), real booleans, or "0"/"1"
+        // strings depending on the dialect — normalize all of them safely.
+        const asBool = (v: unknown): boolean =>
+          v === true || v === 1 || v === "1" || v === "true";
         const rec = value as Record<string, unknown>;
         const local = (s.roster ?? []).find(
           (p) =>
@@ -876,10 +880,10 @@ export class ValProjectionSession {
         );
         if (local) {
           local.abilityState = {
-            C: rec?.C === true,
-            Q: rec?.Q === true,
-            E: rec?.E === true,
-            X: rec?.X === true,
+            C: asBool(rec?.C),
+            Q: asBool(rec?.Q),
+            E: asBool(rec?.E),
+            X: asBool(rec?.X),
           };
         }
         break;
