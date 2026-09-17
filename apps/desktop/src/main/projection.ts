@@ -850,11 +850,14 @@ export class ValProjectionSession {
             : (entry.weapon ?? wNew);
         entry.credits = num(rec.credits ?? rec.money) ?? entry.credits ?? null;
         entry.spentCredits = num(rec.spentCredits ?? rec.spent) ?? entry.spentCredits ?? null;
-        // LIVE loadout during shopping — recomputed on every money update from
-        // the authoritative stream (GEP has no spent field; buy-start base is
-        // captured in the shopping publish). This is what makes the Buy Round
-        // Loadout column track purchases in real time.
-        const creditBase = this.creditsAtRoundStart.get(this.normalizeName(entry.displayName));
+        // Lazy buy-start base capture (boundary rounds null the credits at
+        // publish, so the first fresh money report during shopping becomes
+        // the base) + LIVE loadout recomputed on every money update.
+        let creditBase = this.creditsAtRoundStart.get(this.normalizeName(entry.displayName));
+        if (s.roundPhase === "shopping" && entry.credits != null && creditBase == null) {
+          creditBase = entry.credits;
+          this.creditsAtRoundStart.set(this.normalizeName(entry.displayName), creditBase);
+        }
         if (creditBase != null && entry.credits != null && s.roundPhase === "shopping") {
           entry.spentCredits = Math.max(0, creditBase - entry.credits);
         }
@@ -997,6 +1000,20 @@ export class ValProjectionSession {
     s.pendingPhase = null;
 
     if (phase === "shopping") {
+      // Half / overtime boundary: VALORANT resets the economy (round 13 = new
+      // half, round 25 = OT start). Stale previous-half credits/spent/weapon/
+      // shield must never display — null until fresh GEP money arrives (no
+      // invented values). The computed-loadout base is cleared with them.
+      if (s.roundNumber === 13 || s.roundNumber === 25) {
+        for (const p of s.roster ?? []) {
+          p.credits = null;
+          p.spentCredits = null;
+          p.weapon = null;
+          p.shield = null;
+          p.shieldType = null;
+        }
+        this.creditsAtRoundStart.clear();
+      }
       // New round: reset alive status and health to 100 for all players
       for (const p of s.roster ?? []) {
         p.isAlive = true;
