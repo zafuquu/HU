@@ -671,6 +671,9 @@ async function boot(): Promise<void> {
 
   projection.subscribe(() => {
     hudServer.publish(projection.snapshotValue());
+    // Broadcast-snapshot channel: the SAME GameSnapshot the bridge receives,
+    // pushed locally (revision + observedAt) for ?local=1 authoritative overlays.
+    hudServer.publishBroadcast(toGameSnapshot(projection.snapshotValue()));
     queuePublish();
   });
 

@@ -86,6 +86,8 @@ export interface GameSnapshot {
       winner: "blue" | "red" | null;
       mvp: { name: string; teamId: string; kills: number; deaths: number; assists: number } | null;
     };
+    /** Authoritative observation epoch (ms) — monotonic staleness gate. */
+    observedAt?: number;
     /** How the last round ended (winner + reason), cleared at next round start. */
     roundEnd?: { winner: "blue" | "red" | null; reason: string | null; winnerSide?: "attacker" | "defender" | null } | null;
     /** Viewer's side this round (from the snapshot's team startingSide). */
@@ -206,6 +208,7 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       roundTimer,
       viewerRole: state.viewerRole ?? null,
       bombPlanted: state.spike === "planted",
+      observedAt: state.updatedAt,
       match: {
         winner: state.match?.winner ?? null,
         mvp: state.match?.mvp ?? null,

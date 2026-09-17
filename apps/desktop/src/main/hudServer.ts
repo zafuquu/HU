@@ -52,6 +52,10 @@ export class HudServer {
   private wss: WebSocketServer | null = null;
   private clients = new Set<WebSocket>();
   private lastState: HudRelayState | null = null;
+  // Broadcast-snapshot channel (/ws/broadcast): pushes the SAME GameSnapshot
+  // shape the bridge distributes — the website's ?local=1 authoritative source.
+  private broadcastClients = new Set<WebSocket>();
+  private lastBroadcast: unknown = null;
 
   public constructor(
     private readonly port: number,
@@ -71,6 +75,13 @@ export class HudServer {
           ws.send(JSON.stringify(this.lastState ?? { revision: -1 }));
           ws.on("close", () => this.clients.delete(ws));
           ws.on("error", () => this.clients.delete(ws));
+        });
+      } else if (url.pathname === "/ws/broadcast" && this.wss) {
+        this.wss.handleUpgrade(req, socket, head, (ws) => {
+          this.broadcastClients.add(ws);
+          if (this.lastBroadcast != null) ws.send(JSON.stringify(this.lastBroadcast));
+          ws.on("close", () => this.broadcastClients.delete(ws));
+          ws.on("error", () => this.broadcastClients.delete(ws));
         });
       } else {
         socket.destroy();
@@ -100,6 +111,21 @@ export class HudServer {
     }
     const payload = JSON.stringify(state);
     for (const ws of this.clients) {
+      if (ws.readyState === ws.OPEN) ws.send(payload);
+    }
+  }
+
+  /** Broadcast-snapshot push: revisioned GameSnapshot frames for ?local=1 overlays. */
+  public publishBroadcast(snapshot: unknown): void {
+    const state = (snapshot as { state?: { observedAt?: number } } | null)?.state;
+    this.lastBroadcast = {
+      kind: "broadcast",
+      revision: (this.lastState?.revision as number) ?? 0,
+      observedAt: state?.observedAt ?? Date.now(),
+      snapshot,
+    };
+    const payload = JSON.stringify(this.lastBroadcast);
+    for (const ws of this.broadcastClients) {
       if (ws.readyState === ws.OPEN) ws.send(payload);
     }
   }
@@ -162,6 +188,12 @@ export class HudServer {
         .toggleOverlay()
         .then((r) => send(200, r))
         .catch((error) => send(502, { on: false, error: String(error) }));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/broadcast") {
+      res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+      res.end(JSON.stringify(this.lastBroadcast ?? { kind: "broadcast", revision: 0, snapshot: null }));
       return;
     }
 

@@ -1309,6 +1309,7 @@ export class ValProjectionSession {
       roundEnd: s.roundEnd,
       roundHistory: s.roundHistory,
       updatedAt: Date.now(),
+      observedAt: Date.now(),
     });
   }
 

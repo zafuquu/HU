@@ -118,6 +118,8 @@ export const hudRelayStateSchema = z.object({
     .max(24)
     .default([]),
   updatedAt: z.number(),
+  /** Authoritative observation epoch (ms) — monotonic staleness gate for consumers. */
+  observedAt: z.number().default(0),
 });
 export type HudRelayState = z.infer<typeof hudRelayStateSchema>;
 
