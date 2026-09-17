@@ -50,12 +50,36 @@ export function buildMapHistoryItems(
   picks: { mapId: string; slot?: string | null }[] | undefined | null,
   bans: { mapId: string }[] | undefined | null,
   poolMapIds: string[] | undefined | null,
+  results?: { slot: string; mapId: string; score?: string }[] | null,
 ): MapHistoryItem[] {
   const name = (id: string) => VAL_MAPS.find(mm => mm.mapId === id)?.mapName || id.toUpperCase()
+  const order: Record<string, number> = { map1: 1, map2: 2, map3: 3, map4: 4, map5: 5, decider: 99 }
   const items: MapHistoryItem[] = []
+  const seen = new Set<string>()
+  // Series results FIRST — they are the durable series record (they survive
+  // Restart Active Session) and carry each completed map's final score
+  // ("Map 1: SPLIT 13-9").
+  for (const r of results || []) {
+    const slot = r.slot || 'map' + (items.filter(i => i.kind !== 'decider').length + 1)
+    if (seen.has(slot)) continue
+    seen.add(slot)
+    items.push({ slot, mapId: r.mapId, mapName: name(r.mapId), kind: slot === 'decider' ? 'decider' : 'pick', score: r.score })
+  }
+  // Picks: dedupe BY SLOT keeping the LATEST entry — a later pick for the
+  // same slot (e.g. a re-run decider) overwrites the earlier one instead of
+  // appending a duplicate DECIDER with a different map. A slot already
+  // recorded in the series results keeps its completed score.
   let pickN = 0
   for (const p of picks || []) {
     const slotName = p.slot || 'map' + String(++pickN)
+    if (seen.has(slotName)) {
+      const idx = items.findIndex(i => i.slot === slotName)
+      if (idx >= 0 && !items[idx].score) {
+        items[idx] = { slot: slotName, mapId: p.mapId, mapName: name(p.mapId), kind: slotName === 'decider' ? 'decider' : 'pick', score: items[idx].score }
+      }
+      continue
+    }
+    seen.add(slotName)
     items.push({
       slot: slotName,
       mapId: p.mapId,
@@ -63,7 +87,6 @@ export function buildMapHistoryItems(
       kind: slotName === 'decider' ? 'decider' : 'pick',
     })
   }
-  const order: Record<string, number> = { map1: 1, map2: 2, map3: 3, map4: 4, map5: 5, decider: 99 }
   items.sort((a, b) => (order[a.slot] ?? 50) - (order[b.slot] ?? 50))
   for (const b of bans || []) {
     if (!items.some(i => i.mapId === b.mapId)) {
@@ -263,6 +286,17 @@ export default function MapVeto() {
     setPendingSidePick(null)
     setState(prev => ({ ...prev, mapBans: [], mapPicks: [], vetoSteps: [] }))
     showToast('Map Veto restarted')
+  }
+
+  // EXPLICIT series reset — the ONLY action that clears the series map
+  // history. Restart Active Session intentionally does NOT touch mapResults.
+  const resetSeries = () => {
+    setState(prev => ({ ...prev, mapResults: [], mapBans: [], mapPicks: [], vetoSteps: [] }))
+    setIsVetoStarted(false)
+    setIsVetoCompleted(false)
+    setCurrentStepIndex(0)
+    setPendingSidePick(null)
+    showToast('Series reset — map history cleared')
   }
 
   const handleMapClick = (mapId: string) => {
@@ -778,6 +812,13 @@ export default function MapVeto() {
                     Export
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={resetSeries}
+                  className="flex h-8 w-full items-center justify-center rounded-lg bg-[#2a1414] border border-[#FF6B35]/30 px-3 text-xs font-semibold text-[#FF6B35] transition-all hover:bg-[#3a1c1c] cursor-pointer"
+                >
+                  Reset Series (clears map history)
+                </button>
               </div>
             </div>
 
@@ -964,6 +1005,13 @@ export default function MapVeto() {
                     Export
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={resetSeries}
+                  className="flex h-8 w-full items-center justify-center rounded-lg bg-[#2a1414] border border-[#FF6B35]/30 px-3 text-xs font-semibold text-[#FF6B35] transition-all hover:bg-[#3a1c1c] cursor-pointer"
+                >
+                  Reset Series (clears map history)
+                </button>
               </div>
             </div>
 

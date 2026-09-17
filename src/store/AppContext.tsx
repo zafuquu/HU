@@ -170,6 +170,8 @@ export interface AppState {
   mapPool?: string[]
   mapBans?: { sequenceNo: number; mapId: string; bannedBy: 'TEAM_A' | 'TEAM_B' }[]
   mapPicks?: { sequenceNo: number; mapId: string; pickedBy: 'TEAM_A' | 'TEAM_B' | 'DECIDER'; slot: string; sideSelection?: { TEAM_A: 'ATTACK' | 'DEFENSE'; TEAM_B: 'ATTACK' | 'DEFENSE' } }[]
+  /** Series results — completed maps with final scores. SERIES state: survives Restart Active Session; only an explicit series reset clears it. */
+  mapResults?: { slot: string; mapId: string; mapName?: string; score?: string }[]
   history?: any[]
 
   // Map Veto â€” persisted across page navigation (survives leaving/changing rooms)

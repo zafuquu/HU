@@ -792,7 +792,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
       {/* Top Map History */}
       {showMapHistory && activeMapHistory.length > 0 && (
         <div
-          className={`clickable-component absolute top-3 right-4 z-30 flex items-center gap-2 cursor-pointer${activeComponentId === 'map-history' ? ' selected' : ''}`}
+          className={`clickable-component absolute top-3 left-4 z-30 flex items-center gap-2 cursor-pointer${activeComponentId === 'map-history' ? ' selected' : ''}`}
           data-component-id="map-history"
           onClick={(e) => {
             e.stopPropagation()

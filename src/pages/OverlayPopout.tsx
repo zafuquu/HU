@@ -125,6 +125,7 @@ export default function OverlayPopout() {
   // Full-field authority: the room workspace havoc wins wholesale on overlay
   // pages (OBS/browser sources have no local workspace worth preserving).
   const HAVOC_FIELDS = ['teams','teamAId','teamBId','sponsors','tournamentLogoUrls','mapPicks','connectedTournamentId',
+    'mapResults',
     'scoreA','scoreB','seriesScoreA','seriesScoreB','roundTitle','eventTitle','seriesTitle',
     'gameSeries','matchFormat','bestOf'] as const
   const applyHavoc = (saved: any) => {
@@ -464,6 +465,27 @@ export default function OverlayPopout() {
   const liveMapImage =
     pickedMap?.image ||
     (liveMapKey ? `/game/val/maps/${liveMapKey}/splash-small.png` : '/game/val/maps/juliett/splash-small.png')
+  // Series map results: when the authoritative engine reports a completed
+  // match (match.winner) and the current map's slot has no recorded result
+  // yet, record its final score. SERIES state — survives Restart Active
+  // Session, cleared only by the explicit series reset.
+  const matchWinnerNow = (snapState as any)?.match?.winner ?? null
+  const finishedRef = useRef<string | null>(null)
+  if (matchWinnerNow && !finishedRef.current && liveMapKey && (scoreLeft ?? 0) + (scoreRight ?? 0) > 0) {
+    finishedRef.current = String(liveMapKey)
+    const results = state.mapResults || []
+    const taken = new Set(results.map(r => r.slot))
+    const pick = (state.mapPicks || []).find((p: any) => p.mapId === liveMapKey && !taken.has(p.slot))
+    const slot = pick?.slot
+      ?? (results.filter(r => r.slot !== 'decider').length === 0 ? 'map1'
+        : results.filter(r => r.slot !== 'decider').length === 1 ? 'map2'
+        : 'decider')
+    if (!results.some(r => r.slot === slot)) {
+      setStateSilent(prev => ({ ...prev, mapResults: [...(prev.mapResults || []), { slot, mapId: String(liveMapKey), mapName: liveMapName, score: `${scoreLeft ?? 0}-${scoreRight ?? 0}` }] }))
+    }
+  }
+  if (!matchWinnerNow && finishedRef.current) finishedRef.current = null
+
   const viewerRole = String((snapState as any)?.viewerRole ?? '').toLowerCase()
   const spectating = viewerRole === 'observer' || viewerRole === 'spectator' || viewerRole === 'coach'
   const leftPlayers = stickyRosterRef.current.left.length > 0 ? mapLivePlayers(stickyRosterRef.current.left) : []
@@ -701,7 +723,7 @@ export default function OverlayPopout() {
             gameSeriesText={state.gameSeries || ''}
             leftTeamLogo={hudLeftLogo}
             rightTeamLogo={hudRightLogo}
-            mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds)}
+            mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds, state.mapResults)}
             webcamPlayerName={webcamActive ? (webcamPlayer?.alias || 'No camera') : ''}
             webcamPlayerPhoto={webcamActive ? (webcamPlayer?.avatarUrl || null) : null}
             webcamActive={webcamActive}
