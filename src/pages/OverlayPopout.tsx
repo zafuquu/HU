@@ -166,11 +166,16 @@ export default function OverlayPopout() {
   // and ONE selector (src/lib/sourceSelection.ts) decides which COMPLETE
   // snapshot is displayed. Never field-merged.
   type SourceIdT = 'local' | 'bridge' | 'mirror'
+  // DEFAULT BRIDGE = the SAME instance the desktop producer and LiveGame
+  // producer controls use (Render). The old localhost:7180 default split the
+  // transport: producer commands went to Render while OBS listened to the
+  // local bridge — buttons "succeeded" but OBS never saw the event.
   const bridgeWsUrl =
-    new URLSearchParams(window.location.search).get('bridgeWs') || 'ws://localhost:7180/ws/live'
+    new URLSearchParams(window.location.search).get('bridgeWs') || 'wss://hu-bridge.onrender.com/ws/live'
   // LOCAL-first is automatic when the bridge itself is on this machine
-  // (production PC). Remote OBS (custom remote bridgeWs) never probes
-  // 127.0.0.1:7103. ?local=1 forces local-first; ?local=0 disables.
+  // (production PC running the local bridge). Remote OBS (default Render
+  // bridgeWs) never probes 127.0.0.1:7103. ?local=1 forces local-first
+  // regardless; ?local=0 disables.
   const localParam = new URLSearchParams(window.location.search).get('local')
   const bridgeIsLocal = /localhost|127\.0\.0\.1/.test(bridgeWsUrl)
   const wantLocalSource = localParam === '1' || (localParam === null && bridgeIsLocal)

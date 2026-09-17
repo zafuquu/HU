@@ -97,20 +97,31 @@ export default function LiveGame() {
     }
   }
 
-  const handleSendOverlayToast = async () => {
-    if (!toastMsg.trim()) return
+  // Producer control transport — SUCCESS is reported only for successful HTTP
+  // responses. fetch() resolves on 4xx/5xx too, which previously made every
+  // button claim "sent" even when the bridge rejected the action (400
+  // "unknown action" for set-caster-cards/timeout/clear-events).
+  const sendControl = async (payload: Record<string, unknown>): Promise<{ ok: boolean; status: number; error?: string }> => {
     const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
     try {
-      await fetch(`${origin}/api/control`, {
+      const res = await fetch(`${origin}/api/control`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'toast', title: toastTitle, message: toastMsg, type: toastType }),
+        body: JSON.stringify(payload),
       })
-      showToast('Broadcast Toast sent to overlay')
-      setToastMsg('')
+      let error: string | undefined
+      try { error = (await res.json())?.error } catch { /* non-JSON body */ }
+      return { ok: res.ok, status: res.status, error }
     } catch {
-      showToast('Bridge unreachable')
+      return { ok: false, status: 0, error: 'bridge unreachable' }
     }
+  }
+
+  const handleSendOverlayToast = async () => {
+    if (!toastMsg.trim()) return
+    const r = await sendControl({ action: 'toast', title: toastTitle, message: toastMsg, type: toastType })
+    showToast(r.ok ? 'Broadcast Toast sent to overlay' : `Toast rejected: ${r.error ?? r.status}`)
+    if (r.ok) setToastMsg('')
   }
 
   const fetchMatchLogs = async () => {
@@ -233,12 +244,13 @@ export default function LiveGame() {
     ] : null
 
     try {
-      await fetch(`${origin}/api/control`, {
+      const res = await fetch(`${origin}/api/control`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'set-caster-cards', casters }),
       })
-      showToast(show ? 'Caster cards shown on overlay' : 'Caster cards hidden')
+      const r = await res.json().catch(() => ({}))
+      showToast(r.ok ? (show ? 'Caster cards shown on overlay' : 'Caster cards hidden') : `Bridge rejected: ${r.error ?? 'unknown'}`)
     } catch {
       showToast('Bridge unreachable')
     }
@@ -655,12 +667,13 @@ export default function LiveGame() {
                 onClick={async () => {
                   const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
                   try {
-                    await fetch(`${origin}/api/control`, {
+                    const res = await fetch(`${origin}/api/control`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ action: 'hide-overlay', hidden: true }),
+                      body: JSON.stringify({ action: 'hide-overlay' }),
                     })
-                    showToast('Overlay HIDDEN')
+                    const r = await res.json().catch(() => ({}))
+                    showToast(r.ok ? 'Overlay HIDDEN' : `Bridge rejected: ${r.error ?? res.status}`)
                   } catch { showToast('Bridge unreachable') }
                 }}
               >
@@ -675,12 +688,13 @@ export default function LiveGame() {
                 onClick={async () => {
                   const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
                   try {
-                    await fetch(`${origin}/api/control`, {
+                    const res = await fetch(`${origin}/api/control`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ action: 'clear-events' }),
                     })
-                    showToast('Overlay Visible / Cleared')
+                    const r = await res.json().catch(() => ({}))
+                    showToast(r.ok ? 'Overlay Visible / Cleared' : `Bridge rejected: ${r.error ?? res.status}`)
                   } catch { showToast('Bridge unreachable') }
                 }}
               >
@@ -695,12 +709,13 @@ export default function LiveGame() {
                 onClick={async () => {
                   const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
                   try {
-                    await fetch(`${origin}/api/control`, {
+                    const res = await fetch(`${origin}/api/control`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ action: 'timeout', timeoutType: 'tech_pause' }),
                     })
-                    showToast('TECHNICAL PAUSE shown on overlay')
+                    const r = await res.json().catch(() => ({}))
+                    showToast(r.ok ? 'TECHNICAL PAUSE shown on overlay' : `Bridge rejected: ${r.error ?? res.status}`)
                   } catch { showToast('Bridge unreachable') }
                 }}
               >
@@ -715,12 +730,13 @@ export default function LiveGame() {
                 onClick={async () => {
                   const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
                   try {
-                    await fetch(`${origin}/api/control`, {
+                    const res = await fetch(`${origin}/api/control`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ action: 'timeout', timeoutType: 'tactical', team: 'left' }),
                     })
-                    showToast('Tactical timeout (LEFT) shown')
+                    const r = await res.json().catch(() => ({}))
+                    showToast(r.ok ? 'Tactical timeout (LEFT) shown' : `Bridge rejected: ${r.error ?? res.status}`)
                   } catch { showToast('Bridge unreachable') }
                 }}
               >
@@ -733,12 +749,13 @@ export default function LiveGame() {
                 onClick={async () => {
                   const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
                   try {
-                    await fetch(`${origin}/api/control`, {
+                    const res = await fetch(`${origin}/api/control`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ action: 'timeout', timeoutType: 'tactical', team: 'right' }),
                     })
-                    showToast('Tactical timeout (RIGHT) shown')
+                    const r = await res.json().catch(() => ({}))
+                    showToast(r.ok ? 'Tactical timeout (RIGHT) shown' : `Bridge rejected: ${r.error ?? res.status}`)
                   } catch { showToast('Bridge unreachable') }
                 }}
               >
@@ -753,12 +770,13 @@ export default function LiveGame() {
                 onClick={async () => {
                   const origin = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
                   try {
-                    await fetch(`${origin}/api/control`, {
+                    const res = await fetch(`${origin}/api/control`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ action: 'timeout', timeoutType: 'clear' }),
                     })
-                    showToast('Pause / timeout cleared')
+                    const r = await res.json().catch(() => ({}))
+                    showToast(r.ok ? 'Pause / timeout cleared' : `Bridge rejected: ${r.error ?? res.status}`)
                   } catch { showToast('Bridge unreachable') }
                 }}
               >
