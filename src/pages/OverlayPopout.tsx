@@ -513,7 +513,17 @@ export default function OverlayPopout() {
   const nativeRoundNumber = (snapState as any)?.roundNumber ?? scores?.roundNumber ?? null
   const attackingIdx = nativeRoundNumber != null && nativeRoundNumber > 0 && ((nativeRoundNumber - 1) % 24) < 12 ? 0 : 1
   const nativeWinnerIdx = baseRoundEnd?.winner === 'blue' ? 0 : baseRoundEnd?.winner === 'red' ? 1 : null
-  const roundWinSide = nativeWinnerIdx == null ? null : (nativeWinnerIdx === attackingIdx ? 'ATTACKER WIN' : 'DEFENDER WIN')
+  // ValoSpectra endround parity: label the round win by SIDE. Ground truth
+  // first — roundEnd.winnerSide is stamped by the engine from the snapshot's
+  // team startingSide; then the live viewerSide fact; the round-parity
+  // heuristic is the last fallback only.
+  const roundWinnerSide = (baseRoundEnd as any)?.winnerSide
+    ?? (snapState as any)?.viewerSide
+  const roundWinSide = roundWinnerSide === 'attacker' || roundWinnerSide === 'attack'
+    ? 'ATTACKER WIN'
+    : roundWinnerSide === 'defender' || roundWinnerSide === 'defense'
+      ? 'DEFENDER WIN'
+      : (nativeWinnerIdx == null ? null : (nativeWinnerIdx === attackingIdx ? 'ATTACKER WIN' : 'DEFENDER WIN'))
   // Round-ceremony text: a fresh bridge killBanner (FIRST BLOOD / ACE / CLUTCH /
   // TEAM ACE / THRIFTY — the bridge auto-clears it after 6s) wins, else the
   // engine's round-settlement ceremony from snapshot.state.gameEvent
