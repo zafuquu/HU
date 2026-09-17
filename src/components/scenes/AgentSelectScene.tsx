@@ -151,7 +151,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
             {/* Left Team Header Card */}
             <div className="mb-2 flex h-[77px] w-[337px] items-center rounded-[2px] border-[2px] border-[#F5F5F5] bg-[#171717] p-0.5 shadow-xl">
               <div className="relative aspect-square h-full overflow-hidden rounded-[2px] p-1" style={{ background: leftTeamColor }}>
-                {leftTeamLogo && <img alt="" src={leftTeamLogo} className="absolute inset-0 size-full object-contain" />}
+                {leftTeamLogo && <img alt="" src={leftTeamLogo} className="absolute inset-0 size-full object-contain" onError={e => { e.currentTarget.style.display = 'none' }} />}
               </div>
               <div className="flex h-full flex-1 items-center justify-center px-4">
                 <h1 className="font-schabo text-[48px] leading-none text-white uppercase">{leftTeamName}</h1>
@@ -237,7 +237,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
             {/* Right Team Header Card */}
             <div className="mb-2 flex h-[77px] w-[337px] items-center rounded-[2px] border-[2px] border-[#F5F5F5] bg-[#171717] p-0.5 shadow-xl flex-row-reverse">
               <div className="relative aspect-square h-full overflow-hidden rounded-[2px] p-1" style={{ background: rightTeamColor }}>
-              {rightTeamLogo && <img alt="" src={rightTeamLogo} className="absolute inset-0 size-full object-contain" />}
+              {rightTeamLogo && <img alt="" src={rightTeamLogo} className="absolute inset-0 size-full object-contain" onError={e => { e.currentTarget.style.display = 'none' }} />}
             </div>
               <div className="flex h-full flex-1 items-center justify-center px-4">
                 <h1 className="font-schabo text-[48px] leading-none text-white uppercase">{rightTeamName}</h1>

@@ -67,6 +67,7 @@ interface IngameHudSceneProps {
   spectating?: boolean
   spikeSite?: string | null
   spikeState?: 'none' | 'planted' | 'defusing' | null
+  spikePlantedAt?: number | null
 }
 
 // ===== Scoreline helper pieces (mirroring the original VAL classic renderer) =====
@@ -337,7 +338,7 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
             opacity: frame2Visible ? 0 : 1, transition: 'opacity 250ms ease',
           }}
         >
-          <img alt="" src={gameEventLogo || '/sponsor/Game Event.png'} style={{ maxHeight: 76, objectFit: 'contain', marginBottom: 8 }} />
+          <img alt="" src={gameEventLogo || '/sponsor/Game Event.png'} style={{ maxHeight: 76, objectFit: 'contain', marginBottom: 8 }} onError={e => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = '/sponsor/Game Event.png' } }} />
           <p style={{ fontSize: 34, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 3, margin: 0 }}>{reasonText || 'ROUND WIN'}</p>
         </div>
         {/* Frame 2 — winner block + brand/ROUND n block */}
@@ -358,7 +359,7 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
             {winSide && <p style={{ fontSize: 18, fontWeight: 800, color: '#FFD166', textTransform: 'uppercase', letterSpacing: 3, margin: 0 }}>{winSide}</p>}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <img alt="" src={tournamentLogo || '/sponsor/Sponsor-1.png'} style={{ maxHeight: 62, objectFit: 'contain' }} />
+            <img alt="" src={tournamentLogo || '/sponsor/Sponsor-1.png'} style={{ maxHeight: 62, objectFit: 'contain' }} onError={e => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = '/sponsor/Sponsor-1.png' } }} />
             <p style={{ fontSize: 26, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>ROUND {roundNumber ?? ''}</p>
           </div>
         </div>
@@ -675,6 +676,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     spectating = false,
     spikeSite = null,
     spikeState = null,
+    spikePlantedAt = null,
     eventsBg,
   } = props
 
@@ -714,10 +716,27 @@ export function IngameHudScene(props: IngameHudSceneProps) {
 
   const isSpikeActive = spikeState === 'planted' || spikeState === 'defusing'
   const spikeBlinkOn = useSpikeBlink(spikeState === 'planted')
+  // Spike 45s detonation countdown (VS spike-planted parity): while planted,
+  // the timer slot shows the ticking spike clock instead of the round clock.
+  const [spikeNow, setSpikeNow] = React.useState(Date.now())
+  React.useEffect(() => {
+    if (spikeState !== 'planted' || !spikePlantedAt) return
+    setSpikeNow(Date.now())
+    const t = setInterval(() => setSpikeNow(Date.now()), 200)
+    return () => clearInterval(t)
+  }, [spikeState, spikePlantedAt])
+  const spikeRemainingSec = (() => {
+    if (spikeState !== 'planted' || !spikePlantedAt) return null
+    return Math.max(0, 45 - Math.floor((spikeNow - Number(spikePlantedAt)) / 1000))
+  })()
   // Endround: keep the plain clock in the timer slot (the banner tells the
   // story — no ELIMINATED/SPIKE DETONATED words crowding the scoreline).
   const displayTimerText = isSpikeActive
-    ? (spikeState === 'defusing' ? 'DEFUSING' : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
+    ? (spikeState === 'defusing'
+        ? 'DEFUSING'
+        : spikeRemainingSec != null
+          ? `${Math.floor(spikeRemainingSec / 60)}:${String(spikeRemainingSec % 60).padStart(2, '0')}`
+          : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
     : timerText
   const displayTimerColor = isSpikeActive ? '#FF3549' : timerColor
 
@@ -1013,7 +1032,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
               override the translateX(-50%) centering above. */}
           <style>{`@keyframes geIn { from { opacity: 0; } to { opacity: 1; } } .ge-in { animation: geIn 300ms ease-out; }`}</style>
           {eventsBg && <div className="ge-in absolute inset-0 pointer-events-none" style={{ background: 'rgba(0,0,0,0.45)' }} />}
-          <img alt="" src="/sponsor/Game Event.png" className="ge-in relative z-1 object-contain" style={{ maxHeight: 56, marginBottom: 4 }} />
+          <img alt="" src="/sponsor/Game Event.png" className="ge-in relative z-1 object-contain" style={{ maxHeight: 56, marginBottom: 4 }} onError={e => { e.currentTarget.style.visibility = 'hidden' }} />
           <h1 className="ge-in relative z-1 font-schabo text-[64px] text-white uppercase drop-shadow-lg tracking-wider leading-none">
             {gameEvent}
           </h1>

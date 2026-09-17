@@ -505,7 +505,8 @@ export default function OverlayPopout() {
   const sponsorImageUrl = sponsorCycleUrl
   // Tournament/event logo (workspace-configured) — used by the round ceremony
   // and post-game; falls back to the bundled Game Event / Sponsor-1 assets.
-  const tournamentLogoUrl = (state.tournamentLogoUrls || []).find((u: any): u is string => !!u) || null
+  const tournamentLogoUrl = (state.tournamentLogoUrls || []).find((u: any): u is string =>
+    typeof u === 'string' && (/^https:\/\//i.test(u) || u.startsWith('data:image/'))) || null
   const hudLeftSeed = (leftTeam as any)?.seed
   const hudRightSeed = (rightTeam as any)?.seed
   const baseRoundEnd = (snapState as any)?.roundEnd || null
@@ -594,9 +595,11 @@ export default function OverlayPopout() {
   const liveMvpPlayer = liveScores?.mvpPlayer || null
   const liveCasterCards = liveScores?.casterCards || null
   const liveCurrentlyObserving = liveScores?.currentlyObserving || (snapState as any)?.currentlyObserving || null
-  const liveSpike = liveScores?.spike || (snapState as any)?.spike || null
-  const spikeSite = liveSpike?.site || (snapState as any)?.plantSite || null
-  const spikeState = (liveSpike?.state || (snapState?.bombPlanted ? 'planted' : null)) as 'none' | 'planted' | 'defusing' | null
+  // The engine sends spike as a plain string ('planted' | 'defused' |
+  // 'detonated' | null) — never an object; consume both shapes safely.
+  const spikeRaw = (liveScores as any)?.spike ?? (snapState as any)?.spike ?? null
+  const spikeSite = ((spikeRaw && typeof spikeRaw === 'object' && spikeRaw.site) || (snapState as any)?.plantSite || null) as string | null
+  const spikeState = (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null) || ((snapState as any)?.bombPlanted ? 'planted' : null)) as 'none' | 'planted' | 'defusing' | null
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
@@ -709,6 +712,7 @@ export default function OverlayPopout() {
             spectating={spectating}
             spikeSite={spikeSite}
             spikeState={spikeState}
+            spikePlantedAt={(snapState as any)?.round?.spikePlantedAt ?? null}
             leftTeamPlayers={hudLeftPlayers}
             rightTeamPlayers={hudRightPlayers}
           />

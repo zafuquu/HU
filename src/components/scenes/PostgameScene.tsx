@@ -377,7 +377,7 @@ export function PostGameScene(props: PostGameSceneProps) {
             <div className="flex h-[73px] w-full items-center justify-start gap-4 px-2">
               <div className="flex size-[76px] items-center justify-center shrink-0">
                 {leftTeamLogo ? (
-                  <img alt={leftTeamName} className="size-full object-contain drop-shadow-md" src={leftTeamLogo} />
+                  <img alt={leftTeamName} className="size-full object-contain drop-shadow-md" src={leftTeamLogo} onError={e => { e.currentTarget.style.display = 'none' }} />
                 ) : (
                   <div
                     className="flex size-14 items-center justify-center rounded-md font-schabo text-3xl font-extrabold text-black"
@@ -419,7 +419,7 @@ export function PostGameScene(props: PostGameSceneProps) {
               <div className="flex h-[73px] w-full items-center justify-end gap-4 px-2 flex-row-reverse">
                 <div className="flex size-[76px] items-center justify-center shrink-0">
                   {rightTeamLogo ? (
-                    <img alt={rightTeamName} className="size-full object-contain drop-shadow-md" src={rightTeamLogo} />
+                    <img alt={rightTeamName} className="size-full object-contain drop-shadow-md" src={rightTeamLogo} onError={e => { e.currentTarget.style.display = 'none' }} />
                   ) : (
                     <div
                       className="flex size-14 items-center justify-center rounded-md font-schabo text-3xl font-extrabold text-black"
