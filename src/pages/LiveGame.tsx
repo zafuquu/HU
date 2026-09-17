@@ -643,7 +643,7 @@ export default function LiveGame() {
                   <option value="buy-round">Buy Round</option>
                   <option value="agent-select">Agent Select</option>
                   <option value="post-game">Postgame</option>
-                  <option value="map-ban">Map Ban</option>
+                  <option value="map-ban">Map Veto (hold)</option>
                 </select>
                 <Tv className="absolute right-2 top-1/2 -translate-y-1/2 size-3 text-white/40 pointer-events-none" />
               </div>

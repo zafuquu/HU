@@ -10,6 +10,7 @@ import { BuyRoundScene } from '../components/scenes/BuyRoundScene'
 import { MapBanScene } from '../components/scenes/MapBanScene'
 import { PostgameScene } from '../components/scenes/PostgameScene'
 import { pickSource } from '../lib/sourceSelection'
+import { winnerSideFromViewer } from '../lib/broadcast'
 import { TimeoutOverlay } from '../components/scenes/TimeoutOverlay'
 import { CasterCard } from '../components/scenes/CasterCard'
 import { EconomyTracker } from '../components/scenes/EconomyTracker'
@@ -694,8 +695,14 @@ export default function OverlayPopout() {
   // first — roundEnd.winnerSide is stamped by the engine from the snapshot's
   // team startingSide; then the live viewerSide fact; the round-parity
   // heuristic is the last fallback only.
+  // ValoSpectra endround parity: label the round win by SIDE. Ground truth
+  // first — roundEnd.winnerSide is stamped by the engine; then derive the
+  // WINNING team's side from the viewer's live side (viewer = blue, so the
+  // raw viewer side is only the winner's side when blue won — using it raw
+  // inverted the ATTACKER/DEFENDER label whenever the enemy won).
+  const liveViewerSide = (snapState as any)?.viewerSide as 'attack' | 'defense' | null
   const roundWinnerSide = (baseRoundEnd as any)?.winnerSide
-    ?? (snapState as any)?.viewerSide
+    ?? winnerSideFromViewer(baseRoundEnd?.winner ?? null, liveViewerSide)
   const roundWinSide = roundWinnerSide === 'attacker' || roundWinnerSide === 'attack'
     ? 'ATTACKER WIN'
     : roundWinnerSide === 'defender' || roundWinnerSide === 'defense'
