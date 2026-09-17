@@ -389,14 +389,12 @@ export class ValProjectionSession {
           viewerScore = Number(rec?.won);
           enemyScore = Number(rec?.lost);
           if (!Number.isFinite(viewerScore) || !Number.isFinite(enemyScore)) return;
-          const vi = this.viewerTeamIndex();
-          if (vi === 1) {
-            s.red = viewerScore;
-            s.blue = enemyScore;
-          } else {
-            s.blue = viewerScore;
-            s.red = enemyScore;
-          }
+          // {won,lost} is the VIEWER's cumulative round record and the engine
+          // anchors the viewer to blue/left — no team-index lookup needed.
+          // (The old viewerTeamIndex() call could return the GEP-absolute
+          // team number and misattribute the score.)
+          s.blue = viewerScore;
+          s.red = enemyScore;
         } else return;
         // Match won: first to 13 WITH a 2-round lead — the bare >=13 check
         // fired post-game mid-OVERTIME (13-12 is not a finished match).
@@ -405,6 +403,24 @@ export class ValProjectionSession {
         // The engine delivers match_score AFTER round_phase:end - settle now
         // so the round winner/reason is never lost to the shopping wipe.
         if (s.roundPhase === "end" && s.gameEvent === null) this.settle();
+        break;
+      }
+      case "round_outcome": {
+        // GEP's AUTHORITATIVE round result: {won, lost} is the VIEWER's
+        // cumulative round record (verified against the provider log:
+        // match_score {team_0:0,team_1:1} ↔ round_outcome {won:1}). An
+        // increment is the ground-truth winner — no score-delta or
+        // alive-count guessing. The viewer is ALWAYS blue (engine anchors
+        // the roster viewer-left), so the result maps straight through.
+        const rec = value as { won?: unknown; lost?: unknown };
+        const won = Number(rec?.won);
+        const lost = Number(rec?.lost);
+        if (!Number.isFinite(won) || !Number.isFinite(lost)) return;
+        const prev = s.roundOutcome;
+        if (prev && (won > prev.won || lost > prev.lost)) {
+          this.recordRoundWinner(won > prev.won ? "blue" : "red", null);
+        }
+        s.roundOutcome = { won, lost };
         break;
       }
       case "round_number": {
@@ -505,15 +521,7 @@ export class ValProjectionSession {
           : sideRaw.includes("defen") ? "defender"
           : null;
         if (winner) {
-          s.roundEnd = { winner, reason, winnerSide: winnerSide ?? null };
-          s.roundEndedAt = Date.now();
-          if (
-            Number.isFinite(rn) && rn > 0 &&
-            !s.roundHistory.some((h) => h.round === rn)
-          ) {
-            s.roundHistory.push({ round: rn, winner, reason });
-            if (s.roundHistory.length > 24) s.roundHistory.shift();
-          }
+          this.recordRoundWinner(winner, reason, winnerSide, Number.isFinite(rn) && rn > 0 ? rn : undefined);
           // Special ceremony labels only from the engine's winType — never
           // invent one (winType: Eliminated/Defuse/Detonate/... from ValRoundEngine).
           const wt = String(rec?.winType ?? "").toLowerCase();
@@ -591,13 +599,26 @@ export class ValProjectionSession {
         const victim = typeof rec?.victim === "string" ? rec.victim : typeof rec?.name === "string" ? rec.name : null;
         if (victim) {
           const vKey = this.normalizeName(victim);
-          for (const p of s.roster ?? []) {
-            const pName = this.normalizeName(p.displayName);
-            if (pName === vKey || pName.includes(vKey) || vKey.includes(pName)) {
-              p.isAlive = false;
-              p.health = 0;
-              p.deaths = (p.deaths ?? 0) + 1;
-            }
+          const roster = s.roster ?? [];
+          // Exact normalized match FIRST; containment fuzzy matching only
+          // when it is UNIQUE — ambiguous partial names killed the wrong
+          // player, which corrupted alive counts and then the winner
+          // fallback ("sometimes correct, sometimes wrong").
+          const exact = roster.filter(
+            (p) => this.normalizeName(p.displayName) === vKey,
+          );
+          const fuzzy =
+            exact.length > 0
+              ? []
+              : roster.filter((p) => {
+                  const pn = this.normalizeName(p.displayName);
+                  return pn.length > 3 && vKey.length > 3 && (pn.includes(vKey) || vKey.includes(pn));
+                });
+          const matches = exact.length > 0 ? exact : fuzzy.length === 1 ? fuzzy : [];
+          for (const p of matches) {
+            p.isAlive = false;
+            p.health = 0;
+            p.deaths = (p.deaths ?? 0) + 1;
           }
         }
         break;
@@ -1104,9 +1125,13 @@ export class ValProjectionSession {
   /** The viewer's side for a given round, derived from the snapshot's start side. */
   /** Side of the WINNING team for the round — from the snapshot's start side. */
   private winnerSideFor(winner: 0 | 1, round: number): "attacker" | "defender" | null {
+    // TEAM INDEX IS NOT A SIDE. The engine anchors the viewer to blue/left
+    // for the whole match, so "viewer won" is simply winner === 0 — deriving
+    // it from viewerStartSide (the old viewerTeamIsTeam0 conflation) inverted
+    // the win side for every match where the viewer started on defense.
+    const viewerWon = winner === 0;
     const viewerSide = this.viewerSideForRound(round);
     if (!viewerSide) return null;
-    const viewerWon = (winner === 0 && this.viewerTeamIsTeam0()) || (winner === 1 && !this.viewerTeamIsTeam0());
     const side = viewerWon ? viewerSide : viewerSide === "attack" ? "defense" : "attack";
     return side === "attack" ? "attacker" : "defender";
   }
@@ -1114,13 +1139,14 @@ export class ValProjectionSession {
   private viewerSideForRound(round: number): "attack" | "defense" | null {
     const s = this.s;
     if (!s.viewerStartSide) return null;
-    const viewerIsTeam0 = s.viewerStartSide === "attack"; // team_0 attacks rounds 1-12
-    if (round > 24) return round % 2 === 1 === viewerIsTeam0 ? "attack" : "defense";
-    return (round <= 12) === viewerIsTeam0 ? "attack" : "defense";
-  }
-
-  private viewerTeamIsTeam0(): boolean {
-    return this.s.viewerStartSide === "attack";
+    // The viewer's side for a round: their START side for rounds 1-12, the
+    // opposite side for rounds 13-24, alternating per OT round after that.
+    if (round > 24) {
+      const half2: "attack" | "defense" = s.viewerStartSide === "attack" ? "defense" : "attack";
+      return (round - 25) % 2 === 0 ? half2 : half2 === "attack" ? "defense" : "attack";
+    }
+    if (round > 12) return s.viewerStartSide === "attack" ? "defense" : "attack";
+    return s.viewerStartSide;
   }
 
   private settle(): void {
@@ -1128,30 +1154,9 @@ export class ValProjectionSession {
     if (s.gameEvent !== null && s.roundEnd !== null) return;
     const winner = this.resolveWinnerTeam();
     if (winner !== null && s.roundEnd === null) {
-      // Round-end reason: spike outcome wins, then team wipe. GEP exposes no
-      // round timer — timeout.webp must NEVER show as a guess (it rendered
-      // randomly when the settlement ran on a late score fact with the
-      // per-round kill maps already wiped by the next buy phase). Elimination
-      // is the overwhelmingly common outcome, so it is the neutral default.
-      const reason: "elimination" | "detonation" | "defusion" | "time" =
-        s.spike === "detonated"
-          ? "detonation"
-          : s.spike === "defused"
-            ? "defusion"
-            : "elimination";
-      s.roundEnd = { winner: winner === 0 ? "blue" : "red", reason, winnerSide: this.winnerSideFor(winner, s.roundNumber) };
-      // Stamp the settlement time — deriveScene holds the HUD (and the
-      // endround banner) on screen for a grace period after this.
-      s.roundEndedAt = Date.now();
-      // ValoSpectra app-roundreasons parity: per-round win history for the
-      // timeline strip (kills/detonated/defused/timeout icons per round).
-      if (
-        s.roundNumber > 0 &&
-        !s.roundHistory.some((h) => h.round === s.roundNumber)
-      ) {
-        s.roundHistory.push({ round: s.roundNumber, winner: s.roundEnd.winner, reason });
-        if (s.roundHistory.length > 24) s.roundHistory.shift();
-      }
+      // LAST-resort path: the authoritative round_outcome transition and the
+      // runtime's round_settled event both funnel through the same recorder.
+      this.recordRoundWinner(winner === 0 ? "blue" : "red", null);
     }
     if (s.gameEvent !== null) return;
     if (winner === null) return; // keep null; a later score update retries
@@ -1210,6 +1215,46 @@ export class ValProjectionSession {
     );
   }
 
+  /**
+   * THE authoritative round-settlement stamp. Every winner source funnels
+   * through here — the GEP round_outcome transition, the runtime's
+   * round_settled event, then the settle() heuristic — so the engine emits
+   * exactly ONE roundEnd result per round (single source of truth).
+   */
+  private recordRoundWinner(
+    winner: "blue" | "red",
+    explicitReason: "elimination" | "detonation" | "defusion" | "time" | null,
+    winnerSide?: "attacker" | "defender" | null,
+    roundOverride?: number,
+  ): void {
+    const s = this.s;
+    if (s.roundEnd !== null && s.roundEnd.winner === winner) return; // already settled this round
+    const round = roundOverride ?? s.roundNumber;
+    // Reason priority: explicit (runtime ground truth) → spike outcome →
+    // elimination (the neutral default — timeout.webp is NEVER guessed).
+    const reason =
+      explicitReason ??
+      (s.spike === "detonated"
+        ? "detonation"
+        : s.spike === "defused"
+          ? "defusion"
+          : "elimination");
+    s.roundEnd = {
+      winner,
+      reason,
+      winnerSide: winnerSide ?? this.winnerSideFor(winner === "blue" ? 0 : 1, round),
+    };
+    // Stamp the settlement time — deriveScene holds the HUD (and the
+    // endround banner) on screen for a grace period after this.
+    s.roundEndedAt = Date.now();
+    // ValoSpectra app-roundreasons parity: per-round win history for the
+    // timeline strip (kills/detonated/defused/timeout icons per round).
+    if (round > 0 && !s.roundHistory.some((h) => h.round === round)) {
+      s.roundHistory.push({ round, winner, reason });
+      if (s.roundHistory.length > 24) s.roundHistory.shift();
+    }
+  }
+
   private resolveWinnerTeam(): 0 | 1 | null {
     const s = this.s;
     if (s.roundStartScore) {
@@ -1218,8 +1263,14 @@ export class ValProjectionSession {
     }
     if ((s.roster ?? []).length > 0) {
       const alive = this.aliveByTeam();
-      if (alive[0].size > alive[1].size) return 0;
-      if (alive[1].size > alive[0].size) return 1;
+      // Only trust alive counts on a FULL 5v5 board — partial GEP rosters
+      // made garbage alive counts decide winners randomly.
+      const t0 = (s.roster ?? []).filter((p) => p.teamIndex === 0).length;
+      const t1 = (s.roster ?? []).filter((p) => p.teamIndex === 1).length;
+      if (t0 === 5 && t1 === 5) {
+        if (alive[0].size > alive[1].size) return 0;
+        if (alive[1].size > alive[0].size) return 1;
+      }
     }
     return null;
   }
