@@ -456,6 +456,8 @@ export class ValProjectionSession {
           s.roundDeaths.clear();
           s.clutchMax.clear();
           s.roundStartScore = null;
+          this.creditsAtRoundStart.clear();
+          this.creditsAtRoundStart.clear();
           for (const p of s.roster ?? []) {
             p.kills = null;
             p.deaths = null;
@@ -821,6 +823,14 @@ export class ValProjectionSession {
             : (entry.weapon ?? wNew);
         entry.credits = num(rec.credits ?? rec.money) ?? entry.credits ?? null;
         entry.spentCredits = num(rec.spentCredits ?? rec.spent) ?? entry.spentCredits ?? null;
+        // LIVE loadout during shopping — recomputed on every money update from
+        // the authoritative stream (GEP has no spent field; buy-start base is
+        // captured in the shopping publish). This is what makes the Buy Round
+        // Loadout column track purchases in real time.
+        const creditBase = this.creditsAtRoundStart.get(this.normalizeName(entry.displayName));
+        if (creditBase != null && entry.credits != null && s.roundPhase === "shopping") {
+          entry.spentCredits = Math.max(0, creditBase - entry.credits);
+        }
         // Shield: GEP's armor field is the TIER enum (0 none / 1 light / 2
         // heavy / 3 enemy-unknown / 4 regen) — the VS-family dialect sends it
         // as initialArmor, the fork engine as shield+shieldType. Treating a
@@ -977,6 +987,13 @@ export class ValProjectionSession {
         p.spentCredits = null;
         p.abilityState = undefined;
         p.abilities = undefined;
+        // Capture credits at BUY START — the base for the computed loadout
+        // value. GEP's scoreboard has NO spent/loadout field (verified from
+        // the provider log); VS derives loadout from money, so does HU:
+        // spent = buy-start credits − credits at combat.
+        if (p.credits != null) {
+          this.creditsAtRoundStart.set(this.normalizeName(p.displayName), p.credits);
+        }
       }
       this.diedLastRound.clear();
       // wipe per-round evidence (the round-end banner survives into the buy
@@ -991,6 +1008,15 @@ export class ValProjectionSession {
     } else if (phase === "end") {
       this.settle();
     } else if (phase === "combat") {
+      // Derived loadout value from the authoritative money stream:
+      // spent = buy-start credits − credits now (clamped at 0). This is what
+      // populates the Buy Round Loadout column — GEP never reports it.
+      for (const p of s.roster ?? []) {
+        const start = this.creditsAtRoundStart.get(this.normalizeName(p.displayName));
+        if (start != null && p.credits != null) {
+          p.spentCredits = Math.max(0, start - p.credits);
+        }
+      }
       // The previous round's banner/evidence is only stale once the next
       // round is actually being fought.
       s.gameEvent = null;
@@ -1030,6 +1056,8 @@ export class ValProjectionSession {
   // WITHOUT their gun+shield (Valorant rules); tracked so the buy-round cards
   // stop showing a dead player's old Vandal ("gun doesn't update").
   private diedLastRound = new Set<string>();
+  /** Credits captured at each round's buy start — base for the derived loadout value. */
+  private creditsAtRoundStart = new Map<string, number>();
   // Anchor hysteresis: GEP's team field can alternate between facts; only a
   // team value that persists commits a re-anchor (stops scoreline side swaps).
   private pendingAnchorTeam: number | null = null;
