@@ -10,7 +10,7 @@ import { BuyRoundScene } from '../components/scenes/BuyRoundScene'
 import { MapBanScene } from '../components/scenes/MapBanScene'
 import { PostgameScene } from '../components/scenes/PostgameScene'
 import { pickSource } from '../lib/sourceSelection'
-import { winnerSideFromViewer } from '../lib/broadcast'
+import { winnerSideFromViewer, winnerSideFromStart } from '../lib/broadcast'
 import { TimeoutOverlay } from '../components/scenes/TimeoutOverlay'
 import { CasterCard } from '../components/scenes/CasterCard'
 import { EconomyTracker } from '../components/scenes/EconomyTracker'
@@ -694,8 +694,6 @@ export default function OverlayPopout() {
   // ValoSpectra endround parity: label the round win by SIDE. GEP native team 0
   // starts on attack; sides flip every 12 rounds (rounds 1-12 / 13-24, OT ignored).
   const nativeRoundNumber = (snapState as any)?.roundNumber ?? scores?.roundNumber ?? null
-  const attackingIdx = nativeRoundNumber != null && nativeRoundNumber > 0 && ((nativeRoundNumber - 1) % 24) < 12 ? 0 : 1
-  const nativeWinnerIdx = baseRoundEnd?.winner === 'blue' ? 0 : baseRoundEnd?.winner === 'red' ? 1 : null
   // ValoSpectra endround parity: label the round win by SIDE. Ground truth
   // first — roundEnd.winnerSide is stamped by the engine from the snapshot's
   // team startingSide; then the live viewerSide fact; the round-parity
@@ -706,13 +704,18 @@ export default function OverlayPopout() {
   // raw viewer side is only the winner's side when blue won — using it raw
   // inverted the ATTACKER/DEFENDER label whenever the enemy won).
   const liveViewerSide = (snapState as any)?.viewerSide as 'attack' | 'defense' | null
+  // Chain: engine-stamped winnerSide (session-snapshot startingSide ground
+  // truth) → winner-aware flip from the live side fact → start-side
+  // derivation from the round window. NEVER the old "team_0 attacked first"
+  // parity guess (inverted for every defense-start player).
   const roundWinnerSide = (baseRoundEnd as any)?.winnerSide
     ?? winnerSideFromViewer(baseRoundEnd?.winner ?? null, liveViewerSide)
+    ?? winnerSideFromStart(baseRoundEnd?.winner ?? null, (snapState as any)?.viewerStartSide, nativeRoundNumber)
   const roundWinSide = roundWinnerSide === 'attacker' || roundWinnerSide === 'attack'
     ? 'ATTACKER WIN'
     : roundWinnerSide === 'defender' || roundWinnerSide === 'defense'
       ? 'DEFENDER WIN'
-      : (nativeWinnerIdx == null ? null : (nativeWinnerIdx === attackingIdx ? 'ATTACKER WIN' : 'DEFENDER WIN'))
+      : null // no side evidence → no label (never guess sides)
   // Round-ceremony text: a fresh bridge killBanner (FIRST BLOOD / ACE / CLUTCH /
   // TEAM ACE / THRIFTY — the bridge auto-clears it after 6s) wins, else the
   // engine's round-settlement ceremony from snapshot.state.gameEvent
