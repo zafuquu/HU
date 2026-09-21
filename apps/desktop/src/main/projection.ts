@@ -79,6 +79,8 @@ interface WorkingState {
   roundEnd: { winner: "blue" | "red"; reason: "elimination" | "detonation" | "defusion" | "time"; winnerSide?: "attacker" | "defender" | null } | null;
   /** The viewer's START side from the snapshot (defense/attack) — side label ground truth. */
   viewerStartSide: "attack" | "defense" | null;
+  /** Epoch of the last authoritative session snapshot (hybrid: blob runtime). */
+  sessionPhaseAt: number | null;
   /** The viewer's side THIS round — GEP `game_info/team` ground truth ("attack"/"defense"). */
   viewerSide: "attack" | "defense" | null;
   /** Last seen GEP round_outcome {won,lost} — viewer-perspective round result. */
@@ -123,6 +125,7 @@ function initial(): WorkingState {
     matchMvp: null,
     roundEnd: null,
     viewerStartSide: null,
+    sessionPhaseAt: null,
     viewerSide: null,
     roundOutcome: null,
     roundHistory: [],
@@ -172,6 +175,10 @@ export class ValProjectionSession {
     s.revision += 1;
     if (sessionPhase !== s.sessionPhase && sessionPhase === "live") s.liveSince = Date.now();
     s.sessionPhase = sessionPhase;
+    // Freshness stamp: every authoritative session snapshot refreshes it. In
+    // hybrid mode the blob runtime never sends round facts, so s.roundPhase is
+    // FROZEN — the fresh session phase must outrank it in deriveScene.
+    s.sessionPhaseAt = Date.now();
     // Remember the viewer's display name so GEP scoreboard facts can anchor
     // the local player (is_local/team) to their roster entry.
     if (!s.viewerName) {
@@ -1417,6 +1424,14 @@ export class ValProjectionSession {
     // Post Game and drop the popout back to the HUD scene. Post Game stays
     // until a genuine new match resets matchWinner (or a production reset).
     if (s.matchWinner) return "post-game";
+    // A FRESH pregame from the authoritative runtime is agent select — even in
+    // hybrid mode where round facts never flow and s.roundPhase is frozen.
+    // Without this, the frozen roundPhase ('end'/'combat' from the last round)
+    // pinned the scene to In-Game HUD and Agent Select never appeared. The
+    // freshness guard keeps a stale snapshot from hijacking a live round.
+    if (s.sessionPhase === "pregame" && s.sessionPhaseAt && Date.now() - s.sessionPhaseAt < 45_000) {
+      return "agent-select";
+    }
     if (s.sessionPhase === "idle") return null;
     if (s.sessionPhase === "unknown") return null;
     // GEP round facts are the real-time truth for the current phase — they
