@@ -526,7 +526,7 @@ function IngamePlayerCard({
                 (abilityState charges for the observed player); players without
                 telemetry render dim-unknown — never faked. */}
             <div className={`flex h-[17px] w-full shrink-0 items-center justify-center gap-2.5 px-2 ${isRight ? 'flex-row-reverse' : ''}`}>
-              {([['grenade', 'C'], ['ability1', 'Q'], ['ability2', 'E'], ['ultimate', 'X']] as const).map(([slot, key]) => (
+              {([['grenade', 'C'], ['ability1', 'Q'], ['ability2', 'E']] as const).map(([slot, key]) => (
                 <img
                   key={slot}
                   src={`/game/val/agents/${codename}/abilities/${slot}.png`}
