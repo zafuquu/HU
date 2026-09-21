@@ -693,7 +693,14 @@ export default function OverlayPopout() {
   const hudRoundHistory = baseRoundHistory
   // ValoSpectra endround parity: label the round win by SIDE. GEP native team 0
   // starts on attack; sides flip every 12 rounds (rounds 1-12 / 13-24, OT ignored).
-  const nativeRoundNumber = (snapState as any)?.roundNumber ?? scores?.roundNumber ?? null
+  // Round number for the side-label fallback: the snapshot nests it under
+  // currentRound.roundNumber — the flat field does not exist in the broadcast
+  // snapshot, so the old lookup here was ALWAYS null (label vanished).
+  const nativeRoundNumber = (snapState as any)?.currentRound?.roundNumber
+    ?? (snapState as any)?.roundNumber
+    ?? scores?.roundNumber
+    ?? liveRoundNumber
+    ?? null
   // ValoSpectra endround parity: label the round win by SIDE. Ground truth
   // first — roundEnd.winnerSide is stamped by the engine from the snapshot's
   // team startingSide; then the live viewerSide fact; the round-parity
@@ -710,7 +717,7 @@ export default function OverlayPopout() {
   // parity guess (inverted for every defense-start player).
   const roundWinnerSide = (baseRoundEnd as any)?.winnerSide
     ?? winnerSideFromViewer(baseRoundEnd?.winner ?? null, liveViewerSide)
-    ?? winnerSideFromStart(baseRoundEnd?.winner ?? null, (snapState as any)?.viewerStartSide, nativeRoundNumber)
+    ?? winnerSideFromStart(baseRoundEnd?.winner ?? null, (snapState as any)?.viewerStartSide, nativeRoundNumber ?? liveRoundNumber)
   const roundWinSide = roundWinnerSide === 'attacker' || roundWinnerSide === 'attack'
     ? 'ATTACKER WIN'
     : roundWinnerSide === 'defender' || roundWinnerSide === 'defense'
