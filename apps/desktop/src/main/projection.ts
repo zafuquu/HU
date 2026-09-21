@@ -72,6 +72,8 @@ interface WorkingState {
   roundDeaths: Set<string>;
   clutchMax: Map<string, number>;
   roundStartScore: { blue: number; red: number } | null;
+  /** Combat phase start (epoch) — base for the derived timeout reason (VS round-clock parity). */
+  combatStartedAt: number | null;
   /** Epoch ms of the last round settlement — drives the endround hold. */
   roundEndedAt: number | null;
   matchWinner: "blue" | "red" | null;
@@ -120,6 +122,7 @@ function initial(): WorkingState {
     roundDeaths: new Set(),
     clutchMax: new Map(),
     roundStartScore: null,
+    combatStartedAt: null,
     roundEndedAt: null,
     matchWinner: null,
     matchMvp: null,
@@ -1059,6 +1062,8 @@ export class ValProjectionSession {
     } else if (phase === "end") {
       this.settle();
     } else if (phase === "combat") {
+      // Round-clock base for the timeout reason (VS parity: ~100s round time).
+      s.combatStartedAt = Date.now();
       // Derived loadout value from the authoritative money stream:
       // spent = buy-start credits − credits now (clamped at 0). This is what
       // populates the Buy Round Loadout column — GEP never reports it.
@@ -1310,14 +1315,16 @@ export class ValProjectionSession {
     if (s.roundEnd !== null && s.roundEnd.winner === winner) return; // already settled this round
     const round = roundOverride ?? s.roundNumber;
     // Reason priority: explicit (runtime ground truth) → spike outcome →
-    // elimination (the neutral default — timeout.webp is NEVER guessed).
-    const reason =
-      explicitReason ??
-      (s.spike === "detonated"
-        ? "detonation"
-        : s.spike === "defused"
-          ? "defusion"
-          : "elimination");
+    // round-clock timeout (VS parity: settlement ≥100s after combat start with
+    // no spike outcome = the round ran out of time) → elimination.
+    // GEP provides no explicit timeout event; the round clock is authoritative
+    // timing we already track.
+    let reason: "elimination" | "detonation" | "defusion" | "time";
+    if (explicitReason) reason = explicitReason;
+    else if (s.spike === "detonated") reason = "detonation";
+    else if (s.spike === "defused") reason = "defusion";
+    else if (s.combatStartedAt && Date.now() - s.combatStartedAt >= 100_000) reason = "time";
+    else reason = "elimination";
     s.roundEnd = {
       winner,
       reason,
