@@ -425,6 +425,15 @@ function IngamePlayerCard({
     transitionDuration: '0.3s',
   }
 
+  // Authoritative ability state → icon opacity: owned/charged = lit, spent =
+  // grey, NO telemetry = dim-unknown (never faked). Numbers coerced (GEP 0/1).
+  const abilityOpacity = (p: any, key: string): number => {
+    const st = p?.abilityState
+    if (!st) return 0.35
+    const v = st[key]
+    return (v === true || v === 1 || v === '1') ? 1 : (v === false || v === 0 || v === '0') ? 0.3 : 0.35
+  }
+
   return (
     <div className={`w-full ${isRight ? 'team-stats-val-classic-flip' : 'team-stats-val-classic'}`}>
       <div className={`flex w-full transition-all ease-in-out ${isRight ? 'justify-end' : 'justify-start'} max-h-75 opacity-100 mb-2`}>
@@ -512,7 +521,23 @@ function IngamePlayerCard({
               )}
             </div>
 
-              
+            {/* Ability row — ICONS ONLY (no C/Q/E/X letters). C/Q/E/X map to
+                grenade/ability1/ability2/ultimate. State is authoritative
+                (abilityState charges for the observed player); players without
+                telemetry render dim-unknown — never faked. */}
+            <div className={`flex h-[17px] w-full shrink-0 items-center justify-center gap-2.5 px-2 ${isRight ? 'flex-row-reverse' : ''}`}>
+              {([['grenade', 'C'], ['ability1', 'Q'], ['ability2', 'E'], ['ultimate', 'X']] as const).map(([slot, key]) => (
+                <img
+                  key={slot}
+                  src={`/game/val/agents/${codename}/abilities/${slot}.png`}
+                  alt=""
+                  className="size-[13px] object-contain"
+                  style={{ opacity: abilityOpacity(player, key) }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden' }}
+                />
+              ))}
+            </div>
+
             {/* Bottom Row: Ult + K/D/A + Weapon */}
             <div className={`item relative flex w-full flex-1 items-center px-1 ${isRight ? 'flex-row-reverse justify-between' : 'justify-between'}`}>
               {/* Ult Icon */}
