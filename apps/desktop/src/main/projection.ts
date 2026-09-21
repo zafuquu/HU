@@ -249,13 +249,20 @@ export class ValProjectionSession {
     // ATTACKER WIN/DEFENDER WIN label (the user's matches start on defense,
     // so the assumption "team_0 attacks rounds 1-12" was inverted 100% of
     // the time for them).
-    if (teams && teams.length > 0 && s.viewerName) {
-      const vName = s.viewerName.split("#")[0].trim().toLowerCase();
+    // Ground-truth start side: match the SNAPSHOT'S OWN viewer identity
+    // (the matchId-reset above nulls s.viewerName before this loop on fresh
+    // matches, which left viewerStartSide null forever → side labels missing).
+    if (teams && teams.length > 0) {
+      const snapViewerName = (() => {
+        const vp = snap.session?.viewer?.player?.name ?? snap.session?.viewer?.player;
+        const n = vp?.displayName ?? vp?.gameName ?? "";
+        return String(n).split("#")[0].trim().toLowerCase();
+      })();
       for (const team of teams) {
         const players = Array.isArray(team.players) ? team.players : [];
         const isViewersTeam = players.some((p: any) => {
           const pn = p?.player?.identity?.displayName ?? p?.player?.name?.gameName ?? p?.player?.name?.displayName ?? p?.player?.puuid ?? "";
-          return String(pn).split("#")[0].trim().toLowerCase() === vName;
+          return String(pn).split("#")[0].trim().toLowerCase() === snapViewerName;
         });
         if (isViewersTeam && team.startingSide != null) {
           s.viewerStartSide = team.startingSide;
