@@ -106,6 +106,8 @@ export const hudRelayStateSchema = z.object({
     .default(null),
   /** Viewer's side this round (snapshot team startingSide ground truth). */
   viewerSide: z.enum(["attack", "defense"]).nullable().optional(),
+  /** The viewer's START side (session-snapshot ground truth) — drives the side-label fallback. */
+  viewerStartSide: z.enum(["attack", "defense"]).nullable().optional(),
   /** Per-round win history (ValoSpectra app-roundreasons parity, max 24). */
   roundHistory: z
     .array(
