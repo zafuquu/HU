@@ -530,7 +530,13 @@ export class GepProviderSource {
     if (gepDir) env.HAVOC_GAME_DATA_OVERWOLF_GEP_DIRECTORY = gepDir;
 
     const entry = require("node:path").join(providerDir, "index.js");
-    const args = [entry];
+    // ELECTRON mode: pass the provider DIRECTORY, not index.js. Electron reads
+    // package.json (main + the overwolf.packages declaration) from the
+    // directory — that declaration is what makes the PackageManager load the
+    // GEP package. Passing index.js as a plain file routes through
+    // default_app, which never loads the PackageManager and left
+    // app.overwolf undefined (verified in the field 2026-09-22).
+    const args = nodeMode ? [entry] : [providerDir];
 
     let child: ChildProcess;
     try {
