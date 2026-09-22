@@ -179,6 +179,8 @@ class RuntimeHub {
   private currentScene: string | null = null;
   private mapKey: string | null = null;
   private score: { blue: number; red: number } | null = null;
+  /** Set once the authoritative round_outcome fact arrives (per match). */
+  private roundOutcomeSeen = false;
   private errorState: string | null = null;
   private readonly bootedAt = Date.now();
   private valorantDetected = false;
@@ -267,6 +269,7 @@ class RuntimeHub {
    */
   private resetMatchStats(): void {
     pipelineDebug("reset_match", { reason: "stats_only", playersBefore: this.players.size });
+    this.roundOutcomeSeen = false;
     for (const [, p] of this.players) {
       p.kills = null;
       p.deaths = null;
@@ -368,28 +371,43 @@ class RuntimeHub {
         } else if (statusKey === "provider_ready") {
           this.errorState = null;
         }
+      } else if (fact.key === "round_outcome") {
+        // AUTHORITATIVE viewer score: {won,lost} IS the viewer's cumulative
+        // round record. GEP's match_score team numbering FLIPS AT HALFTIME,
+        // so mapping team_0/team_1 flaps the board 3-11 <-> 11-3 after the
+        // swap. round_outcome is viewer-perspective by definition.
+        const rec = fact.value as { won?: unknown; lost?: unknown };
+        const won = Number(rec?.won);
+        const lost = Number(rec?.lost);
+        if (Number.isFinite(won) && Number.isFinite(lost)) {
+          this.roundOutcomeSeen = true;
+          this.score = { blue: won, red: lost };
+          this.sessionPhase = "live";
+          this.revision += 1;
+          this.emitSessionSnapshot();
+        }
       } else if (fact.key === "match_score") {
         const rec = fact.value as { team_0?: unknown; team_1?: unknown };
         if (typeof rec?.team_0 === "number" && typeof rec?.team_1 === "number") {
           // VIEWER-PERSPECTIVE score (verified contract, see the desktop
           // projector's match_score case): the viewer's GEP team number maps
-          // to blue/left. Default when the viewer's team is unknown is
-          // team_1 = local player (the contract the user's own provider log
-          // proved). The previous absolute blue=team_0 mapping fought the
-          // desktop's viewer-anchored remap every frame — the score flap
-          // 7-8 <-> 8-7 and "scores are switched" reports.
-          const t0 = rec.team_0;
-          const t1 = rec.team_1;
-          const viewerTeam = this.localPlayerId
-            ? this.players.get(this.localPlayerId)?.team ?? null
-            : null;
-          this.score =
-            viewerTeam === 0
-              ? { blue: t0, red: t1 }
-              : { blue: t1, red: t0 };
-          this.sessionPhase = "live";
-          this.revision += 1;
-          this.emitSessionSnapshot();
+          // to blue/left. Only applied UNTIL the first round_outcome arrives
+          // — after that round_outcome wins because GEP's match_score team
+          // numbering flips at halftime (the 3-11 <-> 11-3 flap).
+          if (!this.roundOutcomeSeen) {
+            const t0 = rec.team_0;
+            const t1 = rec.team_1;
+            const viewerTeam = this.localPlayerId
+              ? this.players.get(this.localPlayerId)?.team ?? null
+              : null;
+            this.score =
+              viewerTeam === 0
+                ? { blue: t0, red: t1 }
+                : { blue: t1, red: t0 };
+            this.sessionPhase = "live";
+            this.revision += 1;
+            this.emitSessionSnapshot();
+          }
         }
       } else if (fact.key === "match_id" && typeof fact.value === "string" && fact.value) {
         this.matchId = fact.value;
