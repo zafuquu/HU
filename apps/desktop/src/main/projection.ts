@@ -74,6 +74,8 @@ interface WorkingState {
   roundStartScore: { blue: number; red: number } | null;
   /** Combat phase start (epoch) — base for the derived timeout reason (VS round-clock parity). */
   combatStartedAt: number | null;
+  /** Restored-from-cache data not yet confirmed by live runtime frames. */
+  restorePending: boolean;
   /** Epoch ms of the last round settlement — drives the endround hold. */
   roundEndedAt: number | null;
   matchWinner: "blue" | "red" | null;
@@ -123,6 +125,7 @@ function initial(): WorkingState {
     clutchMax: new Map(),
     roundStartScore: null,
     combatStartedAt: null,
+    restorePending: false,
     roundEndedAt: null,
     matchWinner: null,
     matchMvp: null,
@@ -169,6 +172,7 @@ export class ValProjectionSession {
 
   public applySnapshot(snap: ValorantSessionSnapshot): void {
     const s = this.s;
+    s.restorePending = false; // live runtime evidence — restored data is superseded
     // Dialect normalization: upstream nests identity under session.*
     const sessionPhase =
       snap.sessionPhase ?? snap.phase ?? s.sessionPhase;
@@ -374,6 +378,7 @@ export class ValProjectionSession {
 
   public applyFact(key: string, rawValue: unknown): void {
     const s = this.s;
+    s.restorePending = false; // live runtime evidence — restored data is superseded
     const value = parseFactValue(rawValue);
     // The engine emits prefixed scoreboard variants (scoreboard_ally,
     // scoreboard_enemy, scoreboard_N, ...). Normalize to the base case.
@@ -1403,6 +1408,7 @@ export class ValProjectionSession {
       roundHistory: s.roundHistory,
       updatedAt: Date.now(),
       observedAt: Date.now(),
+      restorePending: s.restorePending,
     });
   }
 
@@ -1433,6 +1439,10 @@ export class ValProjectionSession {
    */
   private deriveScene(): "agent-select" | "buy-round" | "ingame-hud" | "post-game" | null {
     const s = this.s;
+    // Restored-from-cache data is unconfirmed: no scene until the runtime
+    // streams fresh evidence (prevents a stale previous match presenting as
+    // the live game on app start).
+    if (s.restorePending) return null;
     // A settled match ALWAYS wins over generic idle/unknown session state —
     // the old order let sessionPhase 'idle' (after the match ends) erase
     // Post Game and drop the popout back to the HUD scene. Post Game stays
@@ -1591,8 +1601,11 @@ export class ValProjectionSession {
             }),
         ) as HudRelayState["roster"];
       }
-      s.sessionPhase = "live";
-      s.liveSince = Date.now();
+      s.sessionPhase = "idle";
+      // Restored data is UNCONFIRMED until the runtime streams fresh evidence:
+      // deriveScene stays null and the popout suppresses rendering, so a stale
+      // previous match can never present itself as the live game.
+      s.restorePending = true;
       s.revision += 1;
     } catch {
       // corrupted cache — start clean

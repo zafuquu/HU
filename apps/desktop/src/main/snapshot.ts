@@ -86,6 +86,8 @@ export interface GameSnapshot {
       winner: "blue" | "red" | null;
       mvp: { name: string; teamId: string; kills: number; deaths: number; assists: number } | null;
     };
+    /** Restored-from-cache data not yet confirmed by live runtime frames. */
+    restorePending?: boolean;
     /** Authoritative observation epoch (ms) — monotonic staleness gate. */
     observedAt?: number;
     /** How the last round ended (winner + reason), cleared at next round start. */
@@ -210,6 +212,7 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       roundTimer,
       viewerRole: state.viewerRole ?? null,
       bombPlanted: state.spike === "planted",
+      restorePending: state.restorePending === true ? true : undefined,
       observedAt: state.updatedAt,
       match: {
         winner: state.match?.winner ?? null,
