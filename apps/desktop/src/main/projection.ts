@@ -170,6 +170,56 @@ export class ValProjectionSession {
 
   /* ------------------------- inputs ------------------------- */
 
+  /**
+   * Per-match round/score wipe — the same clearing the `round_number === 1`
+   * fresh-match fact reset performs, factored out so the session-snapshot
+   * paths (matchId change, fresh pregame) can trigger it even when the
+   * runtime streams no round facts (hybrid blob mode).
+   */
+  private resetRoundBookkeeping(s: WorkingState): void {
+    s.blue = 0;
+    s.red = 0;
+    s.roundNumber = 0;
+    s.roundPhase = "unknown";
+    s.publishedNumber = 0;
+    s.publishedPhase = null;
+    s.pendingPhase = null;
+    s.roundHistory = [];
+    s.roundEnd = null;
+    s.gameEvent = null;
+    s.matchWinner = null;
+    s.matchMvp = null;
+    s.roundEndedAt = null;
+    s.spike = null;
+    s.spikePlantedAt = null;
+    s.killfeed = [];
+    s.roundKills.clear();
+    s.roundDeaths.clear();
+    s.clutchMax.clear();
+    s.roundStartScore = null;
+    s.roundOutcome = null;
+    this.creditsAtRoundStart.clear();
+    for (const p of s.roster ?? []) {
+      p.kills = null;
+      p.deaths = null;
+      p.assists = null;
+      p.credits = null;
+      p.spentCredits = null;
+      p.shield = null;
+      p.shieldType = null;
+      p.weapon = null;
+      p.health = 100;
+      p.isAlive = true;
+      p.ultPoints = null;
+      p.ultMax = null;
+      p.hasSpike = null;
+      p.agentKey = undefined;
+      p.agentIcon = null;
+      p.agentName = null;
+      p.abilityState = undefined;
+    }
+  }
+
   public applySnapshot(snap: ValorantSessionSnapshot): void {
     const s = this.s;
     s.restorePending = false; // live runtime evidence — restored data is superseded
@@ -186,6 +236,13 @@ export class ValProjectionSession {
     // hybrid mode the blob runtime never sends round facts, so s.roundPhase is
     // FROZEN — the fresh session phase must outrank it in deriveScene.
     s.sessionPhaseAt = Date.now();
+    // A fresh authoritative PREGAME is the boundary of a new match. When the
+    // runtime streams no round facts (hybrid mode) nothing else resets round
+    // bookkeeping, so a stale roundNumber (restored cache or carried over from
+    // the previous game) would pin deriveScene to ingame-hud forever.
+    if (sessionPhase === "pregame" && (s.roundNumber > 1 || s.roundHistory.length > 0 || s.matchWinner !== null)) {
+      this.resetRoundBookkeeping(s);
+    }
     // Remember the viewer's display name so GEP scoreboard facts can anchor
     // the local player (is_local/team) to their roster entry.
     if (!s.viewerName) {
@@ -210,6 +267,12 @@ export class ValProjectionSession {
       s.roundOutcome = null;
       this.rosterSeq.clear();
       this.lastGepTeam.clear();
+      // Round/score bookkeeping is per-match too. Without this, a restored or
+      // carried-over roundNumber (e.g. an OT round from the previous game)
+      // survives into the fresh match — and since the hybrid runtime never
+      // sends round facts, deriveScene then pins the HUD to ingame-hud forever
+      // (roundNumber > 0) and agent-select/buy-round/post-game never resolve.
+      this.resetRoundBookkeeping(s);
     }
     const MAP_NAMES: Record<string, string> = {
       // Canonical keys (formatMapKey output) -> display names. Codename
