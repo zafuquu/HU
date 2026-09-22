@@ -145,10 +145,6 @@ export class ValProjectionSession {
   private rosterSeq = new Map<string, number>();
   /** Last GEP team number seen per player — the team-side source of truth. */
   private lastGepTeam = new Map<string, number>();
-  /** Player id -> normalized display name (filled from snapshots + scoreboard facts). */
-  private playerIdToName = new Map<string, string>();
-  /** The GEP "me" player id (from the player_id fact) — anchors local-only facts. */
-  private factLocalPlayerId: string | null = null;
   private readonly listeners = new Set<(state: HudRelayState) => void>();
 
   constructor() {
@@ -174,56 +170,6 @@ export class ValProjectionSession {
 
   /* ------------------------- inputs ------------------------- */
 
-  /**
-   * Per-match round/score wipe — the same clearing the `round_number === 1`
-   * fresh-match fact reset performs, factored out so the session-snapshot
-   * paths (matchId change, fresh pregame) can trigger it even when the
-   * runtime streams no round facts (hybrid blob mode).
-   */
-  private resetRoundBookkeeping(s: WorkingState): void {
-    s.blue = 0;
-    s.red = 0;
-    s.roundNumber = 0;
-    s.roundPhase = "unknown";
-    s.publishedNumber = 0;
-    s.publishedPhase = null;
-    s.pendingPhase = null;
-    s.roundHistory = [];
-    s.roundEnd = null;
-    s.gameEvent = null;
-    s.matchWinner = null;
-    s.matchMvp = null;
-    s.roundEndedAt = null;
-    s.spike = null;
-    s.spikePlantedAt = null;
-    s.killfeed = [];
-    s.roundKills.clear();
-    s.roundDeaths.clear();
-    s.clutchMax.clear();
-    s.roundStartScore = null;
-    s.roundOutcome = null;
-    this.creditsAtRoundStart.clear();
-    for (const p of s.roster ?? []) {
-      p.kills = null;
-      p.deaths = null;
-      p.assists = null;
-      p.credits = null;
-      p.spentCredits = null;
-      p.shield = null;
-      p.shieldType = null;
-      p.weapon = null;
-      p.health = 100;
-      p.isAlive = true;
-      p.ultPoints = null;
-      p.ultMax = null;
-      p.hasSpike = null;
-      p.agentKey = undefined;
-      p.agentIcon = null;
-      p.agentName = null;
-      p.abilityState = undefined;
-    }
-  }
-
   public applySnapshot(snap: ValorantSessionSnapshot): void {
     const s = this.s;
     s.restorePending = false; // live runtime evidence — restored data is superseded
@@ -240,13 +186,6 @@ export class ValProjectionSession {
     // hybrid mode the blob runtime never sends round facts, so s.roundPhase is
     // FROZEN — the fresh session phase must outrank it in deriveScene.
     s.sessionPhaseAt = Date.now();
-    // A fresh authoritative PREGAME is the boundary of a new match. When the
-    // runtime streams no round facts (hybrid mode) nothing else resets round
-    // bookkeeping, so a stale roundNumber (restored cache or carried over from
-    // the previous game) would pin deriveScene to ingame-hud forever.
-    if (sessionPhase === "pregame" && (s.roundNumber > 1 || s.roundHistory.length > 0 || s.matchWinner !== null)) {
-      this.resetRoundBookkeeping(s);
-    }
     // Remember the viewer's display name so GEP scoreboard facts can anchor
     // the local player (is_local/team) to their roster entry.
     if (!s.viewerName) {
@@ -271,12 +210,6 @@ export class ValProjectionSession {
       s.roundOutcome = null;
       this.rosterSeq.clear();
       this.lastGepTeam.clear();
-      // Round/score bookkeeping is per-match too. Without this, a restored or
-      // carried-over roundNumber (e.g. an OT round from the previous game)
-      // survives into the fresh match — and since the hybrid runtime never
-      // sends round facts, deriveScene then pins the HUD to ingame-hud forever
-      // (roundNumber > 0) and agent-select/buy-round/post-game never resolve.
-      this.resetRoundBookkeeping(s);
     }
     const MAP_NAMES: Record<string, string> = {
       // Canonical keys (formatMapKey output) -> display names. Codename
@@ -297,14 +230,6 @@ export class ValProjectionSession {
     if (mapKey) {
       s.mapKey = mapKey;
       s.mapName = MAP_NAMES[mapKey] ?? mapKey;
-    }
-    // The runtime publishes a VIEWER-PERSPECTIVE score (its own team grouping
-    // anchors the viewer to Blue) — trust it over the ambiguous absolute
-    // match_score fact numbers.
-    const snapScore = snap.score;
-    if (snapScore && Number.isFinite(Number(snapScore.blue)) && Number.isFinite(Number(snapScore.red))) {
-      s.blue = Number(snapScore.blue);
-      s.red = Number(snapScore.red);
     }
     if (snap.viewer?.role) s.viewerRole = snap.viewer.role;
     if (mapKey && s.mapKey !== mapKey) {
@@ -395,18 +320,6 @@ export class ValProjectionSession {
           hasSpike: p.player.hasSpike ?? undefined,
         }));
       });
-      // Player-id index for GEP "me"-anchored facts (abilities, local HP):
-      // snapshot player ids -> normalized display names.
-      for (const team of teams) {
-        for (const p of team.players) {
-          const pid = p.player?.playerId ?? p.player?.puuid;
-          const nm =
-            p.player?.name?.displayName ??
-            p.player?.identity?.displayName ??
-            p.player?.identity?.gameName;
-          if (pid && nm) this.playerIdToName.set(String(pid), this.normalizeName(String(nm)));
-        }
-      }
       // Upstream snapshots carry no per-player stats; the scoreboard facts
       // merged between heartbeats must survive snapshot refreshes. Carry
       // previous stats over when the snapshot itself supplies none.
@@ -481,14 +394,19 @@ export class ValProjectionSession {
         let viewerScore: number | null = null;
         let enemyScore: number | null = null;
         if (rec?.team_0 !== undefined || rec?.team_1 !== undefined) {
-          // GEP {team_0,team_1} is ABSOLUTE team numbering — and the viewer's
-          // team number FLIPS PER GAME (team:1 one match, team:0 the next,
-          // verified in the provider logs). Any fixed remap inverts the score
-          // half the time ("scores are switched/inverted"). The authoritative
-          // viewer-perspective score is round_outcome {won,lost} (handled
-          // below) and the runtime's normalized snapshot score — so the raw
-          // absolute numbers are deliberately NOT applied here.
-          return;
+          const t0 = Number(rec?.team_0);
+          const t1 = Number(rec?.team_1);
+          if (Number.isFinite(t0) && Number.isFinite(t1)) {
+            // GEP score contract (verified against the user's own provider log:
+            // won r1 -> {team_0:0, team_1:1}; lost r2 -> {1,1}; won r3 -> {1,2}
+            // with round_outcome {won,lost} as the viewer's cumulative W/L):
+            // team_1 = LOCAL PLAYER'S score, team_0 = enemy. The roster is
+            // anchored with the viewer on blue/left, so blue = team_1 ALWAYS.
+            // (The previous anchor remap AND a direct blue=t0 both flipped —
+            // randomly, per emission form.)
+            s.blue = t1;
+            s.red = t0;
+          } else return;
         } else if (rec?.won !== undefined || rec?.lost !== undefined) {
           viewerScore = Number(rec?.won);
           enemyScore = Number(rec?.lost);
@@ -525,50 +443,6 @@ export class ValProjectionSession {
           this.recordRoundWinner(won > prev.won ? "blue" : "red", null);
         }
         s.roundOutcome = { won, lost };
-        // AUTHORITATIVE SCORE: {won,lost} IS the viewer's cumulative score —
-        // independent of GEP's per-game team numbering that made the
-        // match_score remap invert the board half the time.
-        if (won !== s.blue || lost !== s.red) {
-          // RO.won tracks GEP team_1 whose side varies per game — map through
-          // the viewer's GEP team number (roster/scoreboard 'team' fact).
-          if (s.viewerGepTeam === 0) {
-            s.blue = lost;
-            s.red = won;
-          } else {
-            s.blue = won;
-            s.red = lost;
-          }
-          if (s.blue >= 13 && s.blue - s.red >= 2) s.matchWinner = "blue";
-          else if (s.red >= 13 && s.red - s.blue >= 2) s.matchWinner = "red";
-        }
-        break;
-      }
-      case "viewer_side": {
-        // GEP 'team' fact: the VIEWER's current side ("attack"/"defense").
-        // First observation seeds the start side (drives the ATTACKER/DEFENDER
-        // round-win labels); every observation refreshes the current side
-        // (the fact flips at halftime).
-        const v = typeof value === "string" ? value.toLowerCase() : null;
-        if (v !== "attack" && v !== "defense") return;
-        if (s.viewerStartSide === null) s.viewerStartSide = v;
-        if (s.viewerSide !== v) {
-          s.viewerSide = v;
-          s.revision += 1;
-        }
-        break;
-      }
-      case "player_id": {
-        // GEP "me" identity — anchors the local roster row for the abilities
-        // fact (which is implicitly local-only) without relying on name
-        // matching across dialects.
-        const id = String(value ?? "").trim();
-        if (!id) return;
-        this.factLocalPlayerId = id;
-        const name = this.playerIdToName.get(id);
-        if (name && s.viewerName !== name) {
-          s.viewerName = name;
-          s.revision += 1;
-        }
         break;
       }
       case "round_number": {
@@ -876,18 +750,8 @@ export class ValProjectionSession {
         // (Without this, a cold start piles every player onto one team.)
         const normName = this.normalizeName(name);
         if (gepTeam !== null) this.lastGepTeam.set(normName, gepTeam);
-        // Index player_id -> name (abilities/local facts are player-id anchored).
-        if (typeof rec.player_id === "string" && rec.player_id) {
-          this.playerIdToName.set(rec.player_id, normName);
-        }
-        // If the "me" player_id is known and this row IS the local player,
-        // anchor the viewer name so viewer-only facts (abilities) attach.
-        if (this.factLocalPlayerId && rec.player_id === this.factLocalPlayerId && s.viewerName == null) {
-          s.viewerName = name;
-        }
         const isViewerRow =
           rec.is_local === true ||
-          rec.player_id === this.factLocalPlayerId ||
           (s.viewerName != null && normName === this.normalizeName(s.viewerName));
         if (isViewerRow && gepTeam !== null) {
           if (s.viewerGepTeam === null) {
@@ -1089,19 +953,14 @@ export class ValProjectionSession {
         // GEP emits the LOCAL player's ability charges. Values arrive as 0/1
         // NUMBERS (provider log: {C:0,Q:0,E:1,X:0}), real booleans, or "0"/"1"
         // strings depending on the dialect — normalize all of them safely.
-        // The local row is resolved via the GEP "me" player_id first (id ->
-        // name index), falling back to the viewer display name — snapshot
-        // names and fact names come from different dialects and don't always
-        // match textually.
         const asBool = (v: unknown): boolean =>
           v === true || v === 1 || v === "1" || v === "true";
         const rec = value as Record<string, unknown>;
-        const localName =
-          (this.factLocalPlayerId && this.playerIdToName.get(this.factLocalPlayerId)) ||
-          (s.viewerName != null ? this.normalizeName(s.viewerName) : null);
-        const local = localName
-          ? (s.roster ?? []).find((p) => this.normalizeName(p.displayName) === localName)
-          : undefined;
+        const local = (s.roster ?? []).find(
+          (p) =>
+            s.viewerName != null &&
+            this.normalizeName(p.displayName) === this.normalizeName(s.viewerName),
+        );
         if (local) {
           local.abilityState = {
             C: asBool(rec?.C),

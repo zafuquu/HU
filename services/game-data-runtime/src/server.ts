@@ -32,21 +32,9 @@ const HEARTBEAT_MS = 15_000;
 const SNAP_EVENT = "valorant_session_snapshot";
 const KILLFEED_CAP = 12;
 
-/**
- * Pipeline telemetry — enabled with HAVOC_DEBUG_PIPELINE=1 (no secrets).
- * Appends to <dataDir>/run/pipeline.jsonl because the runtime's stdout is
- * "ignore" when spawned by the desktop — console.log is invisible there.
- */
+/** Pipeline telemetry — enabled with HAVOC_DEBUG_PIPELINE=1 (no secrets). */
 function pipelineDebug(...args: unknown[]): void {
-  if (process.env.HAVOC_DEBUG_PIPELINE !== "1") return;
-  const line = `${new Date().toISOString()} ${args.map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" ")}`;
-  console.log("[pipeline:runtime]", line);
-  try {
-    const dataDir = process.env.HAVOC_GAME_DATA_DIR?.trim() ||
-      join(process.env.LOCALAPPDATA ?? "", "Havoc", "game-data-runtime");
-    mkdirSync(join(dataDir, "run"), { recursive: true });
-    appendFileSync(join(dataDir, "run", "pipeline.jsonl"), line + "\n");
-  } catch { /* never break the pipeline on logging */ }
+  if (process.env.HAVOC_DEBUG_PIPELINE === "1") console.log("[pipeline:runtime]", ...args);
 }
 let pipelineFactCount = 0;
 
@@ -132,7 +120,7 @@ function upsertPlayer(players: Map<string, RealPlayer>, patch: Record<string, un
   players.set(next.playerId || next.name, next);
 }
 
-function playerToSnapshot(p: RealPlayer, teamIndex?: number): Record<string, unknown> {
+function playerToSnapshot(p: RealPlayer): Record<string, unknown> {
   const agent = p.agent ?? "";
   return {
     agent: { key: agent.toLowerCase(), name: agent, riotId: p.name },
@@ -158,7 +146,7 @@ function playerToSnapshot(p: RealPlayer, teamIndex?: number): Record<string, unk
       shieldType: p.shieldType,
       weapon: p.weapon,
     },
-    teamIndex: teamIndex ?? p.team ?? undefined,
+    teamIndex: p.team ?? undefined,
   };
 }
 
@@ -179,8 +167,6 @@ class RuntimeHub {
   private currentScene: string | null = null;
   private mapKey: string | null = null;
   private score: { blue: number; red: number } | null = null;
-  /** Set once the authoritative round_outcome fact arrives (per match). */
-  private roundOutcomeSeen = false;
   private errorState: string | null = null;
   private readonly bootedAt = Date.now();
   private valorantDetected = false;
@@ -248,8 +234,7 @@ class RuntimeHub {
     return this.gep.executeValorantSocketReset(targetProcessId);
   }
 
-  private resetMatch(reason = "full"): void {
-    pipelineDebug("reset_match", { reason, playersBefore: this.players.size, matchId: this.matchId });
+  private resetMatch(): void {
     this.matchId = null;
     this.mapKey = null;
     this.score = null;
@@ -260,31 +245,6 @@ class RuntimeHub {
       this.sessionPhase = "idle";
       this.emitSessionSnapshot();
     }
-  }
-
-  /**
-   * Per-match soft reset — identities (name/agent/team/playerId) survive so
-   * the board is full from round 1; per-match stats clear and repopulate from
-   * the next scoreboard facts.
-   */
-  private resetMatchStats(): void {
-    pipelineDebug("reset_match", { reason: "stats_only", playersBefore: this.players.size });
-    this.roundOutcomeSeen = false;
-    for (const [, p] of this.players) {
-      p.kills = null;
-      p.deaths = null;
-      p.assists = null;
-      p.credits = null;
-      p.health = null;
-      p.isAlive = null;
-      p.hasSpike = null;
-      p.ultPoints = null;
-      p.ultMax = null;
-      p.shield = null;
-      p.shieldType = null;
-    }
-    this.killfeed = [];
-    this.engine.reset();
   }
 
   private startDetector(): void {
@@ -351,9 +311,7 @@ class RuntimeHub {
     pipelineFactCount += 1;
     if (pipelineFactCount % 50 === 1) {
       // Boundary telemetry: events received (rate + latest type).
-      pipelineDebug("fact_received", { kind: fact.kind, key: fact.key, total: pipelineFactCount, players: this.players.size });
-    } else if (fact.key === "roster" || fact.key === "scoreboard" || fact.key === "match_start" || fact.key === "match_end" || fact.key === "match_id") {
-      pipelineDebug("fact", { key: fact.key, players: this.players.size, value: JSON.stringify(fact.value).slice(0, 180) });
+      pipelineDebug("fact_received", { kind: fact.kind, key: fact.key, total: pipelineFactCount });
     }
     try {
       if (fact.key === "provider_status") {
@@ -371,49 +329,13 @@ class RuntimeHub {
         } else if (statusKey === "provider_ready") {
           this.errorState = null;
         }
-      } else if (fact.key === "round_outcome") {
-        // AUTHORITATIVE viewer score: {won,lost} IS the viewer's cumulative
-        // round record. GEP's match_score team numbering FLIPS AT HALFTIME,
-        // so mapping team_0/team_1 flaps the board 3-11 <-> 11-3 after the
-        // swap. round_outcome is viewer-perspective by definition.
-        const rec = fact.value as { won?: unknown; lost?: unknown };
-        const won = Number(rec?.won);
-        const lost = Number(rec?.lost);
-        if (Number.isFinite(won) && Number.isFinite(lost)) {
-          this.roundOutcomeSeen = true;
-          const viewerTeam = this.localPlayerId
-            ? this.players.get(this.localPlayerId)?.team ?? null
-            : null;
-          this.score =
-            viewerTeam === 0
-              ? { blue: lost, red: won }
-              : { blue: won, red: lost };
-          this.sessionPhase = "live";
-          this.revision += 1;
-          this.emitSessionSnapshot();
-        }
       } else if (fact.key === "match_score") {
         const rec = fact.value as { team_0?: unknown; team_1?: unknown };
         if (typeof rec?.team_0 === "number" && typeof rec?.team_1 === "number") {
-          // VIEWER-PERSPECTIVE score (verified contract, see the desktop
-          // projector's match_score case): the viewer's GEP team number maps
-          // to blue/left. Only applied UNTIL the first round_outcome arrives
-          // — after that round_outcome wins because GEP's match_score team
-          // numbering flips at halftime (the 3-11 <-> 11-3 flap).
-          if (!this.roundOutcomeSeen) {
-            const t0 = rec.team_0;
-            const t1 = rec.team_1;
-            const viewerTeam = this.localPlayerId
-              ? this.players.get(this.localPlayerId)?.team ?? null
-              : null;
-            this.score =
-              viewerTeam === 0
-                ? { blue: t0, red: t1 }
-                : { blue: t1, red: t0 };
-            this.sessionPhase = "live";
-            this.revision += 1;
-            this.emitSessionSnapshot();
-          }
+          this.score = { blue: rec.team_0, red: rec.team_1 };
+          this.sessionPhase = "live";
+          this.revision += 1;
+          this.emitSessionSnapshot();
         }
       } else if (fact.key === "match_id" && typeof fact.value === "string" && fact.value) {
         this.matchId = fact.value;
@@ -462,12 +384,7 @@ class RuntimeHub {
         this.revision += 1;
         this.emitSessionSnapshot();
       } else if (fact.key === "match_start") {
-        // New match about to start. resetMatch() here WIPED the roster that
-        // agent-select had just built — and since the other players'
-        // scoreboard_N facts only stream on change, the board then stayed
-        // empty until round 2 ("1st round has no data"). Soft reset instead:
-        // keep identities (name/agent/team), clear per-match stats only.
-        this.resetMatchStats();
+        this.resetMatch();
         this.sessionPhase = "loading";
         this.emitSessionSnapshot();
       } else if (fact.key === "player_id" && (typeof fact.value === "string" || typeof fact.value === "number")) {
@@ -610,33 +527,21 @@ class RuntimeHub {
         { teamId: "Red", players: mockTeamPlayers(ROSTER.red, 1) },
       ];
     } else {
-      // Real data only: group actual GEP-reported players by team. Team
-      // grouping is VIEWER-PERSPECTIVE: the viewer's GEP team number becomes
-      // Blue/left, the other team Red/right — matching the desktop's anchoring
-      // and the score mapping above. The previous absolute t0->Blue mapping
-      // put the viewer on the wrong team (or on BOTH teams once the desktop's
-      // fact-side anchoring also created a row).
+      // Real data only: group actual GEP-reported players by team. With no live
+      // match there are no players — teams stay empty so the overlay shows nothing.
       const list = [...this.players.values()];
-      const viewerTeam = this.localPlayerId
-        ? this.players.get(this.localPlayerId)?.team ?? null
-        : null;
-      const relIndex = (p: RealPlayer): number | null => {
-        if (p.team !== 0 && p.team !== 1) return null;
-        if (viewerTeam == null) return p.team;
-        return p.team === viewerTeam ? 0 : 1;
-      };
-      const knownTeam = list.filter((p) => relIndex(p) !== null);
-      const unknownTeam = list.filter((p) => relIndex(p) === null);
+      const knownTeam = list.filter((p) => p.team === 0 || p.team === 1);
+      const unknownTeam = list.filter((p) => p.team !== 0 && p.team !== 1);
       teams = [];
       for (const t of [0, 1] as const) {
         const side = knownTeam
-          .filter((p) => relIndex(p) === t)
+          .filter((p) => p.team === t)
           .sort((a, b) => (a.observerSlot ?? 99) - (b.observerSlot ?? 99))
-          .map((p) => playerToSnapshot(p, relIndex(p) ?? undefined));
+          .map(playerToSnapshot);
         if (side.length > 0) teams.push({ teamId: t === 0 ? "Blue" : "Red", players: side });
       }
       if (unknownTeam.length > 0) {
-        teams.push({ teamId: "Unknown", players: unknownTeam.map((p) => playerToSnapshot(p, relIndex(p) ?? undefined)) });
+        teams.push({ teamId: "Unknown", players: unknownTeam.map(playerToSnapshot) });
       }
       if (teams.length === 0) {
         teams.push({ teamId: "Blue", players: [] }, { teamId: "Red", players: [] });
