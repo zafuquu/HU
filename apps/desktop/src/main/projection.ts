@@ -529,8 +529,15 @@ export class ValProjectionSession {
         // independent of GEP's per-game team numbering that made the
         // match_score remap invert the board half the time.
         if (won !== s.blue || lost !== s.red) {
-          s.blue = won;
-          s.red = lost;
+          // RO.won tracks GEP team_1 whose side varies per game — map through
+          // the viewer's GEP team number (roster/scoreboard 'team' fact).
+          if (s.viewerGepTeam === 0) {
+            s.blue = lost;
+            s.red = won;
+          } else {
+            s.blue = won;
+            s.red = lost;
+          }
           if (s.blue >= 13 && s.blue - s.red >= 2) s.matchWinner = "blue";
           else if (s.red >= 13 && s.red - s.blue >= 2) s.matchWinner = "red";
         }

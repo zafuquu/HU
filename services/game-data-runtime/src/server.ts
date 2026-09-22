@@ -381,7 +381,13 @@ class RuntimeHub {
         const lost = Number(rec?.lost);
         if (Number.isFinite(won) && Number.isFinite(lost)) {
           this.roundOutcomeSeen = true;
-          this.score = { blue: won, red: lost };
+          const viewerTeam = this.localPlayerId
+            ? this.players.get(this.localPlayerId)?.team ?? null
+            : null;
+          this.score =
+            viewerTeam === 0
+              ? { blue: lost, red: won }
+              : { blue: won, red: lost };
           this.sessionPhase = "live";
           this.revision += 1;
           this.emitSessionSnapshot();
