@@ -783,6 +783,12 @@ export default function OverlayPopout() {
     return null
   }
 
+  // Restored-from-cache state not yet confirmed by live runtime frames —
+  // never present a stale previous match as the live game.
+  if ((snapState as any)?.restorePending === true) {
+    return null
+  }
+
   // Extract new bridge state fields for overlay components
   const liveTimeout = liveScores?.timeout || null
   const liveEconomy = liveScores?.economy || null
