@@ -376,6 +376,64 @@ export class ValProjectionSession {
     this.emitChange();
   }
 
+  /**
+   * A5: match-scoped wipe — shared by the fresh-match detection (round 1
+   * after a tracked match) and the game_exit retirement. Clears every field
+   * the previous match owns; roster identities are KEPT (fresh-match
+   * semantics) — the retirement caller overrides with a full roster clear.
+   */
+  private wipeMatchState(): void {
+    const s = this.s;
+    s.blue = 0;
+    s.red = 0;
+    s.roundNumber = 0;
+    s.roundPhase = "unknown";
+    s.publishedNumber = 0;
+    s.publishedPhase = null;
+    s.pendingPhase = null;
+    s.roundHistory = [];
+    s.roundEnd = null;
+    s.gameEvent = null;
+    s.matchWinner = null;
+    s.matchMvp = null;
+    s.roundEndedAt = null;
+    s.spike = null;
+    s.spikePlantedAt = null;
+    s.killfeed = [];
+    s.roundKills.clear();
+    s.roundDeaths.clear();
+    s.clutchMax.clear();
+    s.roundStartScore = null;
+    this.creditsAtRoundStart.clear();
+    for (const p of s.roster ?? []) {
+      p.kills = null;
+      p.deaths = null;
+      p.assists = null;
+      p.credits = null;
+      p.spentCredits = null;
+      p.shield = null;
+      p.shieldType = null;
+      p.weapon = null;
+      p.health = 100;
+      p.isAlive = true;
+      p.ultPoints = null;
+      p.ultMax = null;
+      p.hasSpike = null;
+      // Agent evidence is per-match too — stale agentKey/agentIcon from
+      // the previous game made the buy-round cards show wrong/duplicated
+      // agent icons until GEP re-reports the roster.
+      p.agentKey = undefined;
+      p.agentIcon = null;
+      p.agentName = null;
+      // Ability charges are per-round too — stale {C,Q,E,X} from the
+      // previous game made every skill icon render as bought/available.
+      p.abilityState = undefined;
+      p.abilities = undefined;
+    }
+    this.diedLastRound.clear();
+    this.clearCache();
+  }
+
   public applyFact(key: string, rawValue: unknown): void {
     const s = this.s;
     s.restorePending = false; // live runtime evidence — restored data is superseded
@@ -384,6 +442,25 @@ export class ValProjectionSession {
     // scoreboard_enemy, scoreboard_N, ...). Normalize to the base case.
     const normalizedKey = key.startsWith("scoreboard") ? "scoreboard" : key;
     switch (normalizedKey) {
+      case "provider_status": {
+        // A5: the runtime retired the local session (real GEP game-exit, or
+        // the session-layer `disconnected` mapped onto game_exit). Wipe ALL
+        // match-scoped state — including identity/map/roster — so the retired
+        // session's score/map/rounds cannot survive as "current" payload
+        // until the next live session repopulates them. The HUD leaves the
+        // live scene via deriveScene (idle → null).
+        const rec = value as { key?: unknown } | null;
+        if (rec?.key !== "game_exit") break;
+        this.wipeMatchState();
+        s.roster = [];
+        s.matchId = null;
+        s.mapKey = null;
+        s.mapName = null;
+        s.sessionPhase = "idle";
+        s.revision += 1;
+        this.emitChange();
+        break;
+      }
       case "match_score":
       case "score": {
         const rec = value as { team_0?: unknown; team_1?: unknown; won?: unknown; lost?: unknown };
@@ -458,55 +535,7 @@ export class ValProjectionSession {
           n === 1 &&
           (s.publishedNumber > 1 || s.roundNumber > 1 || s.matchWinner !== null || s.roundHistory.length > 0)
         ) {
-          s.blue = 0;
-          s.red = 0;
-          s.roundNumber = 0;
-          s.roundPhase = "unknown";
-          s.publishedNumber = 0;
-          s.publishedPhase = null;
-          s.pendingPhase = null;
-          s.roundHistory = [];
-          s.roundEnd = null;
-          s.gameEvent = null;
-          s.matchWinner = null;
-          s.matchMvp = null;
-          s.roundEndedAt = null;
-          s.spike = null;
-          s.spikePlantedAt = null;
-          s.killfeed = [];
-          s.roundKills.clear();
-          s.roundDeaths.clear();
-          s.clutchMax.clear();
-          s.roundStartScore = null;
-          this.creditsAtRoundStart.clear();
-          this.creditsAtRoundStart.clear();
-          for (const p of s.roster ?? []) {
-            p.kills = null;
-            p.deaths = null;
-            p.assists = null;
-            p.credits = null;
-            p.spentCredits = null;
-            p.shield = null;
-            p.shieldType = null;
-            p.weapon = null;
-            p.health = 100;
-            p.isAlive = true;
-            p.ultPoints = null;
-            p.ultMax = null;
-            p.hasSpike = null;
-            // Agent evidence is per-match too — stale agentKey/agentIcon from
-            // the previous game made the buy-round cards show wrong/duplicated
-            // agent icons until GEP re-reports the roster.
-            p.agentKey = undefined;
-            p.agentIcon = null;
-            p.agentName = null;
-            // Ability charges are per-round too — stale {C,Q,E,X} from the
-            // previous game made every skill icon render as bought/available.
-            p.abilityState = undefined;
-            p.abilities = undefined;
-          }
-          this.diedLastRound.clear();
-          this.clearCache();
+          this.wipeMatchState();
         }
         s.roundNumber = n;
         if (s.pendingPhase !== null && n > s.publishedNumber) this.publishRound();

@@ -228,6 +228,22 @@ async function resolveContext(prev: RiotContext | null): Promise<RiotContext> {
 
   const clientVersion = readClientVersionFromLogs() ?? prev?.clientVersion ?? "release-13.05-shipping-11-5350494";
 
+  // A5: seed the LOCAL identity from the LCU's own chat session — the
+  // authoritative local puuid (this endpoint describes the logged-in user,
+  // not other players). Without it ctx.selfPuuid stayed null forever and
+  // pollMatch's presence fallback adopted whatever in-game presence it
+  // found first (the A5-PRE contamination root). Never substitute another
+  // player's puuid: a failed read just delays seeding to the next poll.
+  let selfPuuid = prev?.selfPuuid ?? null;
+  if (!selfPuuid) {
+    try {
+      const session = (await lcuGet(port, lockfile.password, "/chat/v1/session")) as {
+        puuid?: string;
+      };
+      if (typeof session?.puuid === "string" && session.puuid) selfPuuid = session.puuid;
+    } catch { /* retry next poll */ }
+  }
+
   return {
     port,
     password: lockfile.password,
@@ -236,7 +252,7 @@ async function resolveContext(prev: RiotContext | null): Promise<RiotContext> {
     region,
     shard,
     clientVersion,
-    selfPuuid: prev?.selfPuuid ?? null,
+    selfPuuid,
   };
 }
 
@@ -376,6 +392,32 @@ function parsePresences(raw: unknown): PresenceEntry[] {
   return out;
 }
 
+/**
+ * A5 session-identity boundary: the ONLY presence that may drive the local
+ * runtime is the one whose puuid equals the LOCAL player's (ctx.selfPuuid,
+ * seeded from the LCU's own /chat/v1/session — never from presences).
+ * A5-PRE evidence (RIOT_PRESENCE_FALLBACK_CONTAMINATION): the previous
+ * `presences.find(p => p.inGame || p.inProgress)` fallback selected a
+ * friend's live match while the local user sat in the VALORANT lobby —
+ * foreign score/map/live facts drove the HUD as if they were the local
+ * session. A local desktop instance must NEVER project another player's
+ * match merely because that player appears in Riot presence.
+ */
+export function selectSelfPresence<T extends { puuid: string }>(
+  presences: T[],
+  selfPuuid: string | null | undefined,
+): T | null {
+  if (!selfPuuid) return null;
+  return presences.find((p) => p.puuid === selfPuuid) ?? null;
+}
+
+/** True only when the given (self) presence reports a locally live session. */
+export function isSelfLive(
+  p: { inGame?: boolean; inProgress?: boolean; isPregame?: boolean } | null | undefined,
+): boolean {
+  return !!p && !!(p.inGame || p.inProgress || p.isPregame);
+}
+
 interface RosterPlayer {
   puuid: string;
   name: string;
@@ -488,6 +530,36 @@ export class RiotIdentitySource {
    */
   private idleStreak = 0;
 
+  /**
+   * A5 observability — state-gated (one log per foreign-presence identity
+   * change, never per tick): a non-self in-game presence was seen while the
+   * local user is not live, and was deliberately ignored. Makes it
+   * immediately obvious that `self=A selected=A ignored=B` rather than a
+   * generic "presence found". Enable with HAVOC_DEBUG_PIPELINE=1.
+   */
+  private lastForeignLog: string | null = null;
+  private logForeignIgnored(presences: PresenceEntry[], self: PresenceEntry | null): void {
+    if (isSelfLive(self)) {
+      this.lastForeignLog = null;
+      return;
+    }
+    const foreign = presences.find((p) => p !== self && isSelfLive(p));
+    if (!foreign) {
+      this.lastForeignLog = null;
+      return;
+    }
+    const selfTag = this.ctx?.selfPuuid ? `…${this.ctx.selfPuuid.slice(-6)}` : "unseeded";
+    const key = `${selfTag}|…${foreign.puuid.slice(-6)}`;
+    if (this.lastForeignLog === key) return;
+    this.lastForeignLog = key;
+    if (process.env.HAVOC_DEBUG_PIPELINE === "1") {
+      console.log(
+        `[pipeline:riot-identity] foreign_presence_ignored self=${selfTag} ` +
+          `foreign=${key.split("|")[1]} (local session not live — not projecting)`,
+      );
+    }
+  }
+
   private emitRoster(roster: RosterPlayer[], withStats: boolean): void {
     for (const player of roster) {
       this.emit({
@@ -556,11 +628,10 @@ export class RiotIdentitySource {
     try {
       const raw = await lcuGet(this.ctx.port, this.ctx.password, "/chat/v4/presences");
       const presences = parsePresences(raw);
-      const self =
-        presences.find((p) => p.puuid === this.ctx!.selfPuuid) ??
-        presences.find((p) => p.inGame || p.isPregame || p.inProgress) ??
-        null;
-      return !!self && (self.inGame || self.isPregame || self.inProgress);
+      // A5: SELF presence only. The old `presences.find(p => p.inGame ||
+      // p.isPregame || p.inProgress)` fallback made retirement structurally
+      // unreachable — any party member playing kept the local session alive.
+      return isSelfLive(selectSelfPresence(presences, this.ctx.selfPuuid));
     } catch {
       // Presence read failed: assume the session persists (jitter, not exit).
       return true;
@@ -593,13 +664,14 @@ export class RiotIdentitySource {
     const presences = parsePresences(
       await lcuGet(this.ctx.port, this.ctx.password, "/chat/v4/presences"),
     );
-    // Self = our known puuid; otherwise the first presence actually IN a game
-    // (the desktop machine is the streamer's — that is the match we project).
-    const self =
-      presences.find((p) => p.puuid === this.ctx!.selfPuuid) ??
-      presences.find((p) => p.inGame || p.inProgress) ??
-      null;
-    if (self) this.ctx.selfPuuid = self.puuid;
+    // Self = the LOCAL player ONLY (A5 session-identity boundary). Never
+    // project another player's presence: the streamer's desktop represents
+    // the local user's VALORANT session, not a friend's. When self is
+    // absent or not in-game, the session is simply not live — a friend or
+    // party member being in a match is irrelevant and must be ignored
+    // completely (foreign_presence_ignored diagnostic below).
+    const self = selectSelfPresence(presences, this.ctx.selfPuuid);
+    this.logForeignIgnored(presences, self);
 
     // New-match detection from presence alone (see field docs): agent-select
     // flip after a live session, or a score decrease vs the previous poll.

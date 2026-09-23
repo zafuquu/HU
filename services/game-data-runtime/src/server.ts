@@ -323,6 +323,13 @@ class RuntimeHub {
             this.emitSessionSnapshot();
           }
         } else if (statusKey === "game_exit") {
+          // A5: full session retirement. The lifecycle signal (real GEP
+          // game-exit, or the session-layer `disconnected` mapped onto it)
+          // must leave NOTHING live behind: resetMatch() retires
+          // phase/score/map/rounds, and the scene must be cleared too —
+          // the old branch left currentScene=ingame_hud driving the HUD
+          // after the session ended.
+          this.currentScene = null;
           this.resetMatch();
         } else if (statusKey === "provider_error") {
           this.errorState = typeof rec?.value === "string" ? rec.value : "provider_error";
@@ -355,6 +362,14 @@ class RuntimeHub {
       } else if (fact.key === "session_phase" && typeof fact.value === "string") {
         if (fact.value === "loading" || fact.value === "idle" || fact.value === "live") {
           this.sessionPhase = fact.value;
+          if (fact.value === "idle") {
+            // A5: presence-streak retirement (user backed out / closed the
+            // game without a GEP lifecycle signal reaching us) must retire
+            // FULLY — the old path only flipped the phase and left the
+            // retired session's score/map/scene driving the HUD.
+            this.currentScene = null;
+            this.resetMatch();
+          }
           this.revision += 1;
           this.emitSessionSnapshot();
         }

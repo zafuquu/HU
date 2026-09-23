@@ -35,6 +35,25 @@ import type { ProviderFact } from "./mock-source";
 const ELEVATED_CONNECTION_TIMEOUT_MS = 45_000;
 
 
+/**
+ * A5: map the GEP session-layer `disconnected` callback onto the runtime's
+ * EXISTING game_exit lifecycle. A5-PRE evidence: when VALORANT closes the
+ * plugin emits `disconnected` — never `game-exit` — so without this mapping
+ * the runtime's reset path (which keys on `game_exit`) never fired, and a
+ * close→restart that outran the presence retirement streak (~3-6s restart
+ * vs ~12s streak) left the session permanently live. Reuses the existing
+ * lifecycle mechanism; no second state machine.
+ */
+export function gepDisconnectLifecycleEvent(code?: unknown): {
+  key: "game_exit";
+  value: { reason: "gep_disconnected"; code: number | null };
+} {
+  return {
+    key: "game_exit",
+    value: { reason: "gep_disconnected", code: typeof code === "number" ? code : null },
+  };
+}
+
 export type ProviderEmit = (fact: ProviderFact) => void;
 
 export type ProviderState = "unavailable" | "starting" | "ready" | "error";
@@ -1350,9 +1369,15 @@ export class GepProviderSource {
       }
       case "disconnected": {
         // The GEP addon lost its game connection. The attach loop re-attaches
-        // on its next tick; surface it for diagnostics.
+        // on its next tick; surface it for diagnostics — AND retire the local
+        // session through the runtime's existing game_exit path (A5: this is
+        // the lifecycle evidence VALORANT close actually produces; the old
+        // diagnostics-only handling left phantom live sessions behind).
         this.attachedPid = null;
         this.emitProviderStatus("game_connection_lost", msg.payload);
+        const args = Array.isArray(msg.payload) ? (msg.payload as unknown[]) : [];
+        const lifecycle = gepDisconnectLifecycleEvent(args[2]);
+        this.emitProviderStatus(lifecycle.key, lifecycle.value);
         return;
       }
       case "gameDetected":
