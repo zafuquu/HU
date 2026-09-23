@@ -42,6 +42,67 @@ export interface ProviderHealth {
   state: ProviderState;
   lastError: string | null;
   providerVersion: string | null;
+  /** Telemetry-delivery state machine (A2). Additive — see computeTelemetryState. */
+  telemetry?: GepTelemetryStatus;
+}
+
+/**
+ * GEP telemetry-freshness window. Matches the existing re-attach staleness
+ * contract (330s = GEP's observed plugin init window of up to 300s + margin):
+ * a live match always streams info updates well inside this window, so
+ * silence beyond it means the fact stream is genuinely not flowing.
+ */
+export const TELEMETRY_FRESHNESS_MS = 330_000;
+
+/**
+ * Telemetry-delivery state — distinct from ProviderState (process health).
+ * ProviderState says the child is alive; this says whether the game fact
+ * stream is actually flowing. The two can diverge silently in the field:
+ * a provider can attach and produce ZERO info updates for entire matches.
+ */
+export type ProviderTelemetryState =
+  | "DISCONNECTED"
+  | "ERROR"
+  | "WAITING_FOR_TELEMETRY"
+  | "FEATURES_SET"
+  | "CONNECTED_BUT_NO_TELEMETRY"
+  | "STALE"
+  | "HEALTHY";
+
+export interface GepTelemetryStatus {
+  state: ProviderTelemetryState;
+  previous: ProviderTelemetryState;
+  /** connect-game sent for this game pid (attach confirmed on our side). */
+  attached: boolean;
+  attachedAt: number | null;
+  /** PM path only — the direct addon cannot report feature registration. */
+  featuresSetAt: number | null;
+  firstInfoUpdateAt: number | null;
+  lastGameDataAt: number | null;
+  lastError: string | null;
+}
+
+/**
+ * Pure telemetry-state machine. HEALTHY requires an actually-received info
+ * update inside the freshness window — connection and feature registration
+ * alone can never produce HEALTHY (that was the field failure this guards).
+ */
+export function computeTelemetryState(input: {
+  providerState: ProviderState;
+  attached: boolean;
+  featuresSetAt: number | null;
+  firstInfoUpdateAt: number | null;
+  lastGameDataAt: number;
+  now: number;
+}): ProviderTelemetryState {
+  if (input.providerState === "error") return "ERROR";
+  if (!input.attached) return "DISCONNECTED";
+  const sinceData = input.now - input.lastGameDataAt;
+  if (input.firstInfoUpdateAt != null) {
+    return sinceData > TELEMETRY_FRESHNESS_MS ? "STALE" : "HEALTHY";
+  }
+  if (sinceData > TELEMETRY_FRESHNESS_MS) return "CONNECTED_BUT_NO_TELEMETRY";
+  return input.featuresSetAt != null ? "FEATURES_SET" : "WAITING_FOR_TELEMETRY";
 }
 
 interface ProtocolMessage {
@@ -433,7 +494,56 @@ export class GepProviderSource {
   }
 
   public health(): ProviderHealth {
-    return { state: this.state, lastError: this.lastError, providerVersion: this.providerVersion };
+    return {
+      state: this.state,
+      lastError: this.lastError,
+      providerVersion: this.providerVersion,
+      telemetry: this.telemetryStatus(),
+    };
+  }
+
+  /**
+   * Telemetry-delivery status (A2). Computed on read — no polling. The
+   * existing 4s attach loop also drives edge-triggered
+   * `provider_status: provider_telemetry_state` emissions so consumers can
+   * observe state transitions without reading /health.
+   */
+  public telemetryStatus(): GepTelemetryStatus {
+    const previous = this.telemetryState;
+    const state = computeTelemetryState({
+      providerState: this.state,
+      attached: this.attachedPid !== null,
+      featuresSetAt: this.featuresSetAt,
+      firstInfoUpdateAt: this.firstInfoUpdateAt,
+      lastGameDataAt: this.lastGameDataAt,
+      now: Date.now(),
+    });
+    if (state !== this.telemetryState) {
+      this.telemetryPrevious = previous;
+      this.telemetryState = state;
+      this.emitProviderStatus("provider_telemetry_state", {
+        state,
+        previous,
+        attached: this.attachedPid !== null,
+        firstInfoUpdateAt: this.firstInfoUpdateAt,
+        lastGameDataAt: this.lastGameDataAt || null,
+      });
+    }
+    return {
+      state: this.telemetryState,
+      previous: this.telemetryPrevious,
+      attached: this.attachedPid !== null,
+      attachedAt: this.attachedAt,
+      featuresSetAt: this.featuresSetAt,
+      firstInfoUpdateAt: this.firstInfoUpdateAt,
+      lastGameDataAt: this.lastGameDataAt || null,
+      lastError: this.lastError,
+    };
+  }
+
+  /** Re-evaluate + edge-emit telemetry state (driven by the attach loop tick). */
+  private evaluateTelemetryState(): void {
+    this.telemetryStatus();
   }
 
   /**
@@ -845,6 +955,12 @@ export class GepProviderSource {
   private attachedPid: number | null = null;
   private lastGameDataAt = 0;
   private attachTimer: NodeJS.Timeout | null = null;
+  // ---- Telemetry-delivery state machine (A2) — see computeTelemetryState ----
+  private telemetryState: ProviderTelemetryState = "DISCONNECTED";
+  private telemetryPrevious: ProviderTelemetryState = "DISCONNECTED";
+  private attachedAt: number | null = null;
+  private featuresSetAt: number | null = null;
+  private firstInfoUpdateAt: number | null = null;
 
   private startAttachLoop(): void {
     this.stopAttachLoop();
@@ -895,7 +1011,8 @@ export class GepProviderSource {
       // plugin's initialization — an infinite loop where data could never
       // arrive (observed 06:29-06:59: connect resolved -> 5min -> nothing ->
       // re-attach). Only re-attach after the full init window plus margin.
-      const stale = this.attachedPid !== null && now - this.lastGameDataAt > 330_000;
+      const stale = this.attachedPid !== null && now - this.lastGameDataAt > TELEMETRY_FRESHNESS_MS;
+      this.evaluateTelemetryState();
       if (this.attachedPid === pid && !stale) return;
       const msg = {
         type: "command",
@@ -911,11 +1028,13 @@ export class GepProviderSource {
       // Seed the freshness window so the loop does not spam connect-game while
       // the child settles the connection; real data refreshes it from then on.
       this.lastGameDataAt = now;
+      this.attachedAt = now;
       if (this.hostSocket && !this.hostSocket.destroyed) {
         this.hostSocket.write(JSON.stringify(msg) + "\n");
       } else {
         this.child?.stdin?.write(JSON.stringify(msg) + "\n");
       }
+      this.evaluateTelemetryState();
     }).catch(() => { /* process scan failed — the loop retries next tick */ });
   }
 
@@ -1029,6 +1148,10 @@ export class GepProviderSource {
         this.state = "ready";
         this.lastError = null;
         this.restartAttempt = 0;
+        // Fresh provider session — per-match telemetry proof resets.
+        this.attachedAt = null;
+        this.featuresSetAt = null;
+        this.firstInfoUpdateAt = null;
         const rec = msg.payload as { version?: string } | null;
         if (typeof rec?.version === "string" && rec.version) this.providerVersion = rec.version;
         this.emitProviderStatus("provider_ready", msg.payload);
@@ -1043,7 +1166,12 @@ export class GepProviderSource {
         return;
       case "game-exit":
         this.attachedPid = null;
+        // Per-match telemetry proof resets: the next game must re-prove the
+        // fact stream (game_exit → ATTACHED until new telemetry arrives).
+        this.featuresSetAt = null;
+        this.firstInfoUpdateAt = null;
         this.emitProviderStatus("game_exit", msg.payload);
+        this.evaluateTelemetryState();
         return;
       case "elevated-privileges-required":
         this.state = "error";
@@ -1055,6 +1183,8 @@ export class GepProviderSource {
         this.emitProviderStatus("provider_error", this.lastError);
         return;
       case "features-set":
+        this.featuresSetAt = Date.now();
+        this.evaluateTelemetryState();
         this.emitProviderStatus("features_set", msg.payload);
         return;
       case "info-update":
@@ -1081,6 +1211,8 @@ export class GepProviderSource {
       case "info_update":
       case "infoUpdate": {
         this.lastGameDataAt = Date.now();
+        if (this.firstInfoUpdateAt === null) this.firstInfoUpdateAt = this.lastGameDataAt;
+        this.evaluateTelemetryState();
         const item = findInfoItem(msg.payload);
         if (item) factFromInfoUpdate(item, this.emit);
         return;

@@ -39,6 +39,8 @@ export interface ShellStatus {
   connecting: boolean;
   overlayRequested: boolean;
   runtimeConnected: boolean;
+  /** A2: GEP telemetry-delivery state (additive) — e.g. HEALTHY / CONNECTED_BUT_NO_TELEMETRY. */
+  gepTelemetry: { state: string; at: number } | null;
   live: {
     sessionPhase: string;
     mapName: string | null;

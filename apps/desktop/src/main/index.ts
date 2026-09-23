@@ -291,6 +291,10 @@ function queuePublish(): void {
   }, 250);
 }
 
+/** A2: latest GEP telemetry-delivery state (from provider_status facts, additive). */
+let gepTelemetryState: string | null = null;
+let gepTelemetryStateAt = 0;
+
 /** Tracks which projection changes were already surfaced as game-event frames. */
 let lastEventState = {
   roundNumber: 0,
@@ -448,6 +452,8 @@ const shellControls: ShellControls = {
       connecting: connectingRoom,
       overlayRequested,
       runtimeConnected: snap?.connectedToRuntime ?? false,
+      gepTelemetry:
+        gepTelemetryState !== null ? { state: gepTelemetryState, at: gepTelemetryStateAt } : null,
       live: snap
         ? {
             sessionPhase: snap.sessionPhase,
@@ -678,7 +684,23 @@ async function boot(): Promise<void> {
   });
 
   client = new GameDataRuntimeClient(cfg.runtimeOrigin, {
-    onFact: ({ key, value }) => projection.applyFact(key, value),
+    onFact: ({ key, value }) => {
+      // A2: surface the GEP telemetry-delivery state machine on /api/status.
+      // provider_status facts carry {key, value:{state, previous, ...}}.
+      if (key === "provider_status") {
+        const rec = value as
+          | { key?: unknown; value?: { state?: unknown } | null }
+          | null;
+        if (rec?.key === "provider_telemetry_state") {
+          const state = (rec.value as { state?: unknown } | null)?.state;
+          if (typeof state === "string") {
+            gepTelemetryState = state;
+            gepTelemetryStateAt = Date.now();
+          }
+        }
+      }
+      projection.applyFact(key, value);
+    },
     onScore: (score) => projection.applyScore(score.blue, score.red),
     onSnapshot: (snapshot) => projection.applySnapshot(snapshot),
     onGameState: (frame) => logger.info("runtime-client", "game_state_event", { kind: frame.kind }),

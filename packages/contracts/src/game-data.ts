@@ -17,6 +17,19 @@ const capabilityStateSchema = z
   .object({
     lastError: z.string().nullable(),
     state: z.enum(["ready", "starting", "error", "unavailable"]).catch("unavailable"),
+    // A2: GEP telemetry-delivery state machine payload (additive, optional).
+    telemetry: z
+      .object({
+        state: z.string(),
+        previous: z.string().nullish(),
+        attached: z.boolean().nullish(),
+        attachedAt: z.number().nullish(),
+        featuresSetAt: z.number().nullish(),
+        firstInfoUpdateAt: z.number().nullish(),
+        lastGameDataAt: z.number().nullish(),
+        lastError: z.string().nullish(),
+      })
+      .nullish(),
   })
   .nullish();
 

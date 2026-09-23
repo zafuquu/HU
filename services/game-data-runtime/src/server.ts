@@ -625,6 +625,8 @@ class RuntimeHub {
           state: gepHealth.state,
           lastError: gepHealth.lastError,
           providerVersion: gepHealth.providerVersion,
+          // A2: telemetry-delivery state machine (additive; schema-optional).
+          telemetry: gepHealth.telemetry ?? null,
         },
         valorantApi: this.useMock
           ? { state: "unavailable", lastError: "mock source" }
