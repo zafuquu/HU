@@ -11,6 +11,7 @@
  * stream the runtime + desktop pipeline already consume.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { monitorRecoveryDecision, type MonitorRecoveryState } from "./provider-recovery";
 import { createServer, type Server, type Socket } from "node:net";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
@@ -542,6 +543,89 @@ export class GepProviderSource {
   }
 
   /** Re-evaluate + edge-emit telemetry state (driven by the attach loop tick). */
+  
+  /**
+   * A4 (FIX B): terminate orphaned HU GEP provider processes.
+   *
+   * Identification is deliberately narrow: only processes whose command line
+   * contains the gep-provider entrypoint directory are targeted. Unrelated
+   * node.exe/electron.exe processes (dev servers, other HU services, user
+   * apps) do not match and are never touched. The CURRENT child is skipped —
+   * restartProviderNow() terminates it through the normal lifecycle.
+   *
+   * Returns the number of orphan pids actually terminated.
+   */
+  private async cleanupOrphanedGepProviders(): Promise<number> {
+    const keepPid = this.child?.pid ?? null;
+    const query =
+      "Get-CimInstance Win32_Process -Filter \"Name='electron.exe' OR Name='node.exe'\" | " +
+      "Where-Object { $_.CommandLine -like '*gep-provider*' } | " +
+      "Select-Object -ExpandProperty ProcessId";
+    const pids = await new Promise<string[]>((resolve) => {
+      try {
+        const child = spawn(
+          "powershell.exe",
+          ["-NoProfile", "-NonInteractive", "-Command", query],
+          { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+        );
+        let out = "";
+        child.stdout?.on("data", (d: Buffer) => {
+          out += d.toString();
+        });
+        child.on("error", () => resolve([]));
+        child.on("close", (code) => {
+          if (code !== 0) {
+            resolve([]);
+            return;
+          }
+          resolve(
+            out
+              .split(/\r?\n/)
+              .map((l) => l.trim())
+              .filter((l) => /^\d+$/.test(l)),
+          );
+        });
+      } catch {
+        resolve([]);
+      }
+    });
+    const targets = pids.map(Number).filter((pid) => Number.isFinite(pid) && pid > 0 && pid !== process.pid);
+    let killed = 0;
+    for (const pid of targets) {
+      if (keepPid != null && pid === keepPid) continue; // never touch the live child
+      try {
+        const child = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
+          windowsHide: true,
+          stdio: ["ignore", "ignore", "pipe"],
+        });
+        let stderr = "";
+        child.stderr?.on("data", (d: Buffer) => {
+          stderr += d.toString();
+        });
+        const exited = await new Promise<number | null>((resolve) => {
+          child.on("close", (code) => resolve(code));
+          child.on("error", () => resolve(null));
+        });
+        if (exited === 0) {
+          killed += 1;
+          this.emitProviderStatus("monitor_recovery_orphan_killed", { pid });
+        } else {
+          this.emitProviderStatus("monitor_recovery_orphan_skip", {
+            pid,
+            reason: stderr.slice(0, 200),
+          });
+        }
+      } catch (error) {
+        this.emitProviderStatus("monitor_recovery_orphan_skip", {
+          pid,
+          error: String(error),
+        });
+      }
+    }
+    return killed;
+  }
+
+  /** Re-evaluate + edge-emit telemetry state (driven by the attach loop tick). */
   private evaluateTelemetryState(): void {
     this.telemetryStatus();
   }
@@ -961,6 +1045,8 @@ export class GepProviderSource {
   private attachedAt: number | null = null;
   private featuresSetAt: number | null = null;
   private firstInfoUpdateAt: number | null = null;
+  // ---- A4 monitor-loss recovery (bounded, see provider-recovery.ts) ----
+  private recoveryState: MonitorRecoveryState = { attempts: 0, windowStart: 0 };
 
   private startAttachLoop(): void {
     this.stopAttachLoop();
@@ -1067,15 +1153,51 @@ export class GepProviderSource {
     this.monitorConflictHandled = true;
     this.state = "error";
     this.lastError = `GEP monitor unavailable (${MONITOR_CONFLICT_ERROR})`;
-    // Retail Overwolf is the usual culprit; resolving it makes the next
-    // provider launch succeed. Allow re-detection after a cooldown so a later
-    // Overwolf start is caught too.
-    const resolved = this.resolveOverwolfConflict("monitor-conflict");
+    // A4 (FIX A): recover UNCONDITIONALLY. The previous path restarted only
+    // when retail Overwolf was found and killed — when Overwolf was already
+    // dead (resolved=false) the provider was never restarted and the fact
+    // stream stayed dead for the rest of the match (A3-LIVE, confirmed).
+    const overwolfFound = findOverwolfProcesses().length > 0;
+    const decision = monitorRecoveryDecision(this.recoveryState, Date.now());
+    this.recoveryState = { attempts: decision.attempts, windowStart: decision.windowStart };
     this.emitProviderStatus("provider_error", this.lastError);
+    if (!decision.restart) {
+      // §11: bounded — repeated failures inside the window enter a cooldown
+      // instead of an uncontrolled spawn loop. The next failure after the
+      // cooldown re-triggers recovery (60s debounce re-arms meanwhile).
+      const cooldown = Math.max(1, Math.ceil(decision.cooldownMs / 1000));
+      this.emitProviderStatus("monitor_recovery_cooldown", {
+        attempts: decision.attempts,
+        cooldownSeconds: cooldown,
+      });
+      setTimeout(() => {
+        this.monitorConflictHandled = false;
+      }, decision.cooldownMs);
+      return;
+    }
+    // Attempt Overwolf conflict cleanup first (harmless when absent).
+    const resolved = this.resolveOverwolfConflict("monitor-conflict");
+    // A4 (FIX B): terminate orphaned gep-provider processes — the likely
+    // monitor thief — before spawning the replacement (§4: at most one).
+    this.emitProviderStatus("monitor_recovery_started", {
+      overwolfFound,
+      overwolfKilled: resolved,
+      attempts: decision.attempts,
+    });
+    void this
+      .cleanupOrphanedGepProviders()
+      .then((cleaned) => {
+        this.emitProviderStatus("monitor_recovery_cleanup_done", { killed: cleaned });
+        this.restartProviderNow();
+      })
+      .catch((error) => {
+        this.emitProviderStatus("monitor_recovery_failed", { error: String(error) });
+        // Recovery must not die with the cleanup: restart regardless.
+        this.restartProviderNow();
+      });
     setTimeout(() => {
       this.monitorConflictHandled = false;
     }, 60_000);
-    if (resolved) this.restartProviderNow();
   }
 
   /** Force an immediate provider relaunch (used after clearing a conflict). */

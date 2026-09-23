@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json && node dist/server.js",
     "start": "node dist/server.js",
-    "test": "node --test test/gep-telemetry-state.test.mjs"
+    "test": "node --test test/gep-telemetry-state.test.mjs test/gep-monitor-recovery.test.mjs"
   },
   "dependencies": {
     "@havoc-unleash/contracts": "*",
