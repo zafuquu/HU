@@ -29,8 +29,8 @@ export interface GamePlayerState {
   /** Same as teamIndex (the website's filter fallback reads this name). */
   startTeam?: number | null;
   isAlive?: boolean;
-  health?: number;
-  armor?: number;
+  health?: number | null;
+  armor?: number | null;
   shield?: number | null;
   shieldType?: number | null;
   abilities?: unknown[];
@@ -147,12 +147,20 @@ export function toGameSnapshot(state: HudRelayState): GameSnapshot {
       startTeam: p.teamIndex ?? null,
       agentKey: p.agentKey ?? undefined,
       abilityState: p.abilityState ?? null,
+      // Health is published ONLY from real telemetry evidence. The previous
+      // `p.health ?? 100` fabricated a full-HP bar for every player the
+      // provider has not reported (Regression C: fake HP mistaken for live
+      // data). null means "unknown — no telemetry yet"; the site renders
+      // dim-unknown for null (IngameHudScene healthNum == null path).
       isAlive: p.isAlive !== false && (p.health == null || p.health > 0),
-      health: p.isAlive === false ? 0 : (p.health ?? 100),
+      health: p.isAlive === false ? 0 : (p.health ?? null),
       // Real shield from GEP: `shield` = points (0/25/50), `shieldType` = the
       // GEP tier enum (0 none / 1 light / 2 heavy / 3 enemy-unknown / 4 regen)
       // so the site can render the correct armor icon (VS parity).
-      armor: p.shield ?? 0,
+      // armor: null-safe (unknown ≠ zero) — the site's getShieldImg treats
+      // null/undefined armor as "no shield evidence" via Number(null)=0 -> None;
+      // shield points stay null when the provider has not reported (Regression E).
+      armor: p.shield ?? null,
       shield: p.shield ?? null,
       shieldType:
         p.shieldType != null
