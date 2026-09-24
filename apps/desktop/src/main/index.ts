@@ -51,6 +51,26 @@ let connectingRoom = false;
 
 const FOLLOW_INTERVAL_MS = 1_000;
 
+/**
+ * Crash containment (2026-09-24 incident): an uncaught exception in the main
+ * process made Electron show its BLOCKING "A JavaScript error occurred in the
+ * main process" dialog. That froze everything — HTTP server, runtime stream and
+ * publisher — while the process stayed alive and its window kept showing the
+ * last painted frame, so the desktop "looked fine" while the website/OBS went
+ * empty. A broadcaster must degrade, never freeze: log the real stack and keep
+ * running instead of letting Electron take the thread.
+ */
+process.on("uncaughtException", (error) => {
+  logger.error("app", "uncaught_exception", {
+    error: error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error),
+  });
+});
+process.on("unhandledRejection", (reason) => {
+  logger.error("app", "unhandled_rejection", {
+    error: reason instanceof Error ? `${reason.message}\n${reason.stack ?? ""}` : String(reason),
+  });
+});
+
 const isPackaged = app.isPackaged;
 
 function repoRoot(): string {
@@ -306,6 +326,18 @@ let lastEventState = {
 };
 
 function publishNow(): void {
+  try {
+    publishNowUnsafe();
+  } catch (error) {
+    // Timer-driven publish: a throw here would otherwise reach the top level as
+    // an uncaught exception (see the crash-containment note in this file).
+    logger.error("pipeline", "publish_failed", {
+      error: error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error),
+    });
+  }
+}
+
+function publishNowUnsafe(): void {
   if (!producer || !activeRoom) {
     pipelineDebug("publish_skipped", { hasProducer: !!producer, hasRoom: !!activeRoom });
     return;
@@ -634,6 +666,17 @@ function openOverlayPopout(room: ProducerRoom): void {
 }
 
 function followGameWindow(): void {
+  try {
+    followGameWindowUnsafe();
+  } catch (error) {
+    // Win32 FFI + window ops run on a 1s timer; a throw must not kill the app.
+    logger.error("overlay", "follow_window_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function followGameWindowUnsafe(): void {
   if (!overlayWindow || overlayWindow.isDestroyed()) return;
   if (!overlayRequested) {
     if (overlayWindow.isVisible()) overlayWindow.hide();

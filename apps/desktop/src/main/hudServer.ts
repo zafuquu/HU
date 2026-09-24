@@ -58,6 +58,8 @@ export class HudServer {
   // shape the bridge distributes — the website's ?local=1 authoritative source.
   private broadcastClients = new Set<WebSocket>();
   private lastBroadcast: unknown = null;
+  /** The HTTP listener — kept so the server can be shut down (tests / quit path). */
+  private server: http.Server | null = null;
 
   public constructor(
     private readonly port: number,
@@ -66,7 +68,27 @@ export class HudServer {
   ) {}
 
   public async start(): Promise<void> {
-    const server = http.createServer((req, res) => this.route(req, res));
+    const server = http.createServer((req, res) => {
+      try {
+        this.route(req, res);
+      } catch (error) {
+        // A handler defect must never escape as an uncaught exception: inside the
+        // Electron main process that becomes a BLOCKING error dialog and freezes
+        // the whole publisher (2026-09-24: GET /api/status threw a ZodError and
+        // took the runtime stream, the bot publisher and the relay down with it).
+        logger.error("hud-server", "route_error", {
+          url: req.url ?? null,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        try {
+          if (!res.headersSent) res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "internal" }));
+        } catch {
+          /* connection already gone */
+        }
+      }
+    });
+    this.server = server;
     this.wss = new WebSocketServer({ noServer: true });
     server.on("upgrade", (req, socket, head) => {
       const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.port}`);
@@ -94,6 +116,26 @@ export class HudServer {
       server.listen(this.port, "127.0.0.1", () => resolve());
     });
     logger.info("hud-server", "listening", { port: this.port });
+  }
+
+  /** Release the listener + push channels (tests and the app's quit path). */
+  public async stop(): Promise<void> {
+    for (const ws of [...this.clients, ...this.broadcastClients]) {
+      try {
+        ws.close();
+      } catch {
+        /* already gone */
+      }
+    }
+    this.clients.clear();
+    this.broadcastClients.clear();
+    this.wss?.close();
+    this.wss = null;
+    const server = this.server;
+    this.server = null;
+    if (server) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   }
 
   /** Throttle-free direct push; UI layers coalesce their own animation. */

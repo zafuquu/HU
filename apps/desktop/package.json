@@ -10,7 +10,7 @@
     "dev": "npm run build && electron .",
     "start": "electron .",
     "pack": "node ../../scripts/pack-desktop.mjs",
-    "test": "node --test test/config-hybrid.test.mjs test/projection-boot.test.mjs",
+    "test": "node --test test/config-hybrid.test.mjs test/projection-boot.test.mjs test/projection-roster-contract.test.mjs test/hud-server-crash-safety.test.mjs test/runtime-stream-resilience.test.mjs",
     "ow:start": "npm run build && node ../../scripts/ow-start.mjs",
     "ow:install": "npx install-ow-electron"
   },

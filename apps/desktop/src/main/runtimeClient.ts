@@ -56,13 +56,13 @@ export class GameDataRuntimeClient {
       }
       if (++attempts > MAX_ATTEMPTS) {
         logger.error("runtime-client", "retries_exhausted");
-        this.cb.onStatus({ connected: false, reason: "runtime_unavailable" });
+        this.notify("onStatus", () => this.cb.onStatus({ connected: false, reason: "runtime_unavailable" }));
         await sleep(60_000, this.abort.signal);
         attempts = 0;
         continue;
       }
       const delay = Math.min(INITIAL_DELAY_MS * 2 ** (attempts - 1), MAX_DELAY_MS);
-      this.cb.onStatus({ connected: false });
+      this.notify("onStatus", () => this.cb.onStatus({ connected: false }));
       await sleep(delay, this.abort.signal);
     }
   }
@@ -71,6 +71,24 @@ export class GameDataRuntimeClient {
     this.generation += 1;
     this.abort?.abort();
     this.abort = null;
+  }
+
+  /**
+   * Consumer callbacks (projection / publisher) run synchronously inside the
+   * stream read loop, so a throw there used to tear the whole subscription down
+   * and burn the reconnect budget — the 2026-09-24 incident: one bad frame in
+   * the projection stopped ALL telemetry. A consumer must be able to fail
+   * without killing the stream.
+   */
+  private notify(label: string, fn: () => void): void {
+    try {
+      fn();
+    } catch (error) {
+      logger.error("runtime-client", "callback_failed", {
+        label,
+        error: error instanceof Error ? `${error.message}\n${error.stack ?? ""}` : String(error),
+      });
+    }
   }
 
   private async assertHealthy(): Promise<void> {
@@ -145,7 +163,7 @@ export class GameDataRuntimeClient {
               teams: msg.snapshot.teams?.length ?? null,
             });
           }
-          this.cb.onSnapshot(msg.snapshot);
+          this.notify("onSnapshot", () => this.cb.onSnapshot(msg.snapshot));
           continue;
         }
 
@@ -153,21 +171,25 @@ export class GameDataRuntimeClient {
           case "valorant_session_snapshot": {
             if (msg.snapshot.revision <= acceptedRevision) break;
             acceptedRevision = msg.snapshot.revision;
-            this.cb.onSnapshot(msg.snapshot);
+            this.notify("onSnapshot", () => this.cb.onSnapshot(msg.snapshot));
             break;
           }
           case "valorant_score_snapshot":
-            this.cb.onScore(msg.score);
+            this.notify("onScore", () => this.cb.onScore(msg.score));
             break;
           case "new_info_update":
-            this.cb.onFact({ kind: "new_info_update", key: msg.data.key, value: msg.data.value });
+            this.notify("onFact", () =>
+              this.cb.onFact({ kind: "new_info_update", key: msg.data.key, value: msg.data.value }),
+            );
             break;
           case "new_game_event":
-            this.cb.onFact({ kind: "new_game_event", key: msg.data.key, value: msg.data.value });
+            this.notify("onFact", () =>
+              this.cb.onFact({ kind: "new_game_event", key: msg.data.key, value: msg.data.value }),
+            );
             break;
           case "game_detected":
           case "game_exit":
-            this.cb.onGameState(msg);
+            this.notify("onGameState", () => this.cb.onGameState(msg));
             break;
           default:
             break;

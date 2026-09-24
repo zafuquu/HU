@@ -10,6 +10,7 @@ import {
   type ValorantSessionSnapshot,
 } from "@havoc-unleash/contracts";
 
+import { logger } from "./logger";
 import { agentDisplayName, agentIconUrl, weaponDisplayName } from "./valorant-identity";
 
 import * as nodeFs from "fs";
@@ -35,6 +36,33 @@ const STATUS_FACT_KEYS: ReadonlySet<string> = new Set(["provider_status"]);
  * restored previous match into authoritative state.
  */
 const LIVE_SESSION_PHASES: ReadonlySet<string> = new Set(["loading", "pregame", "live", "ending"]);
+
+/**
+ * Relay board contract — `packages/contracts/src/hud-state.ts` caps the relay
+ * roster at 10 entries (`.max(10)`) because the site renders a 5v5 board.
+ *
+ * Live defect fixed here (2026-09-24, hybrid Blob capture engine): the provider
+ * can report MORE identities than the relay contract allows (an extra/duplicate
+ * scoreboard row), so `s.roster` reached 11. `build()` then threw a ZodError
+ * (`too_big`, path `["roster"]`) from an UNGUARDED `hudRelayStateSchema.parse`,
+ * and that single throw took the whole publisher down:
+ *
+ *   - inside the SSE frame path it tore the runtime stream down
+ *     (`runtime-client stream_reconnecting` burned the reconnect budget), and
+ *   - inside an HTTP handler (`GET /api/status`) it escaped as an UNCAUGHT
+ *     exception, so Electron showed its blocking
+ *     "A JavaScript error occurred in the main process" dialog.
+ *
+ * The main thread never returned: snapshots stopped reaching the bridge, the
+ * Supabase mirror/presence froze and the website/OBS stayed empty while the app
+ * window still showed its last painted frame.
+ *
+ * The relay therefore enforces its own contract BEFORE validating, without
+ * inventing anything: dedupe identities, then keep at most 5 per reported side
+ * and 10 overall, preserving source order.
+ */
+const RELAY_ROSTER_MAX = 10;
+const RELAY_ROSTER_PER_TEAM = 5;
 
 /**
  * Diagnostics retained from the boot cache. This is NEVER authoritative state —
@@ -178,11 +206,22 @@ export class ValProjectionSession {
   private killSeq = 1;
   /** Stable per-player creation order — keeps roster positions fixed across publishes. */
   private rosterSeq = new Map<string, number>();
+  /**
+   * Identities that exist ONLY as scoreboard observations (never listed in a
+   * provider squad snapshot). They may fill a free board slot but must never
+   * displace a real squad member — the live provider reported such extra rows
+   * (2026-09-24) and they must not cost a player their slot.
+   */
+  private observedOnlyRoster = new Set<string>();
   /** Last GEP team number seen per player — the team-side source of truth. */
   private lastGepTeam = new Map<string, number>();
   private readonly listeners = new Set<(state: HudRelayState) => void>();
   /** Phase 2: quarantined previous-match mirror — diagnostics only, never `s`. */
   private bootContinuity: BootContinuity | null = null;
+  /** Last relay state that satisfied the contract — fallback so build() never throws. */
+  private lastGoodRelayState: HudRelayState | null = null;
+  /** One-shot warning: a provider reporting extra board rows is visible, not silent. */
+  private loggedRosterOverflow = false;
 
   constructor() {
     // Phase 2: the previous match's disk mirror is QUARANTINED, never applied.
@@ -378,6 +417,9 @@ export class ValProjectionSession {
         seenNames.add(n);
         return true;
       });
+      // The provider's squads are the authoritative board: identities rebuilt
+      // from a squad snapshot are no longer observation-only rows.
+      this.observedOnlyRoster.clear();
       for (const entry of s.roster) {
         const hasSnapshotStats =
           entry.kills !== undefined ||
@@ -913,6 +955,8 @@ export class ValProjectionSession {
           // swapping rows/teams between publishes when fact order varies.
           const posKey = this.normalizeName(entry.displayName);
           if (!this.rosterSeq.has(posKey)) this.rosterSeq.set(posKey, this.rosterSeq.size + 1);
+          // Observation-only: this identity is NOT part of any squad snapshot.
+          this.observedOnlyRoster.add(posKey);
           break;
         }
         // Team side from the player's own last GEP team vs the viewer's
@@ -1453,7 +1497,7 @@ export class ValProjectionSession {
 
   private build(): HudRelayState {
     const s = this.s;
-    return hudRelayStateSchema.parse({
+    const candidate: HudRelayState = {
       revision: s.revision,
       connectedToRuntime: true,
       game: "VAL",
@@ -1463,14 +1507,7 @@ export class ValProjectionSession {
       mapName: s.mapName,
       match: { winner: s.matchWinner, mvp: this.computeMvp() },
       viewerRole: s.viewerRole,
-      roster: [...(s.roster ?? [])].sort((a, b) => {
-        const ta = a.teamIndex ?? 9;
-        const tb = b.teamIndex ?? 9;
-        if (ta !== tb) return ta - tb;
-        const sa = this.rosterSeq.get(this.normalizeName(a.displayName)) ?? 999;
-        const sb = this.rosterSeq.get(this.normalizeName(b.displayName)) ?? 999;
-        return sa - sb;
-      }),
+      roster: this.relayRoster(),
       round: {
         number: s.roundNumber,
         phase: s.roundPhase,
@@ -1487,7 +1524,82 @@ export class ValProjectionSession {
       updatedAt: Date.now(),
       observedAt: Date.now(),
       restorePending: s.restorePending,
+    };
+    const parsed = hudRelayStateSchema.safeParse(candidate);
+    if (parsed.success) {
+      this.lastGoodRelayState = parsed.data;
+      return parsed.data;
+    }
+    // Never let a metadata defect become fatal: this exact throw used to escape
+    // through HudServer.route and freeze the entire publisher (2026-09-24).
+    logger.error("projection", "relay_state_schema_rejected", {
+      issues: parsed.error.issues
+        .slice(0, 4)
+        .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.code}`),
     });
+    const withoutRoster = hudRelayStateSchema.safeParse({ ...candidate, roster: [] });
+    if (withoutRoster.success) {
+      this.lastGoodRelayState = withoutRoster.data;
+      return withoutRoster.data;
+    }
+    if (this.lastGoodRelayState) return this.lastGoodRelayState;
+    // Nothing valid to publish yet: surface the real defect. Every caller is
+    // guarded (HTTP route + process-level handlers), so this cannot wedge the app.
+    return hudRelayStateSchema.parse(candidate);
+  }
+
+  /**
+   * Bound the relay roster to the relay contract (5 per side / 10 total) while
+   * inventing nothing: identities dedupe first (first occurrence wins), then the
+   * overflow is dropped in source order and reported once, so a provider that
+   * reports extra board rows is visible in the session log instead of silently
+   * breaking the publish loop.
+   */
+  private relayRoster(): HudRelayState["roster"] {
+    const sorted = [...(this.s.roster ?? [])].sort((a, b) => {
+      const ta = a.teamIndex ?? 9;
+      const tb = b.teamIndex ?? 9;
+      if (ta !== tb) return ta - tb;
+      // Real squad members outrank observation-only rows so an extra provider
+      // row can never cost a player their slot; within each group the stable
+      // order (squad order, then first-seen sequence) is preserved.
+      const oa = this.observedOnlyRoster.has(this.normalizeName(a.displayName)) ? 1 : 0;
+      const ob = this.observedOnlyRoster.has(this.normalizeName(b.displayName)) ? 1 : 0;
+      if (oa !== ob) return oa - ob;
+      const sa = this.rosterSeq.get(this.normalizeName(a.displayName)) ?? 999;
+      const sb = this.rosterSeq.get(this.normalizeName(b.displayName)) ?? 999;
+      return sa - sb;
+    });
+    const kept: HudRelayState["roster"] = [];
+    const dropped: string[] = [];
+    const seen = new Set<string>();
+    const perSide = new Map<number, number>();
+    for (const entry of sorted) {
+      const key = this.normalizeName(entry.displayName);
+      if (seen.has(key)) {
+        dropped.push(entry.displayName);
+        continue;
+      }
+      // Missing/unknown side is bucketed last: it may only fill leftover slots.
+      const side = entry.teamIndex === 0 || entry.teamIndex === 1 ? entry.teamIndex : 2;
+      const used = perSide.get(side) ?? 0;
+      if (kept.length >= RELAY_ROSTER_MAX || (side !== 2 && used >= RELAY_ROSTER_PER_TEAM)) {
+        dropped.push(entry.displayName);
+        continue;
+      }
+      seen.add(key);
+      perSide.set(side, used + 1);
+      kept.push(entry);
+    }
+    if (dropped.length > 0 && !this.loggedRosterOverflow) {
+      this.loggedRosterOverflow = true;
+      logger.warn("projection", "relay_roster_over_contract", {
+        kept: kept.length,
+        dropped: dropped.length,
+        droppedNames: dropped.slice(0, 6),
+      });
+    }
+    return kept;
   }
 
   /**
