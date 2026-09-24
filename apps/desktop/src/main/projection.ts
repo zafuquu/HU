@@ -19,6 +19,41 @@ import * as nodePath from "path";
 const PHASE_ORDER: Record<string, number> = { shopping: 0, combat: 1, end: 2 };
 
 /**
+ * Phase 2 — boot-cache provenance.
+ *
+ * Provider/plugin STATUS frames prove the provider is talking; they are not
+ * evidence that a match exists, so they must never satisfy the boot-cache gate
+ * (same principle as the A2 rule that plugin_status cannot make telemetry
+ * HEALTHY — telemetry health needs real game data, not handshakes).
+ */
+const STATUS_FACT_KEYS: ReadonlySet<string> = new Set(["provider_status"]);
+
+/**
+ * Phase 2 — session phases that PROVE a real Valorant session. `idle`/`unknown`
+ * are deliberately excluded: they are exactly what the runtime publishes when
+ * nothing is running, and the first such frame used to be enough to promote a
+ * restored previous match into authoritative state.
+ */
+const LIVE_SESSION_PHASES: ReadonlySet<string> = new Set(["loading", "pregame", "live", "ending"]);
+
+/**
+ * Diagnostics retained from the boot cache. This is NEVER authoritative state —
+ * see restoreCache().
+ */
+interface BootContinuity {
+  savedAt: number;
+  ageMs: number;
+  matchId: string | null;
+  mapKey: string | null;
+  mapName: string | null;
+  score: { blue: number; red: number };
+  roundNumber: number;
+  roundPhase: string | null;
+  rosterCount: number;
+  rosterNames: string[];
+}
+
+/**
  * GEP facts frequently arrive as JSON-encoded STRINGS (scoreboard, kill_feed,
  * match_score, ...). Decode once so every case works with real objects.
  */
@@ -146,11 +181,15 @@ export class ValProjectionSession {
   /** Last GEP team number seen per player — the team-side source of truth. */
   private lastGepTeam = new Map<string, number>();
   private readonly listeners = new Set<(state: HudRelayState) => void>();
+  /** Phase 2: quarantined previous-match mirror — diagnostics only, never `s`. */
+  private bootContinuity: BootContinuity | null = null;
 
   constructor() {
-    // Crash/reconnect recovery: restore the last known board so a desktop-app
-    // crash or Valorant restart never blanks the overlay — restored data holds
-    // until GEP's live stream refreshes it.
+    // Phase 2: the previous match's disk mirror is QUARANTINED, never applied.
+    // A cold boot starts unknown → idle and only live provider evidence may
+    // establish a session. (Applying it made a finished board present itself as
+    // the live game — the HUD showed a stale "0-2 / Ascent" with no VALORANT
+    // running, because any first provider frame cleared the unconfirmed flag.)
     this.restoreCache();
   }
 
@@ -172,12 +211,16 @@ export class ValProjectionSession {
 
   public applySnapshot(snap: ValorantSessionSnapshot): void {
     const s = this.s;
-    s.restorePending = false; // live runtime evidence — restored data is superseded
     // Dialect normalization: upstream nests identity under session.*
     const sessionPhase =
       snap.sessionPhase ?? snap.phase ?? s.sessionPhase;
     const matchId = snap.matchId ?? snap.session?.matchId ?? null;
     const mapKey = snap.mapKey ?? snap.session?.map?.key ?? null;
+    // Phase 2: only a REAL session (a live-ish phase, or an actual match
+    // identity) satisfies the boot-cache gate. An idle/unknown snapshot is what
+    // the runtime publishes when nothing is running — it must never be able to
+    // promote quarantined continuity into authoritative state.
+    if (matchId !== null || LIVE_SESSION_PHASES.has(sessionPhase)) s.restorePending = false;
 
     s.revision += 1;
     if (sessionPhase !== s.sessionPhase && sessionPhase === "live") s.liveSince = Date.now();
@@ -414,8 +457,11 @@ export class ValProjectionSession {
       p.shield = null;
       p.shieldType = null;
       p.weapon = null;
-      p.health = 100;
-      p.isAlive = true;
+      // Unknown semantics (§14): a wiped round has NO health/alive evidence —
+      // fabricating HP=100/alive=true was a fake "full HP" board (the HUD
+      // treats only an explicit false as dead, so null renders unchanged).
+      p.health = null;
+      p.isAlive = null;
       p.ultPoints = null;
       p.ultMax = null;
       p.hasSpike = null;
@@ -436,7 +482,10 @@ export class ValProjectionSession {
 
   public applyFact(key: string, rawValue: unknown): void {
     const s = this.s;
-    s.restorePending = false; // live runtime evidence — restored data is superseded
+    // Phase 2: the boot-cache gate is satisfied only by real game telemetry.
+    // `provider_status` frames (plugin/telemetry state, recovery, game-exit)
+    // report the PROVIDER, not the match — they leave the gate closed.
+    if (!STATUS_FACT_KEYS.has(key)) s.restorePending = false;
     const value = parseFactValue(rawValue);
     // The engine emits prefixed scoreboard variants (scoreboard_ally,
     // scoreboard_enemy, scoreboard_N, ...). Normalize to the base case.
@@ -1536,7 +1585,7 @@ export class ValProjectionSession {
 
   private lastLoggedScene: string | null = null;
 
-  // --- Crash/reconnect cache (disk mirror of the live board) ---------------
+  // --- Live-board disk mirror (written for diagnostics; never read back) ---
   private static readonly CACHE_FILE = nodePath.join(nodeOs.tmpdir(), "havoc-unleash-last-state.json");
   private lastCacheWrite = 0;
 
@@ -1586,56 +1635,41 @@ export class ValProjectionSession {
   private restoreCache(): void {
     try {
       if (!nodeFs.existsSync(ValProjectionSession.CACHE_FILE)) return;
-      const raw = JSON.parse(nodeFs.readFileSync(ValProjectionSession.CACHE_FILE, "utf8"));
-      const age = Date.now() - Number(raw?.savedAt ?? 0);
-      if (!Number.isFinite(age) || age > 2 * 60 * 60 * 1000) return; // stale — discard
-      const s = this.s;
-      if (typeof raw.viewerName === "string") s.viewerName = raw.viewerName;
-      if (typeof raw.viewerGepTeam === "number") s.viewerGepTeam = raw.viewerGepTeam;
-      if (typeof raw.blue === "number") s.blue = raw.blue;
-      if (typeof raw.red === "number") s.red = raw.red;
-      if (typeof raw.roundNumber === "number") {
-        s.roundNumber = raw.roundNumber;
-        s.publishedNumber = raw.roundNumber;
-      }
-      if (typeof raw.roundPhase === "string") {
-        s.roundPhase = raw.roundPhase;
-        s.publishedPhase = raw.roundPhase;
-      }
-      if (typeof raw.gameEvent === "string") s.gameEvent = raw.gameEvent;
-      if (raw.roundEnd) s.roundEnd = raw.roundEnd;
-      if (raw.matchWinner) s.matchWinner = raw.matchWinner;
-      if (Array.isArray(raw.roundHistory)) s.roundHistory = raw.roundHistory;
-      if (raw.roundStartScore) s.roundStartScore = raw.roundStartScore;
-      if (typeof raw.mapName === "string") s.mapName = raw.mapName;
-      if (typeof raw.mapKey === "string") s.mapKey = raw.mapKey;
-      if (Array.isArray(raw.roster)) {
-        s.roster = raw.roster.map(
-          (p: Record<string, unknown>, idx: number) =>
-            ({
-              displayName: String(p?.displayName ?? `Player ${idx + 1}`),
-              teamId: (p?.teamId as string) ?? (p?.teamIndex === 1 ? "Red" : "Blue"),
-              teamIndex: (p?.teamIndex as number) ?? (idx < 5 ? 0 : 1),
-              agentKey: (p?.agentKey as string) ?? undefined,
-              agentName: (p?.agentName as string) ?? null,
-              kills: (p?.kills as number) ?? null,
-              deaths: (p?.deaths as number) ?? null,
-              assists: (p?.assists as number) ?? null,
-              credits: (p?.credits as number) ?? null,
-              weapon: (p?.weapon as string) ?? null,
-              shield: (p?.shield as number) ?? null,
-              shieldType: (p?.shieldType as number) ?? null,
-              health: 100,
-              isAlive: true,
-            }),
-        ) as HudRelayState["roster"];
-      }
-      s.sessionPhase = "idle";
-      // Restored data is UNCONFIRMED until the runtime streams fresh evidence:
-      // deriveScene stays null and the popout suppresses rendering, so a stale
-      // previous match can never present itself as the live game.
-      s.restorePending = true;
-      s.revision += 1;
+      const raw = JSON.parse(
+        nodeFs.readFileSync(ValProjectionSession.CACHE_FILE, "utf8"),
+      ) as Record<string, unknown>;
+      const savedAt = Number(raw?.savedAt ?? 0);
+      const ageMs = Date.now() - savedAt;
+      // Stale, clock-skewed or malformed mirrors are discarded outright.
+      if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 2 * 60 * 60 * 1000) return;
+      const roster = Array.isArray(raw.roster) ? (raw.roster as Record<string, unknown>[]) : [];
+      this.bootContinuity = {
+        savedAt,
+        ageMs,
+        matchId: typeof raw.matchId === "string" ? raw.matchId : null,
+        mapKey: typeof raw.mapKey === "string" ? raw.mapKey : null,
+        mapName: typeof raw.mapName === "string" ? raw.mapName : null,
+        score: { blue: Number(raw.blue ?? 0) || 0, red: Number(raw.red ?? 0) || 0 },
+        roundNumber: Number(raw.roundNumber ?? 0) || 0,
+        roundPhase: typeof raw.roundPhase === "string" ? raw.roundPhase : null,
+        rosterCount: roster.length,
+        rosterNames: roster
+          .map((p) => (typeof p?.displayName === "string" ? p.displayName : ""))
+          .filter(Boolean)
+          .slice(0, 10),
+      };
+      // The gate stays CLOSED until live evidence arrives (applyFact /
+      // applySnapshot): quarantined continuity can never establish
+      // session/match/map/score/round/scene on its own.
+      this.s.restorePending = true;
+      pipelineLog("boot_cache_quarantined", {
+        ageMs,
+        matchId: this.bootContinuity.matchId,
+        mapKey: this.bootContinuity.mapKey,
+        score: `${this.bootContinuity.score.blue}-${this.bootContinuity.score.red}`,
+        roundNumber: this.bootContinuity.roundNumber,
+        roster: this.bootContinuity.rosterCount,
+      });
     } catch {
       // corrupted cache — start clean
     }
