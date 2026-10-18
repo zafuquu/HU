@@ -28,6 +28,36 @@ import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
  *   2. The desktop bridge's raw snapshot mirror in `site_settings` (`live:<roomCode>`)
  *      which carries the exact game snapshot (round score, series, round number).
  */
+/**
+ * Sticky roster persistence (localStorage): the final roster must survive a
+ * page reload — a fresh OBS/browser-source load during post-game started with
+ * an empty roster and the postgame scene then fell back to its built-in DEMO
+ * players (reported live 2026-10-18: "post game no data feed, all mock/demo
+ * data"). Cleared by the same round-1 / agent-select transitions that reset
+ * the in-memory sticky, so a new match never bleeds into the next post-game.
+ */
+const STICKY_ROSTER_KEY = 'hu-overlay-sticky-roster'
+function saveStickyRoster(value: { left: any[]; right: any[] }): void {
+  try {
+    localStorage.setItem(STICKY_ROSTER_KEY, JSON.stringify(value))
+  } catch {
+    /* storage unavailable — sticky stays in-memory only */
+  }
+}
+function loadStickyRoster(): { left: any[]; right: any[] } {
+  try {
+    const raw = localStorage.getItem(STICKY_ROSTER_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed?.left) && Array.isArray(parsed?.right)) return parsed
+    }
+  } catch {
+    /* ignore corrupt storage */
+  }
+  return { left: [], right: [] }
+}
+
+
 export default function OverlayPopout() {
   const { state, setStateSilent } = useAppStore()
   useRealtimeSync()
@@ -579,9 +609,10 @@ export default function OverlayPopout() {
   const liveRight = snapPlayers ? snapPlayers.filter((p: any) => sideOf(p) === 1) : null
   // Sticky roster: transient empty-player frames (engine hiccups, scene
   // remounts) must never blank the team stats — keep the last real roster.
-  const stickyRosterRef = useRef<{ left: any[]; right: any[] }>({ left: [], right: [] })
+  const stickyRosterRef = useRef<{ left: any[]; right: any[] }>(loadStickyRoster())
   if (liveLeft && liveLeft.length > 0) stickyRosterRef.current.left = liveLeft
   if (liveRight && liveRight.length > 0) stickyRosterRef.current.right = liveRight
+  saveStickyRoster(stickyRosterRef.current)
 
   // NOTE: the desktop ENGINE already re-anchors sides at halftime (the viewer
   // stays LEFT/blue for the whole match — see projection.ts re-anchor). This
@@ -604,32 +635,46 @@ export default function OverlayPopout() {
   const curEngineScene = String((snapState as any)?.scene || '')
   if (liveRoundNumber === 1 && lastRoundRef.current > 1) stickyRosterRef.current = { left: [], right: [] }
   if (curEngineScene === 'agent-select' && lastSceneRef.current && lastSceneRef.current !== 'agent-select') stickyRosterRef.current = { left: [], right: [] }
+  saveStickyRoster(stickyRosterRef.current)
   if (liveRoundNumber > 0) lastRoundRef.current = liveRoundNumber
   if (curEngineScene) lastSceneRef.current = curEngineScene
   // LIVE map wins over the veto pick / defaults (the desktop publishes the
-  // actual in-game map every snapshot — 'Sunset' was a hardcoded fallback).
+  // actual in-game map every snapshot). No hardcoded fallback: during agent
+  // select of a NEW match the desktop clears the previous match's map at the
+  // boundary, and showing 'Sunset'/the old splash until the real map arrives
+  // was the reported "agent select map is incorrect" (live 2026-10-18).
   const liveMapKey = (snapState as any)?.mapKey || null
-  const liveMapName = (snapState as any)?.mapName || pickedMap?.mapName || 'Sunset'
+  const liveMapName = (snapState as any)?.mapName || pickedMap?.mapName || undefined
   const liveMapImage =
     pickedMap?.image ||
-    (liveMapKey ? `/game/val/maps/${liveMapKey}/splash-small.png` : '/game/val/maps/juliett/splash-small.png')
+    (liveMapKey ? `/game/val/maps/${liveMapKey}/splash-small.png` : undefined)
   // Series map results: when the authoritative engine reports a completed
   // match (match.winner) and the current map's slot has no recorded result
   // yet, record its final score. SERIES state — survives Restart Active
   // Session, cleared only by the explicit series reset.
   const matchWinnerNow = (snapState as any)?.match?.winner ?? null
   const finishedRef = useRef<string | null>(null)
-  if (matchWinnerNow && !finishedRef.current && liveMapKey && (scoreLeft ?? 0) + (scoreRight ?? 0) > 0) {
-    finishedRef.current = String(liveMapKey)
+  // Sticky map key/name: the map may already be cleared on the very frame the
+  // match winner lands (or the page loaded after it) — the series result must
+  // still record, otherwise the in-game "map history" strip silently misses
+  // that match (reported: "map history sometimes missing").
+  const lastMapKeyRef = useRef<string | null>(null)
+  const lastMapNameRef = useRef<string | null>(null)
+  if (liveMapKey) lastMapKeyRef.current = liveMapKey
+  if (liveMapName) lastMapNameRef.current = liveMapName
+  const recordMapKey = liveMapKey || lastMapKeyRef.current
+  const recordMapName = liveMapName || lastMapNameRef.current || recordMapKey
+  if (matchWinnerNow && !finishedRef.current && recordMapKey && (scoreLeft ?? 0) + (scoreRight ?? 0) > 0) {
+    finishedRef.current = String(recordMapKey)
     const results = state.mapResults || []
     const taken = new Set(results.map(r => r.slot))
-    const pick = (state.mapPicks || []).find((p: any) => p.mapId === liveMapKey && !taken.has(p.slot))
+    const pick = (state.mapPicks || []).find((p: any) => p.mapId === recordMapKey && !taken.has(p.slot))
     const slot = pick?.slot
       ?? (results.filter(r => r.slot !== 'decider').length === 0 ? 'map1'
         : results.filter(r => r.slot !== 'decider').length === 1 ? 'map2'
         : 'decider')
     if (!results.some(r => r.slot === slot)) {
-      setStateSilent(prev => ({ ...prev, mapResults: [...(prev.mapResults || []), { slot, mapId: String(liveMapKey), mapName: liveMapName, score: `${scoreLeft ?? 0}-${scoreRight ?? 0}` }] }))
+      setStateSilent(prev => ({ ...prev, mapResults: [...(prev.mapResults || []), { slot, mapId: String(recordMapKey), mapName: recordMapName, score: `${scoreLeft ?? 0}-${scoreRight ?? 0}` }] }))
     }
   }
   if (!matchWinnerNow && finishedRef.current) finishedRef.current = null
@@ -969,6 +1014,7 @@ export default function OverlayPopout() {
             scoreRight={scoreRight}
             leftTeamPlayers={leftPlayers}
             rightTeamPlayers={rightPlayers}
+            allowDemo={false}
           />
         )}
 

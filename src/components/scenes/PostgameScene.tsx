@@ -32,6 +32,13 @@ export interface PostGameSceneProps {
   showFooter?: boolean
   leftTeamPlayers?: PostgamePlayer[]
   rightTeamPlayers?: PostgamePlayer[]
+  /**
+   * false on LIVE overlay sources: never substitute the built-in demo roster
+   * for missing data (the reported "post game no data feed, all mock/demo
+   * data" — a fresh OBS source load during post-game rendered fabricated
+   * players). The editor preview keeps the demo default.
+   */
+  allowDemo?: boolean
   activeComponentId?: string | null
   onSelectComponent?: (id: string) => void
   isToggled?: (componentId: string) => boolean
@@ -315,6 +322,7 @@ export function PostGameScene(props: PostGameSceneProps) {
     showFooter = true,
     leftTeamPlayers = [],
     rightTeamPlayers = [],
+    allowDemo = true,
   } = props
 
   void showFooter
@@ -324,8 +332,8 @@ export function PostGameScene(props: PostGameSceneProps) {
   const hasLiveRight = rightTeamPlayers && rightTeamPlayers.length > 0
   const isSoloTesting = hasLiveLeft && !hasLiveRight
 
-  const leftList = hasLiveLeft ? leftTeamPlayers : (hasLiveRight ? [] : DEMO_PLAYERS_LEFT)
-  const rightList = hasLiveRight ? rightTeamPlayers : (hasLiveLeft ? [] : DEMO_PLAYERS_RIGHT)
+  const leftList = hasLiveLeft ? leftTeamPlayers : (hasLiveRight || !allowDemo ? [] : DEMO_PLAYERS_LEFT)
+  const rightList = hasLiveRight ? rightTeamPlayers : (hasLiveLeft || !allowDemo ? [] : DEMO_PLAYERS_RIGHT)
 
   // Sort by kills descending (MVP at index 0), then by ACS/score
   const sortedLeft = useMemo(() => {

@@ -18,6 +18,8 @@ export const VAL_MAPS: MapItem[] = [
   { mapId: 'sunset', mapName: 'SUNSET', image: '/game/val/maps/juliett/splash-small.png', isActiveComp: true },
   { mapId: 'summit', mapName: 'SUMMIT', image: '/game/val/maps/plummet/splash-small.png', isActiveComp: true },
   { mapId: 'haven', mapName: 'HAVEN', image: '/game/val/maps/triad/splash-small.png', isActiveComp: true },
+  { mapId: 'corrode', mapName: 'CORRODE', image: '/game/val/maps/rook/splash-small.png', isActiveComp: true },
+  { mapId: 'gauntlet', mapName: 'GAUNTLET', image: '/game/val/maps/gauntlet/splash-small.png', isActiveComp: true },
 
   // Other Maps (collapsible)
   { mapId: 'fracture', mapName: 'FRACTURE', image: '/game/val/maps/canyon/splash-small.png', isActiveComp: false },
@@ -30,7 +32,6 @@ export const VAL_MAPS: MapItem[] = [
   { mapId: 'abyss', mapName: 'ABYSS', image: '/game/val/maps/infinity_/splash-small.png', isActiveComp: false },
   { mapId: 'pearl', mapName: 'PEARL', image: '/game/val/maps/pitt/splash-small.png', isActiveComp: false },
   { mapId: 'icebox', mapName: 'ICEBOX', image: '/game/val/maps/port/splash-small.png', isActiveComp: false },
-  { mapId: 'corrode', mapName: 'CORRODE', image: '/game/val/maps/rook/splash-small.png', isActiveComp: false },
   { mapId: 'skirmish_a', mapName: 'SKIRMISH A', image: '/game/val/maps/skirmish_a/splash-small.png', isActiveComp: false },
   { mapId: 'skirmish_b', mapName: 'SKIRMISH B', image: '/game/val/maps/skirmish_b/splash-small.png', isActiveComp: false },
   { mapId: 'skirmish_c', mapName: 'SKIRMISH C', image: '/game/val/maps/skirmish_c/splash-small.png', isActiveComp: false },

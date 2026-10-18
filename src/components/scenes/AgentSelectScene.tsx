@@ -88,8 +88,13 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
     rightTeamColor = '#FF4848',
     leftTeamLogo = null,
     rightTeamLogo = null,
-    mapName = 'Sunset',
-    mapImage = '/game/val/maps/juliett/splash-small.png',
+    // No hardcoded fallback map: the overlay shows the map tile ONLY when the
+    // live snapshot (or the veto pick) actually knows it. During agent select
+    // of a new match the map is legitimately unknown for a few seconds — the
+    // old 'Sunset'/juliett defaults painted the WRONG map there (reported
+    // live 2026-10-18).
+    mapName,
+    mapImage,
     leftTeamPlayers = [],
     rightTeamPlayers = [],
     activeComponentId,
@@ -240,8 +245,8 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
             </div>
           </div>
 
-          {/* Center Map Reveal: Sunset */}
-          {showMapName && (
+          {/* Center Map Reveal — rendered only when the map is actually known */}
+          {showMapName && mapImage && (
             <div
               className={`clickable-component agentSelectMapReveal relative h-[286px] w-[218px] z-20 mx-[-1px] overflow-hidden border-x-2 border-white/20 bg-black cursor-pointer shadow-2xl flex flex-col items-center justify-end${activeComponentId === 'map-name' ? ' selected' : ''}`}
               data-make-transparent="true"
