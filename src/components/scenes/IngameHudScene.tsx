@@ -51,7 +51,7 @@ interface IngameHudSceneProps {
   webcamActive?: boolean
   webcamStream?: MediaStream | null
   liveOnly?: boolean
-  roundEnd?: { winner: 'blue' | 'red' | null; reason: string | null } | null
+  roundEnd?: { winner: 'blue' | 'red' | null; reason: string | null; highlightPlayer?: { name: string; agent: string | null; kills: number | null; deaths: number | null; assists: number | null } | null } | null
   roundNumber?: number | null
   gameEvent?: string | null
   winSide?: string | null
@@ -284,7 +284,7 @@ const CEREMONY_CSS = '@keyframes cerIn { from { opacity: 0; transform: translate
 //   Frame 1 — CENTERED: brand logo + reason text (ROUND WIN / ACE / CLUTCH ...)
 //   then the whole frame slides DOWN to the very bottom center, where
 //   Frame 2 — [team logo / team name / ATTACKER-DEFENDER]  [brand logo / ROUND n]
-function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, winnerFromLeft, leftColor, rightColor, gameEventLogo, tournamentLogo }: {
+function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, winnerFromLeft, leftColor, rightColor, gameEventLogo, tournamentLogo, clutchHighlight }: {
   trigger: string | null
   reasonText: string | null
   roundNumber: number | null
@@ -300,6 +300,12 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
   gameEventLogo?: string | null
   /** Logo shown above ROUND n in frame 2 (tournament logo; default Sponsor-1.png). */
   tournamentLogo?: string | null
+  /**
+   * Clutch player (agent + KDA) — original-desktop parity: on a 1vX clutch the
+   * ceremony shows WHO clutched (agent portrait + K/D/A) instead of the plain
+   * ATTACKER/DEFENDER line.
+   */
+  clutchHighlight?: { name: string; agent: string | null; kills: number | null; deaths: number | null; assists: number | null } | null
 }) {
   const [stage, setStage] = React.useState<'hidden' | 'center' | 'slide' | 'bottom' | 'out'>('hidden')
   const seen = React.useRef<string | null>(null)
@@ -354,9 +360,30 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            {winnerLogo && <img src={winnerLogo} alt="" style={{ maxHeight: 92, maxWidth: 150, objectFit: 'contain' }} />}
+            {winnerLogo && <img src={winnerLogo} alt="" style={{ maxHeight: clutchHighlight ? 68 : 92, maxWidth: 150, objectFit: 'contain' }} />}
             <p style={{ fontSize: 24, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>{winnerName}</p>
-            {winSide && <p style={{ fontSize: 18, fontWeight: 800, color: '#FFD166', textTransform: 'uppercase', letterSpacing: 3, margin: 0 }}>{winSide}</p>}
+            {clutchHighlight ? (
+              // Clutch card (original-desktop parity): the clutching agent's
+              // portrait + K/D/A in place of the attacker/defender line.
+              (() => {
+                const meta = resolveAgent({ agent: clutchHighlight.agent, agentName: clutchHighlight.agent })
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 2 }}>
+                    {meta?.portrait && (
+                      <img src={meta.portrait} alt="" style={{ height: 58, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.65))' }} />
+                    )}
+                    <div style={{ textAlign: 'center' }}>
+                      <p style={{ fontSize: 13, fontWeight: 800, color: '#FFD166', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>K / D / A</p>
+                      <p style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: 1, margin: 0 }}>
+                        {clutchHighlight.kills ?? 0} / {clutchHighlight.deaths ?? 0} / {clutchHighlight.assists ?? 0}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })()
+            ) : winSide ? (
+              <p style={{ fontSize: 18, fontWeight: 800, color: '#FFD166', textTransform: 'uppercase', letterSpacing: 3, margin: 0 }}>{winSide}</p>
+            ) : null}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
             <img alt="" src={tournamentLogo || '/sponsor/Sponsor-1.png'} style={{ maxHeight: 62, objectFit: 'contain' }} onError={e => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = '/sponsor/Sponsor-1.png' } }} />
@@ -825,6 +852,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
         rightColor={rightTeamColor}
         gameEventLogo={tournamentLogo}
         tournamentLogo={tournamentLogo}
+        clutchHighlight={roundEnd?.highlightPlayer ?? null}
       />
       {/* Top Map History */}
       {showMapHistory && activeMapHistory.length > 0 && (
@@ -902,10 +930,24 @@ export function IngameHudScene(props: IngameHudSceneProps) {
                     )}
                     {showBombTimer && (
                       <h1 className="translate-y-1 flex items-center gap-2 text-[40px]" style={{ color: displayTimerColor }}>
-                        {spikeState === 'planted' && (
-                          <img src="/game/val/misc/Spike_Icon.svg" alt="" className="h-[30px] w-auto object-contain" style={{ opacity: spikeBlinkOn ? 1 : 0.15, transition: 'opacity 80ms linear' }} />
+                        {spikeState === 'planted' ? (
+                          // Planted: pulsing red spike icon ONLY — no 45s countdown
+                          // (operator request, live 2026-10-18). Blink rate still
+                          // accelerates as detonation approaches.
+                          <img
+                            src="/game/val/misc/Spike_Icon.svg"
+                            alt="spike"
+                            className="h-[36px] w-auto object-contain"
+                            style={{ filter: 'drop-shadow(0 0 8px #FF3549)', opacity: spikeBlinkOn ? 1 : 0.25, transition: 'opacity 120ms linear' }}
+                          />
+                        ) : (
+                          <>
+                            {spikeState === 'defusing' && (
+                              <img src="/game/val/misc/Spike_Icon.svg" alt="" className="h-[30px] w-auto object-contain" />
+                            )}
+                            {displayTimerText}
+                          </>
                         )}
-                        {displayTimerText}
                       </h1>
                     )}
                     {scoreLineSmall && (
