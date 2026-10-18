@@ -110,7 +110,9 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
   const [assetsReady, setAssetsReady] = useState(false)
   useEffect(() => {
     preloadAgentPortraits()
-    const extra = [mapImage]
+    // mapImage is optional now (no hardcoded fallback map) — preload only
+    // when the map is actually known.
+    const extra = [mapImage].filter((src): src is string => !!src)
     let pending = extra.length
     if (pending === 0) {
       setAssetsReady(true)
