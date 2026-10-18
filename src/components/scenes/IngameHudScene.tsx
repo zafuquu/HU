@@ -615,6 +615,18 @@ function IngamePlayerCard({
             </div>
           </div>
 
+          {/* Spike carrier slot - small spike glyph on the row carrying the
+              spike (GEP hasSpike), next to the spectator eye slot. */}
+          {player.hasSpike && (
+            <div
+              className={`h-full overflow-hidden ${isRight ? 'rounded-l-md' : 'rounded-r-md'}`}
+              style={{ width: 18 }}
+            >
+              <div className="flex size-full items-center justify-center bg-[#00000073]">
+                <img src="/game/val/misc/Spike_Icon.svg" alt="spike" className="h-[11px] w-[11px] object-contain" />
+              </div>
+            </div>
+          )}
           {/* Spectator Eye Slot — VS parity: only the spectated row extends
               (slot goes 0 -> 24px), all other cards stay the same length. */}
           <div

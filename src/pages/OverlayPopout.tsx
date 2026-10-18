@@ -844,7 +844,7 @@ export default function OverlayPopout() {
   // 'detonated' | null) — never an object; consume both shapes safely.
   const spikeRaw = (liveScores as any)?.spike ?? (snapState as any)?.spike ?? null
   const spikeSite = ((spikeRaw && typeof spikeRaw === 'object' && spikeRaw.site) || (snapState as any)?.plantSite || null) as string | null
-  const spikeState = (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null) || ((snapState as any)?.bombPlanted ? 'planted' : null)) as 'none' | 'planted' | 'defusing' | null
+  const spikeState = (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null) || ((snapState as any)?.bombPlanted ? 'planted' : null) || ((snapState as any)?.plantSite ? 'planted' : null)) as 'none' | 'planted' | 'defusing' | null
 
   return (
     <div data-source-of-truth={sourceOfTruth ?? ''} style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
