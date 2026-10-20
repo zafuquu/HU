@@ -962,11 +962,12 @@ export default function OverlayPopout() {
             leftTeamLogo={hudLeftLogo}
             rightTeamLogo={hudRightLogo}
             mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds, state.mapResults)}
-            webcamPlayerName={webcamActive ? (webcamPlayer?.alias || 'No camera') : ''}
+            webcamPlayerName={webcamPlayer?.alias || ''}
             webcamPlayerPhoto={webcamActive ? (webcamPlayer?.avatarUrl || null) : null}
             webcamActive={webcamActive}
             webcamPlayerStats={webcamStats}
             webcamStream={webcamStream}
+            localPlayerName={(snapState as any)?.viewerName ?? null}
             liveOnly={true}
             gameEvent={liveEventText}
             winSide={roundWinSide}

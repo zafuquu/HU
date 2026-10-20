@@ -619,7 +619,7 @@ export default function HudEditor() {
                     leftTeamLogo={(leftTeam?.logoUrl) || null}
                     rightTeamLogo={(rightTeam?.logoUrl) || null}
                     mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds)}
-                    webcamPlayerName={webcamPlayer?.alias || 'No camera'}
+                    webcamPlayerName={webcamPlayer?.alias || ''}
                     webcamPlayerPhoto={webcamPlayer?.avatarUrl || null}
                     webcamActive={!!webcamPlayer}
                     leftTeamPlayers={leftRoster}

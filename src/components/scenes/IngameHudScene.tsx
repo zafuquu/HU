@@ -76,6 +76,10 @@ interface IngameHudSceneProps {
   onSelectComponent?: (id: string) => void
   isToggled?: (componentId: string) => boolean
   currentlyObserving?: string | null
+  /** The local/viewer player's "Name#TAG" (snapshot state.viewerName — matches
+      players[].playerId). Third facecam-identity anchor: observed → camera
+      player → local. */
+  localPlayerName?: string | null
   spectating?: boolean
   spikeSite?: string | null
   spikeState?: 'none' | 'planted' | 'defusing' | null
@@ -823,7 +827,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     leftTeamPlayers = [],
     rightTeamPlayers = [],
     mapHistoryItems,
-    webcamPlayerName = 'No camera',
+    webcamPlayerName = '',
     webcamPlayerPhoto = null,
     webcamActive = false,
     webcamPlayerStats = null,
@@ -844,6 +848,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     onSelectComponent,
     isToggled = () => true,
     currentlyObserving = null,
+    localPlayerName = null,
     spectating = false,
     spikeSite = null,
     spikeState = null,
@@ -943,18 +948,71 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   const showSponsors = isToggled('sponsors')
   const showWebcam = isToggled('webcam')
 
-  // Webcam auto-hide: only show if stream/photo is active, unless in editor
-  const shouldRenderWebcam = showWebcam && (!liveOnly || (webcamActive && (webcamStream || webcamPlayerPhoto)))
+  // Facecam identity (BLOB parity): the footer name + K/D/A and the fallback
+  // art (team logo → agent portrait) always describe ONE player. GEP exposes
+  // no spectated-target fact (the original used screen reading for it), so the
+  // chain is: observed → Camera-Feed player → local/viewer player. With the
+  // webcam live the camera player leads so name/stats match the video.
+  const facecamIdentity = (() => {
+    const sides = [
+      { rows: leftTeamPlayers || [], side: 'left' as const },
+      { rows: rightTeamPlayers || [], side: 'right' as const },
+    ]
+    const norm = (v: unknown) => String(v ?? '').toLowerCase().split('#')[0].trim()
+    const keys = (
+      webcamActive
+        ? [webcamPlayerName, currentlyObserving]
+        : [currentlyObserving, webcamPlayerName, localPlayerName]
+    ).filter((k): k is string => !!k && k !== 'No camera' && k.trim() !== '')
+    for (const k of keys) {
+      for (const { rows, side } of sides) {
+        const row = rows.find(
+          (r) =>
+            r &&
+            (String(r.playerId ?? '') === String(k) ||
+              String(r.name ?? '') === String(k) ||
+              norm(r.alias) === norm(k) ||
+              norm(r.name) === norm(k)),
+        )
+        if (row) return { row, side, key: k }
+      }
+    }
+    return keys.length > 0 ? { row: null, side: null, key: keys[0] } : null
+  })()
+  const facecamName = (() => {
+    if (!facecamIdentity) return null
+    const r = facecamIdentity.row as any
+    const raw = (r && (r.alias || r.name)) || facecamIdentity.key
+    const base = String(raw || '').split('#')[0].trim()
+    return base || null
+  })()
+  const facecamFallbackLogo =
+    facecamIdentity?.row && facecamIdentity.side
+      ? facecamIdentity.side === 'left'
+        ? leftTeamLogo
+        : rightTeamLogo
+      : null
+  const facecamFallbackPortrait = resolveAgent(facecamIdentity?.row)?.portrait ?? null
+
+  // Webcam auto-hide: only show if stream/photo/identity is known, unless editor
+  const shouldRenderWebcam =
+    showWebcam && (!liveOnly || (webcamActive && (webcamStream || webcamPlayerPhoto)) || !!facecamName)
 
   // Facecam K/D/A: prefer the explicit prop (live overlay passes snapshot
-  // stats by id); otherwise look the facecam player up in the scene rosters
-  // by alias — editor + LiveGame rosters are state players.
-  const webcamStats = webcamPlayerStats ?? (() => {
-    if (!webcamPlayerName || !webcamActive) return null
-    const all: any[] = [...(leftTeamPlayers || []), ...(rightTeamPlayers || [])]
-    const p = all.find(r => r && (r.alias === webcamPlayerName || r.name === webcamPlayerName))
-    return p ? { kills: p.kills ?? 0, deaths: p.deaths ?? 0, assists: p.assists ?? 0 } : null
-  })()
+  // stats by id); otherwise use the identity row — else look the facecam
+  // player up in the scene rosters by alias (editor + LiveGame state players).
+  const webcamStats = webcamPlayerStats ?? (facecamIdentity?.row
+    ? {
+        kills: facecamIdentity.row.kills ?? 0,
+        deaths: facecamIdentity.row.deaths ?? 0,
+        assists: facecamIdentity.row.assists ?? 0,
+      }
+    : (() => {
+        if (!webcamPlayerName || !webcamActive) return null
+        const all: any[] = [...(leftTeamPlayers || []), ...(rightTeamPlayers || [])]
+        const p = all.find(r => r && (r.alias === webcamPlayerName || r.name === webcamPlayerName))
+        return p ? { kills: p.kills ?? 0, deaths: p.deaths ?? 0, assists: p.assists ?? 0 } : null
+      })())
 
   // Scoreline Team B guard: don't show phantom Team B when testing solo
   const hasRightTeam = !liveOnly ? true : (rightRoster.length > 0 || (scoreRight ?? 0) > 0 || (seriesScoreRight ?? 0) > 0 || (!!rightTeamName && rightTeamName.trim() !== '' && rightTeamName !== 'Right Team' && rightTeamName !== 'Team B'))
@@ -1313,6 +1371,17 @@ export function IngameHudScene(props: IngameHudSceneProps) {
               <video ref={webcamVideoRef} autoPlay playsInline muted className="size-full object-cover" />
             ) : webcamActive && webcamPlayerPhoto ? (
               <img src={webcamPlayerPhoto} alt="" className="size-full object-cover" />
+            ) : facecamFallbackLogo ? (
+              // No camera → the player's TEAM logo on a quiet dark stage.
+              <img
+                src={facecamFallbackLogo}
+                alt=""
+                className="size-full object-contain p-5"
+                style={{ background: 'radial-gradient(circle at 50% 35%, rgba(255,255,255,0.07), transparent 72%)' }}
+              />
+            ) : facecamFallbackPortrait ? (
+              // … no logo → the player's AGENT portrait.
+              <img src={facecamFallbackPortrait} alt="" className="size-full object-contain p-2" />
             ) : (
               <div className="text-center">
                 <svg className="w-8 h-8 text-white/30 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1323,7 +1392,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
             )}
           </div>
           <div className="h-7 bg-black/90 px-3 flex items-center justify-between border-t border-white/10">
-            <span className="font-baijam text-xs font-bold text-white uppercase">{webcamActive ? webcamPlayerName : 'No camera'}</span>
+            <span className="font-baijam text-xs font-bold text-white uppercase">{facecamName || 'No camera'}</span>
             {/* BLOB parity: facecam footer carries the player's K/D/A; no LIVE pill */}
             {webcamStats && (
               <span className="font-baijam text-[11px] font-bold tabular-nums text-white/70">
