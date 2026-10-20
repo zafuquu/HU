@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
 import { supabase } from './supabase'
+import { MOCK_AUTH, MOCK_PROFILE } from './mockEvent'
 
 type AuthStatus = 'loading' | 'signedOut' | 'signedIn'
 
@@ -31,6 +32,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true
+    // TEMPORARY mock auth (VITE_MOCK_AUTH=1 in .envlocal): skip the Discord
+    // OAuth proxy (/api/auth/* → 502 locally) and sign in as an admin.
+    if (MOCK_AUTH) {
+      setProfile(MOCK_PROFILE as AuthProfile)
+      setStatus('signedIn')
+      return
+    }
     // Purge a stale/expired Supabase session: supabase-js attaches the saved
     // JWT to EVERY query, and an expired token makes even public-read tables
     // answer 401 (blank dashboard). After signOut the anon key is used and

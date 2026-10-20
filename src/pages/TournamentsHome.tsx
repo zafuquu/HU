@@ -4,6 +4,7 @@ import { Trophy, LogOut } from 'lucide-react'
 import { listTournaments, listTournamentParticipants, listUserParticipatedTournamentIds } from '../lib/dataLayer'
 import type { Tournament } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
+import { MOCK_EVENT, MOCK_TOURNAMENT } from '../lib/mockEvent'
 
 const HAVOC_URL = 'https://havocunleash.vercel.app/'
 
@@ -60,9 +61,12 @@ export default function TournamentsHome() {
     listTournaments()
       .then(async (ts) => {
         if (cancelled) return
-        setTournaments(ts)
+        // TEMPORARY mock event (VITE_MOCK_EVENT=1) prepended for local testing.
+        const all: Tournament[] = MOCK_EVENT ? [MOCK_TOURNAMENT as unknown as Tournament, ...ts] : ts
+        setTournaments(all)
         const map: Record<string, number> = {}
-        for (const t of ts) {
+        for (const t of all) {
+          if (t.id === MOCK_TOURNAMENT.id) { map[t.id] = 10; continue }
           const parts = await listTournamentParticipants(t.id)
           map[t.id] = parts.length
         }

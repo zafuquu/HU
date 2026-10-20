@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Copy, MoreHorizontal, Eye, EyeOff, Pencil, X, Check, Search, UserRound } from 'lucide-react'
 import { useAppStore } from '../store/AppContext'
 import { useAuth } from '../lib/useAuth'
+import { MOCK_EVENT, MOCK_TOURNAMENT } from '../lib/mockEvent'
 import { listTournaments, searchProfiles, inviteRoomMember, removeRoomMember } from '../lib/dataLayer'
 import type { Tournament, Profile } from '../lib/supabase'
 import Dropdown from '../components/Dropdown'
@@ -39,7 +40,7 @@ export default function Overview() {
 
   useEffect(() => {
     listTournaments()
-      .then(setTournaments)
+      .then(ts => setTournaments(MOCK_EVENT ? [MOCK_TOURNAMENT as unknown as Tournament, ...ts] : ts))
       .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)))
   }, [])
 

@@ -159,6 +159,7 @@ export default function OverlayPopout() {
   const HAVOC_FIELDS = ['teams','teamAId','teamBId','sponsors','tournamentLogoUrls','mapPicks','connectedTournamentId',
     'mapResults',
     'scoreA','scoreB','seriesScoreA','seriesScoreB','roundTitle','eventTitle','seriesTitle',
+    'derivedScoreA','derivedScoreB','scoreOverrideA','scoreOverrideB',
     'gameSeries','matchFormat','bestOf'] as const
   const applyHavoc = (saved: any) => {
     if (!saved) return
@@ -508,12 +509,13 @@ export default function OverlayPopout() {
   const teamA = state.teams.find(t => t.id === state.teamAId) || state.teams[0] || null
   const teamB = state.teams.find(t => t.id === state.teamBId) || (state.teams.length > 1 ? state.teams[1] : null)
 
-  // Scoreline: live snapshot (from the desktop via the bridge) wins when
-  // present; otherwise fall back to the dashboard state (manual /
-  // tournament_matches realtime via AppContext).
+  // Scoreline: P1 order — a manual dashboard OVERRIDE wins (it exists exactly
+  // to correct a bad live feed, per the Live Game copy); otherwise the live
+  // snapshot (desktop bridge) wins when present; otherwise the dashboard
+  // derived/manual state.
   const scores = liveScores?.scores
-  const scoreLeft = scores ? Number(scores.roundLeft ?? 0) : state.scoreA
-  const scoreRight = scores ? Number(scores.roundRight ?? 0) : state.scoreB
+  const scoreLeft = state.scoreOverrideA ?? (scores ? Number(scores.roundLeft ?? 0) : state.scoreA)
+  const scoreRight = state.scoreOverrideB ?? (scores ? Number(scores.roundRight ?? 0) : state.scoreB)
   const seriesLeft = scores ? Number(scores.seriesLeft ?? 0) : state.seriesScoreA
   const seriesRight = scores ? Number(scores.seriesRight ?? 0) : state.seriesScoreB
   const roundText = scores?.roundNumber != null ? `Round ${scores.roundNumber}` : (state.roundTitle || '')
@@ -788,6 +790,12 @@ export default function OverlayPopout() {
   const webcamPlayer = [...(teamA?.players || []), ...(teamB?.players || [])].find(p => p.webcamSource !== 'None' && state.cameraVisibility?.[p.id] !== false)
   const webcamPlayerInRoster = !!webcamPlayer && Array.isArray(snapPlayers) && snapPlayers.some((p: any) => String(p.playerId ?? p.name ?? '') === String(webcamPlayer.id))
   const webcamActive = !!webcamPlayer && desktopLive && webcamPlayerInRoster
+  // Facecam footer K/D/A from the desktop snapshot (BLOB parity; no LIVE pill)
+  const webcamStats = (() => {
+    if (!webcamPlayer || !webcamPlayerInRoster || !Array.isArray(snapPlayers)) return null
+    const p = (snapPlayers as any[]).find(x => String(x?.playerId ?? x?.name ?? '') === String(webcamPlayer.id))
+    return p ? { kills: p.kills ?? 0, deaths: p.deaths ?? 0, assists: p.assists ?? 0 } : null
+  })()
   const webcamStream = useWebcamViewer(roomCode, webcamActive ? (webcamPlayer?.id || null) : null)
   const EVENT_TEXT = {
     'val:spike_defused': 'SPIKE DEFUSED',
@@ -839,6 +847,21 @@ export default function OverlayPopout() {
   const liveEconomy = liveScores?.economy || null
   const liveMvpPlayer = liveScores?.mvpPlayer || null
   const liveCasterCards = liveScores?.casterCards || null
+  // Map-ban scene slots from the EXECUTED veto (kinds/teams/sides in real
+  // order). The raw mapBans/mapPicks arrays carry no `kind`, which made every
+  // overlay card render as "PICK" with a phantom decider in OBS.
+  const overlayMapSlots = (state.vetoSteps || [])
+    .filter((s: any) => !!s.map)
+    .map((s: any) => {
+      const v = VAL_MAPS.find(m => m.mapId === s.map)
+      return {
+        mapName: (v?.mapName || String(s.map)) as string,
+        image: (v?.image || '') as string,
+        kind: (s.action === 'Ban' ? 'ban' : s.action === 'Decider' ? 'decider' : 'pick') as 'ban' | 'pick' | 'decider',
+        team: (s.action === 'Decider' ? 'DECIDER' : s.team) as string,
+        side: (s.side === 'Offense' || s.side === 'Defense' ? s.side : undefined) as 'Offense' | 'Defense' | undefined,
+      }
+    })
   const liveCurrentlyObserving = liveScores?.currentlyObserving || (snapState as any)?.currentlyObserving || null
   // The engine sends spike as a plain string ('planted' | 'defused' |
   // 'detonated' | null) — never an object; consume both shapes safely.
@@ -942,6 +965,7 @@ export default function OverlayPopout() {
             webcamPlayerName={webcamActive ? (webcamPlayer?.alias || 'No camera') : ''}
             webcamPlayerPhoto={webcamActive ? (webcamPlayer?.avatarUrl || null) : null}
             webcamActive={webcamActive}
+            webcamPlayerStats={webcamStats}
             webcamStream={webcamStream}
             liveOnly={true}
             gameEvent={liveEventText}
@@ -991,12 +1015,14 @@ export default function OverlayPopout() {
         )}
         {sceneKey === 'map-ban' && (
           <MapBanScene
+            key={`map-ban-${state.vetoReplayRun || 0}`}
             leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
             rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamColor={leftTeam?.color || '#28D091'}
             rightTeamColor={rightTeam?.color || '#FF3549'}
             leftTeamLogo={leftTeam?.logoUrl || null}
             rightTeamLogo={rightTeam?.logoUrl || null}
+            mapSlots={overlayMapSlots.length ? overlayMapSlots : undefined}
             mapBans={(state.mapBans || []).map((m: any) => VAL_MAPS.find(v => v.mapId === m.mapId)).filter((v): v is (typeof VAL_MAPS)[number] => !!v)}
             mapPicks={(state.mapPicks || []).map((m: any) => VAL_MAPS.find(v => v.mapId === m.mapId)).filter((v): v is (typeof VAL_MAPS)[number] => !!v)}
             mapDecider={VAL_MAPS.find(v => v.mapId === state.vetoSelectedMapIds?.[0]) || undefined}

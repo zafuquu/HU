@@ -1,6 +1,11 @@
 import { useEffect } from 'react'
 import { useAppStore } from '../store/AppContext'
 import { supabase } from './supabase'
+import { classifyRemote, displayScore } from './workingProtocol'
+import { loadBroadcastState } from './dataLayer'
+
+/** Per-key trackers for classifyRemote() — one per broadcast workspace key. */
+const revTrackers = new Map<string, { rev: number; sub: string }>()
 
 /**
  * Subscribes to Supabase Realtime for the connected tournament's tables so that any
@@ -12,13 +17,15 @@ import { supabase } from './supabase'
  * statements in scratch/phaseB/b2_rls_migration.sql.
  */
 export function useRealtimeSync() {
-  const { state, setStateSilent } = useAppStore()
+  const { state, setStateSilent, isDirtyNow } = useAppStore()
   const tournamentId = state.connectedTournamentId
 
   useEffect(() => {
     if (!tournamentId) return
 
     // 1) tournament_matches: live scores / series / format
+    //    P1 score model: the match row feeds derivedScore; displayed scoreA/B
+    //    resolves override ?? derived ?? last-known (see workingProtocol).
     const matches = supabase
       .channel('realtime-matches')
       .on(
@@ -32,12 +39,18 @@ export function useRealtimeSync() {
         (payload) => {
           const row = payload.new as any
           if (!row) return
-          setStateSilent((prev) => ({
-            ...prev,
-            scoreA: row.team1_score ?? prev.scoreA,
-            scoreB: row.team2_score ?? prev.scoreB,
-            matchFormat: row.format ?? prev.matchFormat,
-          }))
+          setStateSilent((prev) => {
+            const dA = row.team1_score ?? prev.derivedScoreA ?? null
+            const dB = row.team2_score ?? prev.derivedScoreB ?? null
+            return {
+              ...prev,
+              derivedScoreA: dA,
+              derivedScoreB: dB,
+              scoreA: displayScore(prev.scoreOverrideA, dA, prev.scoreA),
+              scoreB: displayScore(prev.scoreOverrideB, dB, prev.scoreB),
+              matchFormat: row.format ?? prev.matchFormat,
+            }
+          })
         }
       )
       .subscribe()
@@ -80,6 +93,8 @@ export function useRealtimeSync() {
       .subscribe()
 
     // 5) broadcast workspace havoc: live sync for teams, players, veto, and titles across all devices
+    //    P1: classify every incoming snapshot (same/stale/apply/conflict) — this
+    //    used to be a blind {...prev, ...remote} merge that let stale writers win.
     const broadcast = supabase
       .channel('realtime-broadcast-' + tournamentId)
       .on(
@@ -88,20 +103,48 @@ export function useRealtimeSync() {
         (payload) => {
           const remote = (payload.new as any)?.value
           if (!remote || typeof remote !== 'object') return
-          setStateSilent((prev) => {
-            const merged: any = { ...prev, ...remote }
-            const seen = new Set<string>()
-            merged.teams = (merged.teams || []).filter((t: any) => {
-              const k = String(t?.id ?? t?.name ?? Math.random())
-              if (seen.has(k)) return false
-              seen.add(k)
-              return true
-            })
-            return merged
-          })
+          const key = 'broadcast:' + tournamentId
+          const tracker = revTrackers.get(key) || { rev: 0, sub: '' }
+          const verdict = classifyRemote(remote, tracker)
+          tracker.rev = Math.max(tracker.rev, Number(remote._rev || 0))
+          if (verdict === 'apply' || verdict === 'conflict') tracker.sub = String(remote._sub || '')
+          revTrackers.set(key, tracker)
+          if (verdict === 'same' || verdict === 'stale') return
+          if (isDirtyNow()) {
+            // Local edits in progress — never clobber (the save bar surfaces
+            // the room-key conflict; explicit Save re-bumps beyond this rev).
+            console.debug('[sync] broadcast snapshot newer but local edits pending — skipped', remote._rev)
+            return
+          }
+          if (verdict === 'conflict') {
+            // Two writers landed on the same _rev: refetch the authoritative row.
+            loadBroadcastState(tournamentId).then((fresh) => {
+              if (!fresh || typeof fresh !== 'object' || isDirtyNow()) return
+              const t2 = revTrackers.get(key) || { rev: 0, sub: '' }
+              if (classifyRemote(fresh, t2) === 'stale') return
+              revTrackers.set(key, { rev: Number((fresh as any)._rev || 0), sub: String((fresh as any)._sub || '') })
+              mergeBroadcast(fresh)
+            }).catch(() => {})
+            return
+          }
+          mergeBroadcast(remote)
         }
       )
       .subscribe()
+
+    const mergeBroadcast = (remote: any) => {
+      setStateSilent((prev) => {
+        const merged: any = { ...prev, ...remote }
+        const seen = new Set<string>()
+        merged.teams = (merged.teams || []).filter((t: any) => {
+          const k = String(t?.id ?? t?.name ?? Math.random())
+          if (seen.has(k)) return false
+          seen.add(k)
+          return true
+        })
+        return merged
+      })
+    }
 
     return () => {
       supabase.removeChannel(matches)

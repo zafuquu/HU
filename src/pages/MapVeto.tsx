@@ -113,48 +113,81 @@ export interface VetoStep {
   type: VetoStepType
   actor: 'TEAM_A' | 'TEAM_B' | 'DECIDER'
   targetSlot?: string
+  /** Stable BLOB-style step id: opening-ban-1, pick-map-1, side-map-1,
+   *  closing-ban-1, decider-map-3 — stamped onto vetoSteps history entries. */
+  id: string
+}
+
+/** Programmatic ladder: 2 opening bans → alternating (pick, side) starting with
+ *  TEAM_A (the *other* team chooses sides, matching handleSidePick) → optional
+ *  closing bans → auto decider (actorless — assigned when the pool has 1 left). */
+function buildLadder(pickCount: number, closingBans: number) {
+  const raw: { type: VetoStepType; actor: VetoStep['actor']; targetSlot?: string }[] = [
+    { type: 'BAN', actor: 'TEAM_A' },
+    { type: 'BAN', actor: 'TEAM_B' },
+  ]
+  for (let n = 1; n <= pickCount; n++) {
+    const picker = n % 2 === 1 ? 'TEAM_A' : 'TEAM_B'
+    const sider = picker === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A'
+    raw.push({ type: 'PICK', actor: picker, targetSlot: `map${n}` })
+    raw.push({ type: 'SIDE_PICK', actor: sider, targetSlot: `map${n}` })
+  }
+  for (let b = 0; b < closingBans; b++) {
+    raw.push({ type: 'BAN', actor: b % 2 === 0 ? 'TEAM_A' : 'TEAM_B' })
+  }
+  raw.push({ type: 'DECIDER', actor: 'DECIDER', targetSlot: `map${pickCount + 1}` })
+  return raw
+}
+
+/** Assign sequenceNo + BLOB-style ids (opening/closing bans, pick/side/decider-map-N). */
+function withIds(raw: { type: VetoStepType; actor: VetoStep['actor']; targetSlot?: string }[]): VetoStep[] {
+  let opening = 0
+  let closing = 0
+  let picks = 0
+  let sides = 0
+  let pickPhase = false
+  return raw.map((s, i) => {
+    let id: string
+    if (s.type === 'BAN') {
+      if (!pickPhase) id = `opening-ban-${++opening}`
+      else id = `closing-ban-${++closing}`
+    } else if (s.type === 'PICK') {
+      pickPhase = true
+      id = `pick-map-${++picks}`
+    } else if (s.type === 'SIDE_PICK') {
+      id = `side-map-${++sides}`
+    } else {
+      id = `decider-map-${s.targetSlot?.replace('map', '') || picks + 1}`
+    }
+    return { sequenceNo: i + 1, ...s, id }
+  })
 }
 
 export function getVetoSequence(format: string): VetoStep[] {
   switch (format) {
     case 'BO1':
-      return [
-        { sequenceNo: 1, type: 'BAN', actor: 'TEAM_A' },
-        { sequenceNo: 2, type: 'BAN', actor: 'TEAM_B' },
-        { sequenceNo: 3, type: 'BAN', actor: 'TEAM_A' },
-        { sequenceNo: 4, type: 'BAN', actor: 'TEAM_B' },
-        { sequenceNo: 5, type: 'BAN', actor: 'TEAM_A' },
-        { sequenceNo: 6, type: 'BAN', actor: 'TEAM_B' },
-        { sequenceNo: 7, type: 'DECIDER', actor: 'DECIDER' },
-      ]
+      // 6 bans + decider (classic single-map ladder)
+      return withIds([
+        { type: 'BAN', actor: 'TEAM_A' },
+        { type: 'BAN', actor: 'TEAM_B' },
+        { type: 'BAN', actor: 'TEAM_A' },
+        { type: 'BAN', actor: 'TEAM_B' },
+        { type: 'BAN', actor: 'TEAM_A' },
+        { type: 'BAN', actor: 'TEAM_B' },
+        { type: 'DECIDER', actor: 'DECIDER' },
+      ])
+    case 'BO2':
+      return withIds(buildLadder(1, 0))
     case 'BO5':
-      return [
-        { sequenceNo: 1, type: 'BAN', actor: 'TEAM_A' },
-        { sequenceNo: 2, type: 'BAN', actor: 'TEAM_B' },
-        { sequenceNo: 3, type: 'PICK', actor: 'TEAM_A', targetSlot: 'map1' },
-        { sequenceNo: 4, type: 'SIDE_PICK', actor: 'TEAM_B', targetSlot: 'map1' },
-        { sequenceNo: 5, type: 'PICK', actor: 'TEAM_B', targetSlot: 'map2' },
-        { sequenceNo: 6, type: 'SIDE_PICK', actor: 'TEAM_A', targetSlot: 'map2' },
-        { sequenceNo: 7, type: 'PICK', actor: 'TEAM_A', targetSlot: 'map3' },
-        { sequenceNo: 8, type: 'SIDE_PICK', actor: 'TEAM_B', targetSlot: 'map3' },
-        { sequenceNo: 9, type: 'PICK', actor: 'TEAM_B', targetSlot: 'map4' },
-        { sequenceNo: 10, type: 'SIDE_PICK', actor: 'TEAM_A', targetSlot: 'map4' },
-        { sequenceNo: 11, type: 'DECIDER', actor: 'DECIDER', targetSlot: 'map5' },
-      ]
+      return withIds(buildLadder(4, 0))
+    case 'BO7':
+      return withIds(buildLadder(6, 0))
+    case 'BO9':
+      return withIds(buildLadder(8, 0))
     case 'BO3':
     default:
-      // BO3 9 steps (Ban A, Ban B, Pick A, Side B, Pick B, Side A, Ban A, Ban B, Decider)
-      return [
-        { sequenceNo: 1, type: 'BAN', actor: 'TEAM_A' },
-        { sequenceNo: 2, type: 'BAN', actor: 'TEAM_B' },
-        { sequenceNo: 3, type: 'PICK', actor: 'TEAM_A', targetSlot: 'map1' },
-        { sequenceNo: 4, type: 'SIDE_PICK', actor: 'TEAM_B', targetSlot: 'map1' },
-        { sequenceNo: 5, type: 'PICK', actor: 'TEAM_B', targetSlot: 'map2' },
-        { sequenceNo: 6, type: 'SIDE_PICK', actor: 'TEAM_A', targetSlot: 'map2' },
-        { sequenceNo: 7, type: 'BAN', actor: 'TEAM_A' },
-        { sequenceNo: 8, type: 'BAN', actor: 'TEAM_B' },
-        { sequenceNo: 9, type: 'DECIDER', actor: 'DECIDER', targetSlot: 'map3' },
-      ]
+      // BO3 9 steps: opening bans, pick/side ×2, closing bans, auto decider.
+      return withIds(buildLadder(2, 2))
   }
 }
 
@@ -190,7 +223,7 @@ const SwitchSidesIcon = ({ className = 'size-5' }: { className?: string }) => (
 export default function MapVeto() {
   const { state, setState, showToast } = useAppStore()
 
-  const [selectedFormat, setSelectedFormat] = useState<'BO1' | 'BO2' | 'BO3' | 'BO5' | 'BO7'>((state.vetoFormat as 'BO1' | 'BO2' | 'BO3' | 'BO5' | 'BO7') || 'BO3')
+  const [selectedFormat, setSelectedFormat] = useState<'BO1' | 'BO2' | 'BO3' | 'BO5' | 'BO7' | 'BO9'>((state.vetoFormat as 'BO1' | 'BO2' | 'BO3' | 'BO5' | 'BO7' | 'BO9') || 'BO3')
   const [selectedMapIds, setSelectedMapIds] = useState<string[]>(
     state.vetoSelectedMapIds && state.vetoSelectedMapIds.length
       ? state.vetoSelectedMapIds
@@ -203,6 +236,16 @@ export default function MapVeto() {
   const [isVetoCompleted, setIsVetoCompleted] = useState(state.vetoCompleted ?? false)
   const [currentStepIndex, setCurrentStepIndex] = useState(state.vetoStepIndex ?? 0)
   const [animationSpeed, setAnimationSpeed] = useState('750')
+  // P5 replay (operator ruling): PLAY must NOT open panels or scenes here —
+  // the map-ban scene lives in the HUD editor (and on the OBS overlay URL).
+  // PLAY bumps `vetoReplayRun` in the shared room state; the MapBanScene in
+  // HudEditor/OverlayPopout keys off it, so pressing PLAY re-runs the reveal
+  // animation exactly where the real site plays it — same tab (editor) and
+  // the OBS browser-source URL, which both read this state.
+  const startReplay = () => {
+    setState(prev => ({ ...prev, vetoReplayRun: (prev.vetoReplayRun || 0) + 1 }))
+    showToast('Map ban scene playing on the HUD editor & OBS overlay')
+  }
 
   // In-progress acting team and action overrides (persisted to context so a
   // mid-veto navigation doesn't reset them).
@@ -214,9 +257,17 @@ export default function MapVeto() {
     pickedBy: 'TEAM_A' | 'TEAM_B'
     choosingSideTeam: 'TEAM_A' | 'TEAM_B'
     slot: string
+    /** Step id captured when the pick ran (pick-map-N) — stamped into history. */
+    stepId?: string
   } | null>(state.vetoPendingSidePick ?? null)
 
   const [deciderSideOpen, setDeciderSideOpen] = useState(false)
+  // Side-pick dialog: hovering a side BUTTON lights the matching gradient
+  // edge on the map preview (shield → left blue, swords → right red).
+  const [sideHover, setSideHover] = useState<'defense' | 'attack' | null>(null)
+  useEffect(() => {
+    if (!pendingSidePick) setSideHover(null)
+  }, [pendingSidePick])
 
   const vetoPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -316,7 +367,7 @@ export default function MapVeto() {
       setState(prev => ({
         ...prev,
         mapBans: [...(prev.mapBans || []), newBan],
-        vetoSteps: [...(prev.vetoSteps || []), { team: actor, action: 'Ban' as const, map: mapId }],
+        vetoSteps: [...(prev.vetoSteps || []), { team: actor, action: 'Ban' as const, map: mapId, stepId: sequence[currentStepIndex]?.id }],
       }))
       showToast(`${actor === 'TEAM_A' ? teamA?.name : teamB?.name} banned ${mapId.toUpperCase()}`)
       advanceStep()
@@ -327,6 +378,7 @@ export default function MapVeto() {
         pickedBy: actor,
         choosingSideTeam,
         slot: `map${pickedMaps.length + 1}`,
+        stepId: sequence[currentStepIndex]?.id,
       })
     } else if (action === 'Decider') {
       const newPick = {
@@ -338,7 +390,7 @@ export default function MapVeto() {
       setState(prev => ({
         ...prev,
         mapPicks: [...(prev.mapPicks || []), newPick],
-        vetoSteps: [...(prev.vetoSteps || []), { team: 'DECIDER', action: 'Decider' as const, map: mapId }],
+        vetoSteps: [...(prev.vetoSteps || []), { team: 'DECIDER', action: 'Decider' as const, map: mapId, stepId: sequence[currentStepIndex]?.id }],
       }))
       showToast(`${mapId.toUpperCase()} selected as Decider!`)
       advanceStep()
@@ -368,7 +420,7 @@ export default function MapVeto() {
     setState(prev => ({
       ...prev,
       mapPicks: [...(prev.mapPicks || []), newPick],
-      vetoSteps: [...(prev.vetoSteps || []), { team: pendingSidePick.pickedBy, action: 'Pick' as const, map: pendingSidePick.mapId, side: side === 'ATTACK' ? 'Offense' : 'Defense' }],
+      vetoSteps: [...(prev.vetoSteps || []), { team: pendingSidePick.pickedBy, action: 'Pick' as const, map: pendingSidePick.mapId, side: side === 'ATTACK' ? 'Offense' : 'Defense', stepId: pendingSidePick.stepId }],
     }))
 
     showToast(
@@ -480,7 +532,7 @@ export default function MapVeto() {
             <div className="space-y-2">
               <span className="text-[11px] font-semibold tracking-wider text-[#e7e7e7]/40 uppercase">FORMAT</span>
               <div className="flex items-center gap-1 rounded-lg border border-white/5 bg-[#121417] p-1">
-                {(['BO1', 'BO2', 'BO3', 'BO5', 'BO7'] as const).map(fmt => (
+                {(['BO1', 'BO2', 'BO3', 'BO5', 'BO7', 'BO9'] as const).map(fmt => (
                   <button
                     key={fmt}
                     type="button"
@@ -852,7 +904,7 @@ export default function MapVeto() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => showToast('Replaying team picks...')}
+                  onClick={startReplay}
                   className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-4 text-xs font-bold text-black transition-all hover:bg-[#eaeaea] cursor-pointer"
                 >
                   <Play className="size-3 fill-black" />
@@ -872,7 +924,7 @@ export default function MapVeto() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => showToast(`Playing with ${animationSpeed}ms interval`)}
+                  onClick={startReplay}
                   className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-4 text-xs font-bold text-black transition-all hover:bg-[#eaeaea] cursor-pointer"
                 >
                   <Play className="size-3 fill-black" />
@@ -891,7 +943,10 @@ export default function MapVeto() {
         <div className="flex gap-8">
           {/* Left Column: Stack of Completed Banner Cards */}
           <div className="flex-1 space-y-2.5">
-            {sequence.map((step, idx) => {
+            {/* SIDE_PICK steps are choice steps, not map rows — they previously
+                rendered as blank "MAP / DECIDER" cards. Their outcome already
+                appears as side badges on the owning pick/decider row. */}
+            {sequence.filter(step => step.type !== 'SIDE_PICK').map((step) => {
               const pickData = pickedMaps.find((p: any) => p.sequenceNo === step.sequenceNo)
               const banData = bannedMaps.find((b: any) => b.sequenceNo === step.sequenceNo)
               const mapId = pickData?.mapId || banData?.mapId
@@ -907,9 +962,20 @@ export default function MapVeto() {
                   ? teamB?.name || 'TEST1'
                   : 'DECIDER'
 
+              // Real side assignment from the side-pick/decider choice (was hardcoded).
+              const sides = pickData?.sideSelection
+              const sideA: 'ATTACK' | 'DEFENSE' = sides?.TEAM_A ?? 'ATTACK'
+              const sideB: 'ATTACK' | 'DEFENSE' = sides?.TEAM_B ?? 'DEFENSE'
+              const sideMeta = (s: 'ATTACK' | 'DEFENSE') =>
+                s === 'ATTACK'
+                  ? { label: 'ATTACK', color: 'text-[#FF4646]', Icon: ValorantAttackIcon }
+                  : { label: 'DEFENSE', color: 'text-[#2FC28F]', Icon: ValorantDefenseIcon }
+              const leftMeta = sideMeta(sideA)
+              const rightMeta = sideMeta(sideB)
+
               return (
                 <div
-                  key={idx}
+                  key={step.id}
                   className="relative h-20 w-full overflow-hidden rounded-lg bg-[#121417]"
                 >
                   {mapData && (
@@ -952,21 +1018,22 @@ export default function MapVeto() {
                       </p>
                     </div>
 
-                    {/* Picked Sides: Crossed Swords & Shield Icons */}
-                    {isPick && (
+                    {/* Picked Sides: Crossed Swords & Shield Icons — driven by the
+                        actual sideSelection (incl. decider side choices) */}
+                    {pickData && (isPick || isDecider) && (
                       <div className="flex shrink-0 items-center gap-4">
                         <div className="flex items-center gap-2">
                           <div className="flex flex-col items-end">
                             <span className="text-[10px] font-semibold text-white/80">{teamA?.name || 'test'}</span>
-                            <span className="text-[9px] font-bold tracking-wider text-[#FF4646] uppercase">ATTACK</span>
+                            <span className={`text-[9px] font-bold tracking-wider uppercase ${leftMeta.color}`}>{leftMeta.label}</span>
                           </div>
-                          <ValorantAttackIcon className="size-6" />
+                          <leftMeta.Icon className="size-6" />
                         </div>
                         <div className="flex items-center gap-2">
-                          <ValorantDefenseIcon className="size-6" />
+                          <rightMeta.Icon className="size-6" />
                           <div className="flex flex-col items-start">
                             <span className="text-[10px] font-semibold text-white/80">{teamB?.name || 'test1'}</span>
-                            <span className="text-[9px] font-bold tracking-wider text-[#2FC28F] uppercase">DEFENSE</span>
+                            <span className={`text-[9px] font-bold tracking-wider uppercase ${rightMeta.color}`}>{rightMeta.label}</span>
                           </div>
                         </div>
                       </div>
@@ -1045,7 +1112,7 @@ export default function MapVeto() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => showToast('Replaying team picks animation...')}
+                  onClick={startReplay}
                   className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-4 text-xs font-bold text-black transition-all hover:bg-[#eaeaea] cursor-pointer"
                 >
                   <Play className="size-3 fill-black" />
@@ -1065,7 +1132,7 @@ export default function MapVeto() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => showToast(`Playing with ${animationSpeed}ms interval`)}
+                  onClick={startReplay}
                   className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-white px-4 text-xs font-bold text-black transition-all hover:bg-[#eaeaea] cursor-pointer"
                 >
                   <Play className="size-3 fill-black" />
@@ -1077,40 +1144,110 @@ export default function MapVeto() {
         </div>
       )}
 
-      {/* Side Pick Selection Modal */}
-      {pendingSidePick && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#16171a] p-6 text-center shadow-2xl space-y-6">
-            <div className="space-y-1">
-              <h3 className="text-lg font-semibold text-white">Side Selection</h3>
-              <p className="text-xs text-[#e7e7e7]/60">
-                {pendingSidePick.choosingSideTeam === 'TEAM_A' ? teamA?.name || 'Left Team' : teamB?.name || 'Right Team'}, choose starting side on{' '}
-                <span className="font-bold text-white uppercase">{pendingSidePick.mapId}</span>
-              </p>
-            </div>
+      {/* Side Pick Selection Modal — original dialog parity: header with map
+          position, splash preview + big title + pick label, "Select side for"
+          row with Swap, icon-only Defense/Attack cards. */}
+      {pendingSidePick && (() => {
+        const sideMap = VAL_MAPS.find(m => m.mapId === pendingSidePick.mapId)
+        const choosingName = pendingSidePick.choosingSideTeam === 'TEAM_A' ? teamA?.name || 'Team A' : teamB?.name || 'Team B'
+        const choosingColor = pendingSidePick.choosingSideTeam === 'TEAM_A' ? (teamA?.color || '#28D091') : (teamB?.color || '#FF3549')
+        const pickingName = pendingSidePick.pickedBy === 'TEAM_A' ? teamA?.name || 'Team A' : teamB?.name || 'Team B'
+        const slotNum = (String(pendingSidePick.slot || '').match(/\d+/) || ['1'])[0]
+        const totalMaps = String(state.bestOf || 3)
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setPendingSidePick(null)}>
+            <div className="w-full max-w-xl overflow-hidden rounded-lg border border-white/10 bg-[#121417] text-left text-white shadow-2xl" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex flex-row items-center justify-between border-b border-white/5 bg-[#16181C] px-6 py-4">
+                <h2 className="flex items-center gap-2 text-sm font-medium uppercase tracking-widest text-white/50">
+                  Map {slotNum} of {totalMaps}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setPendingSidePick(null)}
+                  aria-label="Close"
+                  className="rounded-xs text-white/50 opacity-70 transition-opacity hover:opacity-100 cursor-pointer"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => handleSidePick('ATTACK')}
-                className="group flex flex-col items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-5 transition-all hover:border-red-500/50 hover:bg-red-500/20 cursor-pointer"
-              >
-                <ValorantAttackIcon className="size-10" />
-                <span className="text-sm font-bold tracking-wider text-red-400 uppercase">Attack</span>
-              </button>
+              {/* Body */}
+              <div className="relative flex flex-col items-center p-6">
+                {/* Map preview banner */}
+                <div className="group relative h-[140px] w-[420px] max-w-full overflow-hidden rounded-sm uppercase">
+                  {sideMap && (
+                    <img
+                      alt={sideMap.mapName}
+                      src={sideMap.image}
+                      className="absolute inset-0 size-full object-cover opacity-60 transition-transform duration-700 group-hover:scale-105"
+                    />
+                  )}
+                  <div className="absolute inset-0 z-10 transition-opacity duration-300" style={{ background: 'linear-gradient(90deg, rgb(54, 151, 255) 0%, transparent 100%)', opacity: sideHover === 'defense' ? 1 : 0 }} />
+                  <div className="absolute inset-0 z-10 transition-opacity duration-300" style={{ background: 'linear-gradient(-90deg, rgb(255, 70, 85) 0%, transparent 100%)', opacity: sideHover === 'attack' ? 1 : 0 }} />
+                  <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center">
+                    <p className="font-schabo text-[56px] leading-none tracking-wide text-white" style={{ textShadow: 'rgba(0,0,0,0.8) 0px 4px 20px' }}>
+                      {(sideMap?.mapName || pendingSidePick.mapId).toUpperCase()}
+                    </p>
+                    <div className="flex items-center gap-1 text-[13px] font-bold text-white drop-shadow-md">
+                      <span className="tracking-widest">{pickingName} Pick</span>
+                    </div>
+                  </div>
+                </div>
 
-              <button
-                type="button"
-                onClick={() => handleSidePick('DEFENSE')}
-                className="group flex flex-col items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-5 transition-all hover:border-emerald-500/50 hover:bg-emerald-500/20 cursor-pointer"
-              >
-                <ValorantDefenseIcon className="size-10" />
-                <span className="text-sm font-bold tracking-wider text-emerald-400 uppercase">Defense</span>
-              </button>
+                {/* Select side row + Swap */}
+                <div className="my-4 flex w-full items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="uppercase tracking-wider text-white/50">Select side for</span>
+                    <div className="flex items-center gap-1.5">
+                      <div className="size-4 rounded bg-white/10" style={{ background: choosingColor }} />
+                      <span className="font-bold tracking-wider text-white">{choosingName}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPendingSidePick(pp =>
+                        pp ? { ...pp, choosingSideTeam: pp.choosingSideTeam === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A' } : pp,
+                      )
+                    }
+                    className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-white/40 transition-colors hover:text-white cursor-pointer"
+                  >
+                    <SwitchSidesIcon className="size-3" />
+                    Swap
+                  </button>
+                </div>
+
+                {/* Icon-only side cards — original order: Defense (blue shield) left, Attack (red swords) right */}
+                <div className="flex w-full gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => handleSidePick('DEFENSE')}
+                    onMouseEnter={() => setSideHover('defense')}
+                    onMouseLeave={() => setSideHover(null)}
+                    aria-label="Choose Defense"
+                    title="Defense"
+                    className={`flex flex-1 items-center justify-center gap-2 rounded border py-3 transition-all duration-200 cursor-pointer ${sideHover === 'defense' ? 'border-white/20 bg-[#1c1f24]' : 'border-white/5 bg-[#16181C] hover:border-white/20 hover:bg-[#1c1f24]'}`}
+                  >
+                    <ValorantDefenseIcon className="size-6 text-[#3697FF]" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSidePick('ATTACK')}
+                    onMouseEnter={() => setSideHover('attack')}
+                    onMouseLeave={() => setSideHover(null)}
+                    aria-label="Choose Attack"
+                    title="Attack"
+                    className={`flex flex-1 items-center justify-center gap-2 rounded border py-3 transition-all duration-200 cursor-pointer ${sideHover === 'attack' ? 'border-white/20 bg-[#1c1f24]' : 'border-white/5 bg-[#16181C] hover:border-white/20 hover:bg-[#1c1f24]'}`}
+                  >
+                    <ValorantAttackIcon className="size-6 text-[#FF4655]" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Decider Side Selection Modal */}
       {deciderSideOpen && (() => {

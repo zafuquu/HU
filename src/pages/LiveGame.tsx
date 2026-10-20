@@ -285,9 +285,9 @@ export default function LiveGame() {
   const copyWebcamsAndMapbans = () => {
     const webcams = [
       `=== ${teamA?.name || ''} Webcams ===`,
-      ...(teamA?.players || []).map(p => `${p.riotId || p.alias || 'Player'}: webcam://${state.serverCode}/${p.id}`),
+      ...(teamA?.players || []).map(p => `${p.riotId || p.alias || 'Player'}: ${window.location.origin}/webcams/invite/${state.serverCode}/${teamA?.id || ''}/${p.id}`),
       `\n=== ${teamB?.name || ''} Webcams ===`,
-      ...(teamB?.players || []).map(p => `${p.riotId || p.alias || 'Player'}: webcam://${state.serverCode}/${p.id}`),
+      ...(teamB?.players || []).map(p => `${p.riotId || p.alias || 'Player'}: ${window.location.origin}/webcams/invite/${state.serverCode}/${teamB?.id || ''}/${p.id}`),
       `\n=== Map Veto ===`,
       `Active: ${state.mapPool?.join(', ') || 'Ascent, Split, Breeze, Lotus, Sunset, Summit, Haven'}`,
     ].join('\n')
@@ -308,9 +308,22 @@ export default function LiveGame() {
 
   const bumpScore = (side: 'A' | 'B', delta: number) => {
     const key = side === 'A' ? 'scoreA' : 'scoreB'
+    const okey = side === 'A' ? 'scoreOverrideA' : 'scoreOverrideB'
     const v = Math.max(0, (state[key] || 0) + delta)
-    setState(p => ({ ...p, [key]: v }))
+    // P1 score model: a manual bump is an OVERRIDE (as the UI copy promises) —
+    // it wins over the match-row/game-data derived score until explicitly cleared.
+    setState(p => ({ ...p, [key]: v, [okey]: v }))
     saveMatch(side === 'A' ? { team1_score: v } : { team2_score: v })
+  }
+
+  const clearScoreOverride = () => {
+    setState(p => ({
+      ...p,
+      scoreOverrideA: null,
+      scoreOverrideB: null,
+      scoreA: p.derivedScoreA ?? p.scoreA,
+      scoreB: p.derivedScoreB ?? p.scoreB,
+    }))
   }
 
   const bumpSeries = (side: 'A' | 'B', delta: number) => {
@@ -321,7 +334,7 @@ export default function LiveGame() {
   }
 
   return (
-    <div className={`flex h-full w-full min-w-0 flex-col overflow-y-auto p-5 transition-colors duration-200 ${themeMode === 'light' ? 'bg-[#1a1c20] text-[#f1f2f4] filter contrast-125' : 'text-white'}`} style={{ scrollbarWidth: 'none' }}>
+    <div className={`flex h-full w-full min-w-0 flex-col overflow-y-auto p-5 transition-colors duration-200 ${themeMode === 'light' ? 'bg-[#1a1c1e] text-[#f1f2f4] filter contrast-125' : 'text-white'}`} style={{ scrollbarWidth: 'none' }}>
       <form onSubmit={e => e.preventDefault()} className="grid h-full w-full grid-cols-1 gap-x-10 gap-y-6 lg:grid-cols-2">
         {/* ========================================================================= */}
         {/* Left Column (Teams, Scoreline, Information) - 50%                       */}
@@ -350,15 +363,19 @@ export default function LiveGame() {
                 <span className="text-xs text-[#e7e7e7]/50">Auto</span>
                 <button
                   type="button"
+                  aria-pressed={autoTeams}
+                  title={autoTeams ? 'Auto: teams follow the live feed — manual edits locked' : 'Manual: teams are editable'}
                   onClick={() => setState(p => ({ ...p, teamsAuto: !(p.teamsAuto ?? true) }))}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border border-white/5 p-0.5 transition-colors duration-200 ${
-                    autoTeams ? 'bg-[#3697FF]' : 'bg-[#202224]'
-                  }`}
+                  style={{ background: autoTeams ? '#3697FF' : '#1a1c1e', borderColor: 'rgba(255,255,255,0.08)' }}
+                  className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border p-0.5 transition-colors duration-200"
                 >
                   <span
-                    className={`inline-block size-3.5 transform rounded-full bg-white transition-transform duration-200 ${
-                      autoTeams ? 'translate-x-4' : 'translate-x-0'
-                    }`}
+                    style={{
+                      transform: autoTeams ? 'translateX(16px)' : 'translateX(0)',
+                      background: '#fff',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.4)',
+                    }}
+                    className="inline-block size-3.5 rounded-full transition-transform duration-200"
                   />
                 </button>
               </div>
@@ -374,7 +391,7 @@ export default function LiveGame() {
               <div className="flex items-center gap-3">
                 {/* Left Team Squircle Selector */}
                 <div className="flex flex-1 items-center gap-2.5 rounded-xl border border-white/10 bg-[#16171a] p-2.5">
-                  <div className="size-6 rounded bg-[#2a2e33]" />
+                  <div className="size-6 rounded bg-[#24272b]" />
                   <div className="relative flex-1">
                     <button
                       type="button"
@@ -424,7 +441,7 @@ export default function LiveGame() {
 
                 {/* Right Team Squircle Selector */}
                 <div className="flex flex-1 items-center gap-2.5 rounded-xl border border-white/10 bg-[#16171a] p-2.5">
-                  <div className="size-6 rounded bg-[#2a2e33]" />
+                  <div className="size-6 rounded bg-[#24272b]" />
                   <div className="relative flex-1">
                     <button
                       type="button"
@@ -497,7 +514,7 @@ export default function LiveGame() {
                   type="button"
                 onClick={() => setState(p => ({ ...p, scorelineAuto: !(p.scorelineAuto ?? true) }))}
                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border border-white/5 p-0.5 transition-colors duration-200 ${
-                    autoScoreline ? 'bg-[#3697FF]' : 'bg-[#202224]'
+                    autoScoreline ? 'bg-[#3697FF]' : 'bg-[#1a1c1e]'
                   }`}
                 >
                   <span
@@ -513,6 +530,17 @@ export default function LiveGame() {
               <span>Score changes here temporarily override the live score.</span>
               <Info className="size-3.5" />
             </p>
+
+            {(state.scoreOverrideA != null || state.scoreOverrideB != null) && (
+              <button
+                type="button"
+                onClick={clearScoreOverride}
+                className="self-start rounded-md border border-white/10 bg-[#16171a] px-2 py-1 text-[11px] font-medium text-[#e7e7e7]/70 hover:text-white cursor-pointer"
+                title="Clear the manual override and return to the derived (live/match) score"
+              >
+                ↺ Clear score override ({state.scoreOverrideA ?? '–'} : {state.scoreOverrideB ?? '–'})
+              </button>
+            )}
 
             {/* Score Counters Row */}
             <div className="flex items-center justify-between gap-6 pt-2">
@@ -1201,7 +1229,7 @@ export default function LiveGame() {
                   type="button"
                 onClick={() => setState(p => ({ ...p, seriesAuto: !(p.seriesAuto ?? true) }))}
                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border border-white/5 p-0.5 transition-colors duration-200 ${
-                    autoSeriesScore ? 'bg-[#3697FF]' : 'bg-[#202224]'
+                    autoSeriesScore ? 'bg-[#3697FF]' : 'bg-[#1a1c1e]'
                   }`}
                 >
                   <span
@@ -1295,11 +1323,11 @@ export default function LiveGame() {
           <div className="mt-auto flex min-h-0 flex-1 flex-col gap-3">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold text-[#e7e7e7]">Final Preview</h2>
-              <span className={'text-[11px] font-medium px-2 py-0.5 rounded border ' + (autoScoreline ? 'text-[#4ed9b4] bg-[#13352c] border-[#1dcd9b]/30' : 'text-[#e7e7e7]/60 bg-[#1f2123] border-white/10')}>
+              <span className={'text-[11px] font-medium px-2 py-0.5 rounded border ' + (autoScoreline ? 'text-[#4ed9b4] bg-[#13352c] border-[#1dcd9b]/30' : 'text-[#e7e7e7]/60 bg-[#1a1c1e] border-white/10')}>
                 {autoScoreline ? 'Live Synced' : 'Manual override'}
               </span>
             </div>
-            <div className="flex flex-1 w-full min-h-60 rounded-2xl border border-[#24272b] bg-[#101113] p-1.5 shadow-2xl">
+            <div className="flex flex-1 w-full min-h-60 rounded-2xl border border-[#24272b] bg-[#101214] p-1.5 shadow-2xl">
               <div
                 ref={previewContainerRef}
                 className="relative size-full min-h-0 overflow-hidden rounded-xl bg-black flex items-center justify-center"

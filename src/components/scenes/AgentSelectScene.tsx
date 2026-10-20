@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
-const BLANK_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+const BLANK_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAALSURBVBhXY2AAAgAABQABqtXIUQAAAABJRU5ErkJggg=='
 import { resolveAgent as resolveAgentMeta, preloadAgentPortraits, type AgentMeta } from '../../data/valAgentMeta'
+import { fitScaleFor, contentWidth, refitAfterFonts } from '../../lib/autoFit'
 
 /** Auto-fit team name: measures the rendered text and scales down ONLY when
  *  it overflows its box (e.g. "HAVOC UNLEASH") — short names render at 100%. */
@@ -11,15 +12,15 @@ function FitTeamName({ name, origin, className }: { name: string; origin: 'left'
     const el = ref.current
     const box = el?.parentElement
     if (!el || !box) return
-    const fit = () => {
-      el.style.transform = 'scale(1)'
-      const w = el.scrollWidth
-      const avail = box.clientWidth
-      setScale(avail > 0 && w > avail ? Math.max(0.35, avail / w) : 1)
-    }
+    // Canvas-based measure (layout-independent) against the box's CONTENT
+    // width — the previous scrollWidth/clientWidth pair silently returned
+    // "fits" because the wrapper grew with the text (flex min-width:auto).
+    const fit = () => setScale(fitScaleFor(name, el, contentWidth(box), 0.35))
     fit()
     const ro = new ResizeObserver(fit)
     ro.observe(box)
+    ro.observe(el)
+    refitAfterFonts(el, fit)
     return () => ro.disconnect()
   }, [name])
   return (
@@ -132,16 +133,13 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
   }, [mapImage])
 
   // Resolve each card's agent (portrait + role) from the authoritative meta.
-  // NO demo fallback: an unpicked agent renders as a blank neutral card.
+  // NO player photos and NO demo fallback: an unpicked agent renders as a
+  // blank neutral card — the portrait appears only after an agent is selected
+  // (operator request); the team LOGO lives in the header card instead.
   const resolveCard = (p: any) => {
     const meta: AgentMeta | null = resolveAgentMeta(p)
-    const img =
-      meta?.portrait ||
-      p?.img ||
-      p?.photoUrl ||
-      p?.avatarUrl ||
-      ''
-    const role = meta?.role || p?.role || 'initiator'
+    const img = meta?.portrait || ''
+    const role = meta?.role || p?.role || null
     return { meta, img, role }
   }
 
@@ -191,7 +189,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
               <div className="relative aspect-square h-full overflow-hidden rounded-[2px] p-1" style={{ background: leftTeamColor }}>
                 {leftTeamLogo && <img alt="" src={leftTeamLogo} className="absolute inset-0 size-full object-contain" onError={e => { e.currentTarget.style.display = 'none' }} />}
               </div>
-              <div className="flex h-full flex-1 items-center justify-center px-4">
+              <div className="flex h-full min-w-0 flex-1 items-center justify-start px-4">
                 <FitTeamName name={leftTeamName} origin="left" className="font-schabo text-[48px] leading-none text-white uppercase" />
               </div>
             </div>
@@ -206,10 +204,12 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
                   className="relative h-[286px] w-[168px] -ml-0.5 first:ml-0 bg-[#C9C9C9] p-0.5 overflow-hidden"
                 >
                   <div className="relative size-full overflow-hidden bg-[#171717]">
-                    {/* Role Watermark — matches the card's actual agent */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 z-0 size-full opacity-40">
-                      <RoleIcon role={role} />
-                    </div>
+                    {/* Role Watermark — only when an agent is actually picked */}
+                    {role && (
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 z-0 size-full opacity-40">
+                        <RoleIcon role={role} />
+                      </div>
+                    )}
 
                     {/* Agent Portrait: Head Touching the Top of the Box */}
                     <div className="absolute inset-0 z-10 overflow-hidden flex justify-center">
@@ -277,7 +277,7 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
               <div className="relative aspect-square h-full overflow-hidden rounded-[2px] p-1" style={{ background: rightTeamColor }}>
               {rightTeamLogo && <img alt="" src={rightTeamLogo} className="absolute inset-0 size-full object-contain" onError={e => { e.currentTarget.style.display = 'none' }} />}
             </div>
-              <div className="flex h-full flex-1 items-center justify-center px-4">
+              <div className="flex h-full min-w-0 flex-1 items-center justify-end px-4">
                 <FitTeamName name={rightTeamName} origin="right" className="font-schabo text-[48px] leading-none text-white uppercase" />
               </div>
             </div>
@@ -292,10 +292,12 @@ export function AgentSelectScene(props: AgentSelectSceneProps) {
                   className="relative h-[286px] w-[168px] -ml-0.5 first:ml-0 bg-[#C9C9C9] p-0.5 overflow-hidden"
                 >
                   <div className="relative size-full overflow-hidden bg-[#171717]">
-                    {/* Role Watermark — matches the card's actual agent */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 z-0 size-full opacity-40">
-                      <RoleIcon role={role} />
-                    </div>
+                    {/* Role Watermark — only when an agent is actually picked */}
+                    {role && (
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 z-0 size-full opacity-40">
+                        <RoleIcon role={role} />
+                      </div>
+                    )}
 
                     {/* Agent Portrait: Head Touching the Top of the Box */}
                     <div className="absolute inset-0 z-10 overflow-hidden flex justify-center">

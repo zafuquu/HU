@@ -125,13 +125,18 @@ function PlayerCard({ player, color, isBestPlayer, isFlipped, isWinningTeam }: P
     flipX: false,
   }
 
+  // EXACT original markup (operator's dev-tools capture): the img is
+  // `absolute top-0 right-0 w-full` with NO height/object-fit — its box is
+  // full container width at the portrait's natural height, and the captured
+  // per-agent translate(%) percentages resolve against THAT box with the
+  // default 50% 50% transform origin. Any change to the box or origin
+  // invalidates the percentages and breaks framing (why earlier fixes failed).
   const o = cfg.flipX ? -1 : 1
-  const scaleMult = isBestPlayer ? 1.25 : 1
   const transformStyle = [
     `translate(${isFlipped ? cfg.xFlipped : cfg.x}, ${cfg.y})`,
     `rotate(${cfg.rotation}deg)`,
-    `scaleX(${isFlipped ? cfg.scale * o * scaleMult : -cfg.scale * o * scaleMult})`,
-    `scaleY(${cfg.scale * scaleMult})`,
+    `scaleX(${isFlipped ? cfg.scale * o : -cfg.scale * o})`,
+    `scaleY(${cfg.scale})`,
   ].join(' ')
 
   const playerName = player.alias || player.name || player.riotId || 'Player'
@@ -223,10 +228,13 @@ function PlayerCard({ player, color, isBestPlayer, isFlipped, isWinningTeam }: P
 
         {/* Center Area with Agent Portrait & Stats */}
         <div className="relative z-2 flex-1 px-3 overflow-hidden">
-          {/* Portrait */}
+          {/* Original site markup: plain `absolute top-0 right-0 z-2 w-full`
+              img — natural height, no object-fit, default transform origin —
+              with the captured per-agent transform. Matches the live BLOB
+              postgame cards exactly (heads in frame at the card's mid-band). */}
           <img
             alt={codename}
-            className="absolute top-0 right-0 z-2 w-full max-h-[160%] object-contain pointer-events-none select-none"
+            className="absolute top-0 right-0 z-2 w-full pointer-events-none select-none"
             src={portraitUrl}
             style={{ transform: transformStyle }}
           />

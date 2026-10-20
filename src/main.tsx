@@ -19,6 +19,7 @@ import Widgets from './pages/Widgets'
 import Login from './pages/Login'
 import DesktopComplete from './pages/DesktopComplete'
 import WebcamPublisher from './pages/WebcamPublisher'
+import WebcamInvite from './pages/WebcamInvite'
 import OverlayPopout from './pages/OverlayPopout'
 import ObserverHudEditor from './pages/ObserverHudEditor'
 
@@ -31,6 +32,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path='/app/login' element={<Login />} />
       <Route path='/auth/desktop-complete' element={<DesktopComplete />} />
       <Route path='/webcams/invite/:roomId/:teamId/:slotId' element={<WebcamPublisher />} />
+      <Route path='/webcams/invite/:roomId/:teamId' element={<WebcamInvite />} />
             {/* Tournaments home (login-gated) */}
             <Route
               path='/app'

@@ -1,5 +1,6 @@
 import React from 'react'
 import { resolveAgent } from '../../data/valAgentMeta'
+import { fitScaleFor, contentWidth, refitAfterFonts } from '../../lib/autoFit'
 
 interface IngameHudSceneProps {
   leftTeamName?: string
@@ -14,6 +15,14 @@ interface IngameHudSceneProps {
   roundText?: string
   timerColor?: string
   eventsBg?: string
+  /** Game-events popover wiring → the RoundCeremony banner (the canonical
+      game-events component; the legacy ACE card is suppressed when a
+      ceremony is active). */
+  eventsHighlight?: string
+  gameEventsIndividual?: boolean
+  gameEventsUploads?: Record<string, string | null>
+  /** Editor preview: keep the ceremony resting at frame 1 so it stays clickable. */
+  ceremonyPersistent?: boolean
   // --- Score Line fields (wired to HUD editor popover) ---
   showBombTimer?: boolean
   showLogos?: boolean
@@ -49,6 +58,9 @@ interface IngameHudSceneProps {
   webcamPlayerName?: string
   webcamPlayerPhoto?: string | null
   webcamActive?: boolean
+  /** Observed player K/D/A shown in the facecam footer (BLOB parity — the
+      original never shows a LIVE pill on the broadcast). */
+  webcamPlayerStats?: { kills?: number; deaths?: number; assists?: number } | null
   webcamStream?: MediaStream | null
   liveOnly?: boolean
   roundEnd?: { winner: 'blue' | 'red' | null; reason: string | null; highlightPlayer?: { name: string; agent: string | null; kills: number | null; deaths: number | null; assists: number | null } | null } | null
@@ -86,6 +98,68 @@ function ScoreSeriesBar({ color, score, scoreToWin }: { color: string; score: nu
   )
 }
 
+/** BLOB `auto-scaler` parity: scales the text down (never ellipsis) to fit the
+    wrapper — this is what makes team names "auto adjust" in the original. */
+function AutoScalerText({
+  text,
+  color,
+  fontSize,
+  fontWeight,
+  letterSpacing,
+  h1ClassName,
+  wrapperClassName,
+  minScale = 0.42,
+}: {
+  text: string
+  color?: string
+  fontSize: number
+  fontWeight?: number
+  letterSpacing?: number
+  h1ClassName?: string
+  wrapperClassName?: string
+  minScale?: number
+}) {
+  const wrapRef = React.useRef<HTMLDivElement | null>(null)
+  const h1Ref = React.useRef<HTMLHeadingElement | null>(null)
+  const [scale, setScale] = React.useState(1)
+  React.useLayoutEffect(() => {
+    const update = () => {
+      const wrap = wrapRef.current
+      const el = h1Ref.current
+      if (!wrap || !el) return
+      // Canvas measure against the wrapper's CONTENT width — DOM measurement
+      // pairs (scrollWidth/clientWidth) silently returned "fits" when the
+      // wrapper was sized by its content or before the webfont loaded.
+      setScale(fitScaleFor(text, el, contentWidth(wrap), minScale))
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    if (wrapRef.current) ro.observe(wrapRef.current)
+    if (h1Ref.current) ro.observe(h1Ref.current)
+    refitAfterFonts(h1Ref.current, update)
+    return () => ro.disconnect()
+  }, [text, fontSize, minScale])
+  return (
+    <div ref={wrapRef} className={`relative h-full min-w-0 flex-1 ${wrapperClassName || ''}`} style={{ overflow: 'visible' }}>
+      <h1
+        ref={h1Ref}
+        className={`whitespace-nowrap absolute left-1/2 top-1/2 uppercase ${h1ClassName || ''}`}
+        style={{
+          color,
+          fontSize,
+          fontWeight,
+          letterSpacing,
+          transform: `scale(${scale}) translate(-50%, -50%)`,
+          transformOrigin: 'left top',
+          transition: 'transform 200ms ease-out',
+        }}
+      >
+        {text}
+      </h1>
+    </div>
+  )
+}
+
 function ScoreTeamBlock({
   teamName,
   teamColor,
@@ -105,13 +179,17 @@ function ScoreTeamBlock({
   teamLogo?: string | null
   seed?: number | string | null
 }) {
+  // Original parity width: default variant reserves the logo slot (logo image
+  // when configured, otherwise the team-color circle placeholder); no-logo is
+  // the narrow w-80 block.
+  const showLogoSlot = variant === 'default'
   return (
     <div
-      className={`flex h-full justify-between bg-black/90 ${variant === 'default' ? 'w-95' : variant === 'no-logo' ? 'w-80' : 'w-75'}`}
+      className={`flex h-full justify-between bg-black/90 ${showLogoSlot ? 'w-95' : 'w-80'}`}
     >
       <div className={`h-full w-1.25 ${isFlipped ? 'rounded-r-xs' : 'rounded-l-xs'}`} style={{ backgroundColor: teamColor }} />
       <div className={`flex w-[86%] items-center justify-center gap-3.75 ${isFlipped ? 'flex-row-reverse' : ''}`}>
-        {variant === 'default' && (
+        {showLogoSlot && (
           <div className="flex size-13 shrink-0 items-center justify-center overflow-hidden">
             {teamLogo ? (
               <img src={teamLogo} alt="" className="size-full object-contain" />
@@ -122,16 +200,15 @@ function ScoreTeamBlock({
         )}
         <div className={`h-full min-w-0 ${variant === 'no-logo' ? (isFlipped ? 'mr-3' : 'ml-3') : 'flex-1'} flex items-center justify-center gap-1.5`}>
           {seed != null && seed !== '' && (
-            <span className="text-[12px] font-bold px-1.5 py-0.5 rounded bg-white/15 text-white/80 font-mono">
+            <span className="shrink-0 text-[12px] font-bold px-1.5 py-0.5 rounded bg-white/15 text-white/80 font-mono">
               #{seed}
             </span>
           )}
-          <h1
-            className="translate-y-1 whitespace-nowrap px-1 text-[40px] uppercase"
-            style={{ color: colors?.title || '#DADBE3' }}
-          >
-            {teamName || (isFlipped ? 'TEAM B' : 'TEAM A')}
-          </h1>
+          <AutoScalerText
+            text={teamName || (isFlipped ? 'TEAM B' : 'TEAM A')}
+            color={colors?.title || '#DADBE3'}
+            fontSize={40}
+          />
         </div>
         <div className="flex h-full w-8.75 shrink-0 items-center justify-center">
           <h1 className="translate-y-1 text-[48px] uppercase" style={{ color: colors?.score || '#DADBE3' }}>
@@ -145,6 +222,8 @@ function ScoreTeamBlock({
 }
 
 function ScoreSmallBlock({ teamColor }: { teamColor: string }) {
+  // Original parity: the small variant's team block is a BLANK color square —
+  // the team names move to the bottom info bar's side cells instead.
   return (
     <div className="flex aspect-square h-full items-center justify-center" style={{ backgroundColor: teamColor }} />
   )
@@ -284,7 +363,7 @@ const CEREMONY_CSS = '@keyframes cerIn { from { opacity: 0; transform: translate
 //   Frame 1 — CENTERED: brand logo + reason text (ROUND WIN / ACE / CLUTCH ...)
 //   then the whole frame slides DOWN to the very bottom center, where
 //   Frame 2 — [team logo / team name / ATTACKER-DEFENDER]  [brand logo / ROUND n]
-function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, winnerFromLeft, leftColor, rightColor, gameEventLogo, tournamentLogo, clutchHighlight }: {
+function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, winnerFromLeft, leftColor, rightColor, gameEventLogo, tournamentLogo, clutchHighlight, baseColor, accentColor, eventImage, persistent, activeComponentId, onSelectComponent }: {
   trigger: string | null
   reasonText: string | null
   roundNumber: number | null
@@ -306,6 +385,15 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
    * ATTACKER/DEFENDER line.
    */
   clutchHighlight?: { name: string; agent: string | null; kills: number | null; deaths: number | null; assists: number | null } | null
+  /** Game-events popover wiring: Bg Color (banner base) + Highlight Color (edge glow). */
+  baseColor?: string
+  accentColor?: string
+  /** Uploaded per-reason image (Round Win / Ace / …) replacing the default logo. */
+  eventImage?: string | null
+  /** Editor preview: rest at frame 1 forever so the card stays clickable. */
+  persistent?: boolean
+  activeComponentId?: string | null
+  onSelectComponent?: (id: string) => void
 }) {
   const [stage, setStage] = React.useState<'hidden' | 'center' | 'slide' | 'bottom' | 'out'>('hidden')
   const seen = React.useRef<string | null>(null)
@@ -313,12 +401,15 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
     if (!trigger || trigger === seen.current) return
     seen.current = trigger
     setStage('center')
+    // Editor preview: rest at frame 1 so the card stays clickable for the
+    // game-events popover — no slide/out/hidden sequence.
+    if (persistent) return
     const t1 = setTimeout(() => setStage('slide'), 1900)
     const t2 = setTimeout(() => setStage('bottom'), 2400)
     const t3 = setTimeout(() => setStage('out'), 6200)
     const t4 = setTimeout(() => setStage('hidden'), 6600)
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4) }
-  }, [trigger])
+  }, [trigger, persistent])
   if (stage === 'hidden') return null
   // Frame 1 sits centered; from the slide phase on, the box moves to the
   // bottom-center (box bottom lands 120px above the screen bottom).
@@ -328,24 +419,39 @@ function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, 
     <div style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none' }}>
       <style>{CEREMONY_CSS}</style>
       <div
+        className={`clickable-component${activeComponentId === 'game-events' ? ' selected' : ''}`}
+        data-component-id="game-events"
+        data-make-transparent="true"
+        onClick={(e) => {
+          e.stopPropagation()
+          onSelectComponent?.('game-events')
+        }}
         style={{
           position: 'absolute', left: '50%', top: boxTop, width: 875, height: 200,
           transform: 'translateX(-50%)', transition: 'top 480ms cubic-bezier(0.4, 0, 0.2, 1)',
           opacity: stage === 'out' ? 0 : 1, transitionProperty: 'top, opacity',
           animation: stage === 'center' ? 'cerIn 300ms ease-out' : undefined,
           borderRadius: 4, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
+          pointerEvents: 'auto', cursor: 'pointer',
         }}
       >
         {/* Frame 1 — brand logo + reason text */}
         <div
           style={{
             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            background: 'linear-gradient(90deg, ' + leftColor + '55 0%, rgba(10,14,22,0.92) 30%, rgba(10,14,22,0.92) 70%, ' + rightColor + '55 100%)',
+            // Edge tints stay TEAM colors (left/right side each takes its own
+            // team color — operator request); the popover Bg Color owns the
+            // base band.
+            background: 'linear-gradient(90deg, ' + leftColor + '55 0%, ' + (baseColor || 'rgba(10,14,22,0.92)') + ' 30%, ' + (baseColor || 'rgba(10,14,22,0.92)') + ' 70%, ' + rightColor + '55 100%)',
             opacity: frame2Visible ? 0 : 1, transition: 'opacity 250ms ease',
           }}
         >
-          <img alt="" src={gameEventLogo || '/sponsor/Game Event.png'} style={{ maxHeight: 76, objectFit: 'contain', marginBottom: 8 }} onError={e => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = '/sponsor/Game Event.png' } }} />
-          <p style={{ fontSize: 34, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 3, margin: 0 }}>{reasonText || 'ROUND WIN'}</p>
+          <img alt="" src={eventImage || gameEventLogo || '/sponsor/Game Event.png'} style={{ maxHeight: 76, objectFit: 'contain', marginBottom: 8 }} onError={e => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = '/sponsor/Game Event.png' } }} />
+          <p style={{ fontSize: 34, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 3, margin: 0, textShadow: accentColor ? `0 0 18px ${accentColor}, 0 0 42px ${accentColor}66` : undefined }}>{reasonText || 'ROUND WIN'}</p>
+          {/* Highlight Color (popover) — bottom accent glow bar across the banner */}
+          {accentColor && (
+            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 4, background: accentColor, boxShadow: `0 0 14px ${accentColor}`, opacity: frame2Visible ? 0 : 1, transition: 'opacity 250ms ease' }} />
+          )}
         </div>
         {/* Frame 2 — winner block + brand/ROUND n block */}
         <div
@@ -720,6 +826,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     webcamPlayerName = 'No camera',
     webcamPlayerPhoto = null,
     webcamActive = false,
+    webcamPlayerStats = null,
     webcamStream = null,
     liveOnly = false,
     roundEnd = null,
@@ -742,6 +849,10 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     spikeState = null,
     spikePlantedAt = null,
     eventsBg,
+    eventsHighlight,
+    gameEventsIndividual = false,
+    gameEventsUploads,
+    ceremonyPersistent = false,
   } = props
 
   // ===== Endround banner names (ValoSpectra endround-banner parity) =====
@@ -753,6 +864,27 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     roundEnd?.reason === 'detonation' ? 'SPIKE DETONATED'
     : roundEnd?.reason === 'defusion' ? 'SPIKE DEFUSED'
     : 'ROUND WIN'
+
+  // Game-events popover: resolve the uploaded image for the ceremony reason
+  // (Individual Uploads → per-reason slot; otherwise the Round Win upload).
+  const ceremonyReasonText = (ceremonyText || roundEndReasonText || '').trim().toUpperCase()
+  const GE_REASON_FIELDS: Record<string, string> = {
+    'ROUND WIN': 'game-events-bg-round-winner',
+    'ACE': 'game-events-bg-ace',
+    'CLUTCH': 'game-events-bg-clutch',
+    'FLAWLESS': 'game-events-bg-flawless',
+    'TEAM ACE': 'game-events-bg-team-ace',
+    'THRIFTY': 'game-events-bg-thrifty',
+  }
+  const ceremonyEventImage =
+    (gameEventsIndividual && GE_REASON_FIELDS[ceremonyReasonText]
+      ? (gameEventsUploads?.[GE_REASON_FIELDS[ceremonyReasonText]] ?? null)
+      : null)
+    || gameEventsUploads?.['game-events-bg-round-winner']
+    || null
+  // The RoundCeremony banner IS the game-events component — the legacy ACE
+  // card must never render alongside it (that was the duplicate the user saw).
+  const isCeremonyActive = !!(ceremonyTrigger || roundEnd?.winner)
 
   const hasLiveMatch = (leftTeamPlayers && leftTeamPlayers.length > 0) || (rightTeamPlayers && rightTeamPlayers.length > 0)
   const leftRoster = leftTeamPlayers && leftTeamPlayers.length > 0 ? leftTeamPlayers : (hasLiveMatch || liveOnly ? [] : DEMO_LEFT)
@@ -814,6 +946,16 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   // Webcam auto-hide: only show if stream/photo is active, unless in editor
   const shouldRenderWebcam = showWebcam && (!liveOnly || (webcamActive && (webcamStream || webcamPlayerPhoto)))
 
+  // Facecam K/D/A: prefer the explicit prop (live overlay passes snapshot
+  // stats by id); otherwise look the facecam player up in the scene rosters
+  // by alias — editor + LiveGame rosters are state players.
+  const webcamStats = webcamPlayerStats ?? (() => {
+    if (!webcamPlayerName || !webcamActive) return null
+    const all: any[] = [...(leftTeamPlayers || []), ...(rightTeamPlayers || [])]
+    const p = all.find(r => r && (r.alias === webcamPlayerName || r.name === webcamPlayerName))
+    return p ? { kills: p.kills ?? 0, deaths: p.deaths ?? 0, assists: p.assists ?? 0 } : null
+  })()
+
   // Scoreline Team B guard: don't show phantom Team B when testing solo
   const hasRightTeam = !liveOnly ? true : (rightRoster.length > 0 || (scoreRight ?? 0) > 0 || (seriesScoreRight ?? 0) > 0 || (!!rightTeamName && rightTeamName.trim() !== '' && rightTeamName !== 'Right Team' && rightTeamName !== 'Team B'))
 
@@ -853,6 +995,12 @@ export function IngameHudScene(props: IngameHudSceneProps) {
         gameEventLogo={tournamentLogo}
         tournamentLogo={tournamentLogo}
         clutchHighlight={roundEnd?.highlightPlayer ?? null}
+        baseColor={eventsBg}
+        accentColor={eventsHighlight}
+        eventImage={ceremonyEventImage}
+        persistent={ceremonyPersistent}
+        activeComponentId={activeComponentId}
+        onSelectComponent={onSelectComponent}
       />
       {/* Top Map History */}
       {showMapHistory && activeMapHistory.length > 0 && (
@@ -929,6 +1077,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
                       </div>
                     )}
                     {showBombTimer && (
+                      <div className={scoreLineSmall ? 'flex h-full w-[100px] shrink-0 items-center justify-center tabular-nums' : ''}>
                       <h1 className="translate-y-1 flex items-center gap-2 text-[40px]" style={{ color: displayTimerColor }}>
                         {spikeState === 'planted' ? (
                           // Planted: pulsing red spike icon ONLY — no 45s countdown
@@ -949,6 +1098,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
                           </>
                         )}
                       </h1>
+                      </div>
                     )}
                     {scoreLineSmall && (
                       <div className="mx-6.75 flex h-full w-10 items-center justify-center">
@@ -979,29 +1129,51 @@ export function IngameHudScene(props: IngameHudSceneProps) {
               </div>
             </div>
 
-            {/* Bottom watermarked info bar */}
+            {/* Bottom watermarked info bar — original layout: side cells are
+                calc(58% - 120px), the round text is a centered 120px slot. In
+                the SMALL variant the side cells carry the team names (that is
+                where the original puts them; the team blocks go blank). */}
             <div
-              className="relative grid h-full w-full grid-cols-3 items-center rounded-[3.37px] bg-[#000000AA] text-[22px] whitespace-nowrap uppercase"
+              className="relative flex h-full w-full items-center justify-between rounded-[3.37px] bg-[#000000AA] text-[22px] whitespace-nowrap uppercase"
               style={{ height: (19 * (scoreLineSize > 1 ? 1 + scoreLineSize * 0.1 : 1)).toFixed(1) + 'px' }}
             >
-              <div className="font-semibold flex min-w-0 items-center justify-center px-1 font-mussels">
-                {[seriesTitleText, gameSeriesText].filter(Boolean).map((t, i) => (
-                  <React.Fragment key={i}>
-                    {i > 0 && <span className="text-white/40">|</span>}
-                    <span className="truncate">{t}</span>
-                  </React.Fragment>
-                ))}
+              <div
+                className={`font-semibold flex h-full min-w-0 items-center px-1 font-mussels ${scoreLineSmall ? 'justify-start' : 'justify-center'}`}
+                style={{ width: 'calc(58% - 120px)' }}
+              >
+                {scoreLineSmall ? (
+                  <span className="truncate text-[14px]">{leftTeamName || 'TEAM A'}</span>
+                ) : (
+                  [seriesTitleText, gameSeriesText].filter(Boolean).map((t, i) => (
+                    <React.Fragment key={i}>
+                      {i > 0 && <span className="text-white/40">|</span>}
+                      <span className="truncate">{t}</span>
+                    </React.Fragment>
+                  ))
+                )}
               </div>
-              <div className="font-semibold flex min-w-0 items-center justify-center px-1 font-insatiable">
-                <span className="truncate text-[20px] leading-none">{roundText}</span>
+              <div className="absolute left-1/2 top-0 h-full -translate-x-1/2" style={{ width: 120 }}>
+                <AutoScalerText
+                  text={roundText}
+                  fontSize={20}
+                  h1ClassName="font-insatiable leading-none"
+                  minScale={0.5}
+                />
               </div>
-              <div className="font-semibold flex min-w-0 items-center justify-center px-1 font-mussels">
-                {[eventTitleText, watermarkText].filter(Boolean).map((t, i) => (
-                  <React.Fragment key={i}>
-                    {i > 0 && <span className="text-white/40">|</span>}
-                    <span className="truncate">{t}</span>
-                  </React.Fragment>
-                ))}
+              <div
+                className={`font-semibold flex h-full min-w-0 items-center px-1 font-mussels ${scoreLineSmall ? 'justify-end' : 'justify-center'}`}
+                style={{ width: 'calc(58% - 120px)' }}
+              >
+                {scoreLineSmall ? (
+                  <span className="truncate text-[14px]">{rightTeamName || 'TEAM B'}</span>
+                ) : (
+                  [eventTitleText, watermarkText].filter(Boolean).map((t, i) => (
+                    <React.Fragment key={i}>
+                      {i > 0 && <span className="text-white/40">|</span>}
+                      <span className="truncate">{t}</span>
+                    </React.Fragment>
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -1095,12 +1267,12 @@ export function IngameHudScene(props: IngameHudSceneProps) {
       {/* Ceremony Banner / Game Event (Spike Defused/Detonated, pauses, etc.)
           — round-end ceremonies live in RoundCeremony; spike outcomes are
           suppressed here so the same event never renders twice. */}
-      {(showGameEvents || liveOnly) && gameEvent && !(roundEnd && (roundEnd.reason === 'detonation' || roundEnd.reason === 'defusion')) && (
+      {(showGameEvents || liveOnly) && gameEvent && !isCeremonyActive && !(roundEnd && (roundEnd.reason === 'detonation' || roundEnd.reason === 'defusion')) && (
         <div
           className={`clickable-component absolute top-48 z-40 overflow-hidden flex flex-col items-center justify-center px-12 py-4 rounded-md border border-white/20 shadow-2xl${
             activeComponentId === 'game-events' ? ' selected' : ''
           }`}
-          style={{ left: '50%', transform: 'translateX(-50%)', background: eventsBg ? `url(${eventsBg}) center/cover no-repeat` : 'rgba(0,0,0,0.9)' }}
+          style={{ left: '50%', transform: 'translateX(-50%)', background: eventsBg || 'rgba(0,0,0,0.9)' }}
           data-component-id="game-events"
           onClick={(e) => {
             e.stopPropagation()
@@ -1152,10 +1324,12 @@ export function IngameHudScene(props: IngameHudSceneProps) {
           </div>
           <div className="h-7 bg-black/90 px-3 flex items-center justify-between border-t border-white/10">
             <span className="font-baijam text-xs font-bold text-white uppercase">{webcamActive ? webcamPlayerName : 'No camera'}</span>
-            <span className={'flex items-center gap-1.5 text-[10px] font-bold font-baijam ' + (webcamActive ? 'text-emerald-400' : 'text-white/40')}>
-              <span className={'size-1.5 rounded-full ' + (webcamActive ? 'bg-emerald-400 animate-pulse' : 'bg-white/30')} />
-              {webcamActive ? 'LIVE' : 'OFFLINE'}
-            </span>
+            {/* BLOB parity: facecam footer carries the player's K/D/A; no LIVE pill */}
+            {webcamStats && (
+              <span className="font-baijam text-[11px] font-bold tabular-nums text-white/70">
+                {webcamStats.kills ?? 0} / {webcamStats.deaths ?? 0} / {webcamStats.assists ?? 0}
+              </span>
+            )}
           </div>
         </div>
       )}

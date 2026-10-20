@@ -5,9 +5,15 @@ import WebcamSourcePopover from '../components/WebcamSourcePopover'
 
 export default function CameraFeed() {
   const { state, setState, updatePlayer, showToast } = useAppStore()
-  const [globalDelay, setGlobalDelay] = useState<string>('0')
-  const [leftTeamDelay, setLeftTeamDelay] = useState<string>('')
-  const [rightTeamDelay, setRightTeamDelay] = useState<string>('')
+  // P4: delays are persisted workspace state (AppContext `globalDelay` /
+  // `teamADelay` / `teamBDelay`) so they follow the room everywhere instead
+  // of living in transient component state.
+  const globalDelay = String(state.globalDelay ?? 0)
+  const setGlobalDelay = (v: string) => setState(p => ({ ...p, globalDelay: Number(v) || 0 }))
+  const leftTeamDelay = state.teamADelay ?? ''
+  const setLeftTeamDelay = (v: string) => setState(p => ({ ...p, teamADelay: v }))
+  const rightTeamDelay = state.teamBDelay ?? ''
+  const setRightTeamDelay = (v: string) => setState(p => ({ ...p, teamBDelay: v }))
   const [layoutMode, setLayoutMode] = useState<'stack' | 'grid' | 'clutch'>('stack')
   const [aspectRatio, setAspectRatio] = useState<'16/9' | '4/3' | '1/1'>('16/9')
   const [showTeamGlow, setShowTeamGlow] = useState(true)
@@ -46,12 +52,16 @@ export default function CameraFeed() {
     }))
   }
 
-  const copyTeamLinks = (teamName: string, players: Player[]) => {
-    const links = players
-      .map(p => `${p.riotId || p.alias || 'Player'}: webcam://${state.serverCode}/${p.id}`)
-      .join('\n')
+  const copyTeamLinks = (teamName: string, players: Player[], teamId: string) => {
+    // P4: real HTTP invite links. One roster URL per team ("click your name"
+    // page) plus a direct publisher deep link per player (slotId = player id).
+    const base = `${window.location.origin}/webcams/invite/${state.serverCode}/${teamId}`
+    const links = [
+      `${teamName} roster (click your name): ${base}`,
+      ...players.map(p => `${p.riotId || p.alias || 'Player'}: ${base}/${p.id}`),
+    ].join('\n')
     navigator.clipboard.writeText(links).catch(() => {})
-    showToast(`Copied ${teamName} webcam links!`)
+    showToast(`Copied ${teamName} invite links!`)
   }
 
   const renderPlayerCard = (player: Player, teamId: string) => {
@@ -269,7 +279,7 @@ export default function CameraFeed() {
 
               <button
                 type="button"
-                onClick={() => copyTeamLinks(teamA?.name || 'test', defaultPlayersA)}
+                onClick={() => copyTeamLinks(teamA?.name || 'test', defaultPlayersA, teamA?.id || 'team1')}
                 className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#2a2d31] bg-[#15171a] px-3 text-xs font-medium text-[#e7e7e7]/70 transition-colors hover:border-[#3a3e43] hover:bg-[#1a1c20] hover:text-[#f1f1f1] cursor-pointer"
               >
                 <Copy className="size-3.5" />
@@ -292,6 +302,16 @@ export default function CameraFeed() {
                   {teamB?.name || 'test2'} · {defaultPlayersB.length} players
                 </p>
               </div>
+
+              {/* P4 parity: Team B gets the same invite-link copy action as Team A */}
+              <button
+                type="button"
+                onClick={() => copyTeamLinks(teamB?.name || 'test2', defaultPlayersB, teamB?.id || 'team2')}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#2a2d31] bg-[#15171a] px-3 text-xs font-medium text-[#e7e7e7]/70 transition-colors hover:border-[#3a3e43] hover:bg-[#1a1c20] hover:text-[#f1f1f1] cursor-pointer"
+              >
+                <Copy className="size-3.5" />
+                Copy team links
+              </button>
             </div>
 
             {/* Dynamic player grid */}
@@ -307,9 +327,11 @@ export default function CameraFeed() {
         <WebcamSourcePopover
           playerName={activeWebcamPlayer.player.alias || activeWebcamPlayer.player.riotId}
           currentSource={activeWebcamPlayer.player.webcamSource}
-          onSave={(source) => {
+          onSave={(source, url) => {
             updatePlayer(activeWebcamPlayer.teamId, activeWebcamPlayer.player.id, {
               webcamSource: source,
+              // P4: persist the external stream URL alongside the source toggle
+              webcamUrl: source === 'External Webcam' ? (url ?? activeWebcamPlayer.player.webcamUrl ?? null) : null,
             })
             showToast(`Webcam source set to ${source === 'External Webcam' ? 'External' : 'Internal'}`)
           }}

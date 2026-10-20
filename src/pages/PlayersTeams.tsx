@@ -47,9 +47,14 @@ export default function PlayersTeams() {
 
   const copyWebcamLinks = () => {
     if (!selectedTeam) return
-    const links = selectedTeam.players.map(p => `${p.riotId || 'Player'}: webcam://${state.serverCode}/${p.id}`).join('\n')
+    // P4: real HTTP invite links (roster page + per-player deep links)
+    const base = `${window.location.origin}/webcams/invite/${state.serverCode}/${selectedTeam.id}`
+    const links = [
+      `${selectedTeam.name} roster (click your name): ${base}`,
+      ...selectedTeam.players.map(p => `${p.riotId || p.alias || 'Player'}: ${base}/${p.id}`),
+    ].join('\n')
     navigator.clipboard.writeText(links).catch(() => {})
-    showToast('Webcam links copied!')
+    showToast('Webcam invite links copied!')
   }
 
   return (
@@ -517,9 +522,11 @@ export default function PlayersTeams() {
         <WebcamSourcePopover
           playerName={activeWebcamPlayer.player.alias || activeWebcamPlayer.player.riotId}
           currentSource={activeWebcamPlayer.player.webcamSource}
-          onSave={(source) => {
+          onSave={(source, url) => {
             updatePlayer(activeWebcamPlayer.teamId, activeWebcamPlayer.player.id, {
               webcamSource: source,
+              // P4: persist external stream URL
+              webcamUrl: source === 'External Webcam' ? (url ?? activeWebcamPlayer.player.webcamUrl ?? null) : null,
             })
             showToast(`Webcam source set to ${source === 'External Webcam' ? 'External' : 'Internal'}`)
           }}

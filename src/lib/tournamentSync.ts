@@ -11,6 +11,7 @@ import {
   saveRoomBroadcast,
 } from './dataLayer'
 import type { Tournament } from './supabase'
+import { displayScore, stampEnvelope } from './workingProtocol'
 
 /**
  * Keeps the replica's in-memory state in sync with the connected Supabase tournament.
@@ -125,7 +126,15 @@ export function TournamentSync() {
                 } catch { /* best-effort */ }
               }
               // Publish the room havoc under this event's code so overlays work.
-              void saveRoomBroadcast(code, { ...(saved || {}), ...base, connectedTournamentId: id, _rev: 1 }).catch(() => {})
+              // P1: stamp a real envelope — the old hardcoded `_rev: 1` made this
+              // write look STALE to every reader and it was silently ignored.
+              void saveRoomBroadcast(
+                code,
+                stampEnvelope(
+                  { ...(saved || {}), ...base, connectedTournamentId: id },
+                  Math.max(Date.now(), Number((base as any)._rev || 0) + 1),
+                ),
+              ).catch(() => {})
               return code
             })(),
             roomServerCodes: (() => {
@@ -144,8 +153,19 @@ export function TournamentSync() {
                   isDefault: false,
                 }))
               : (base.sponsors || prev.sponsors),
-            scoreA: matches[0]?.team1_score ?? base.scoreA ?? prev.scoreA,
-            scoreB: matches[0]?.team2_score ?? base.scoreB ?? prev.scoreB,
+            // P1 score model: match row = derived; displayed honors any manual override.
+            derivedScoreA: matches[0]?.team1_score ?? base.derivedScoreA ?? prev.derivedScoreA ?? null,
+            derivedScoreB: matches[0]?.team2_score ?? base.derivedScoreB ?? prev.derivedScoreB ?? null,
+            scoreA: displayScore(
+              prev.scoreOverrideA ?? (base as any)?.scoreOverrideA ?? null,
+              matches[0]?.team1_score ?? (base as any)?.derivedScoreA ?? null,
+              base.scoreA ?? prev.scoreA,
+            ),
+            scoreB: displayScore(
+              prev.scoreOverrideB ?? (base as any)?.scoreOverrideB ?? null,
+              matches[0]?.team2_score ?? (base as any)?.derivedScoreB ?? null,
+              base.scoreB ?? prev.scoreB,
+            ),
             matchFormat: matches[0]?.format ?? base.matchFormat ?? prev.matchFormat,
           }
         })

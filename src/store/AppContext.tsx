@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode, useCallback } from 'react'
 import { updateSponsor as apiUpdateSponsor, deleteSponsor as apiDeleteSponsor, listTournamentUsers, saveBroadcastState as apiSaveBroadcastState, saveRoomBroadcast as apiSaveRoomBroadcast, loadBroadcastState as apiLoadBroadcastState, loadRoomBroadcast as apiLoadRoomBroadcast } from '../lib/dataLayer'
+import { classifyRemote, stampEnvelope } from '../lib/workingProtocol'
 import { useAuth } from '../lib/useAuth'
+import { MOCK_EVENT } from '../lib/mockEvent'
 import { supabase } from '../lib/supabase'
 
 // True if the id looks like a real Supabase UUID (vs local `t0`/`s0` temp ids).
@@ -92,6 +94,8 @@ export interface Player {
   riotId: string
   alias: string
   webcamSource: 'Internal Webcam' | 'External Webcam' | 'None'
+  /** P4: external stream URL (vdo.ninja etc.) when webcamSource === 'External Webcam' */
+  webcamUrl?: string | null
   avatarUrl: string | null
   photoUrl?: string | null
 }
@@ -122,6 +126,9 @@ export interface VetoStep {
   action: 'Ban' | 'Pick' | 'Decider'
   map: string
   side?: 'Defense' | 'Offense'
+  /** BLOB-style stable step id ("opening-ban-1", "pick-map-1"…) — stamped when
+   *  the action runs so history/undo are step-addressable, not index-based. */
+  stepId?: string
 }
 
 export interface AppState {
@@ -166,6 +173,12 @@ export interface AppState {
   vetoActive: boolean
   vetoSteps: VetoStep[]
   vetoCurrentStep: number
+  /**
+   * PLAY on the Map Veto page bumps this counter. The map-ban scene (HUD
+   * editor canvas + OBS overlay URL) keys off it, so PLAY replays the scene
+   * exactly where the real site does — no popup, no extra window.
+   */
+  vetoReplayRun?: number
   matchFormat?: string
   mapPool?: string[]
   mapBans?: { sequenceNo: number; mapId: string; bannedBy: 'TEAM_A' | 'TEAM_B' }[]
@@ -197,6 +210,13 @@ export interface AppState {
   seriesScoreB: number
   scoreA: number
   scoreB: number
+  /** P1 score model (workingProtocol): derived = match-row/game-data mirror,
+   *  override = manual dashboard bump. Displayed scoreA/scoreB resolve as
+   *  override ?? derived ?? last-known. Absent (=undefined) for legacy blobs. */
+  derivedScoreA?: number | null
+  derivedScoreB?: number | null
+  scoreOverrideA?: number | null
+  scoreOverrideB?: number | null
   seriesTitle: string
   eventTitle: string
   roundTitle: string
@@ -318,6 +338,12 @@ interface AppContextType {
   saveChanges: () => void
   discardChanges: () => void
   restoreFromServer: () => Promise<void>
+  /** Fresh dirty check (refs don't re-render) — used by sync readers. */
+  isDirtyNow: () => boolean
+  /** Newer remote workspace arrived while local edits are pending — the save
+   *  bar surfaces this so the operator chooses Restore vs Save instead of
+   *  silently losing either side (P1 conflict handling). */
+  pendingRemoteRev: number | null
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -466,6 +492,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Cross-PC sync revision: bumped on every save, compared against the server's
   // room havoc so the newest workspace always wins.
   const revRef = useRef<number>(Number((savedRef.current as any)?._rev || 0))
+  // _sub of the last write THIS tab performed — lets classifyRemote() recognize
+  // our own realtime echoes as 'same' instead of flagging a false conflict.
+  const subRef = useRef<string>(String((savedRef.current as any)?._sub || ''))
   // Pre-revision local snapshots stay at rev 0: the server room havoc is
   // authoritative on load. Mid-session edits are protected by dirtyRef.
   const bumpRev = () => { revRef.current = Math.max(revRef.current + 1, Date.now()); return revRef.current }
@@ -515,12 +544,60 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authStatus, state.connectedTournamentId, authProfile?.id, state.usersRefreshKey])
 
+  // TEMPORARY mock event seed (VITE_MOCK_EVENT=1 in .envlocal): injects two
+  // 5-player teams + connected-event metadata on first load of an empty
+  // workspace so every page (PlayersTeams, MapVeto, Camera, LiveGame,
+  // HudEditor) has data to render. Remove together with mockEvent.ts.
+  const mockSeededRef = useRef(false)
+  useEffect(() => {
+    if (!MOCK_EVENT || mockSeededRef.current) return
+    mockSeededRef.current = true
+    setStateSilent(prev => {
+      if (prev.teams.length > 0) return prev
+      const roster = (prefix: string, base: number): Player[] =>
+        Array.from({ length: 5 }, (_, i) => ({
+          id: `${prefix}-p${i + 1}`,
+          riotId: `${prefix.toUpperCase()}${i + 1}#HU`,
+          alias: `${prefix}${i + 1}`,
+          webcamSource: 'Internal Webcam',
+          avatarUrl: `https://i.pravatar.cc/150?img=${base + i}`,
+          photoUrl: null,
+        }))
+      return {
+        ...prev,
+        connectedTournamentId: 'mock-event',
+        connectedTournamentName: 'HU Local Test Cup',
+        connectedTournamentGame: 'Valorant',
+        tournamentName1: 'HU Local Test Cup',
+        eventTitle: 'HU Local Test Cup',
+        gameSeries: 'Grand Final',
+        bestOf: 3,
+        teamAId: 'mock-team-a',
+        teamBId: 'mock-team-b',
+        teams: [
+          {
+            id: 'mock-team-a', name: 'Crimson Vanguard', tag: 'CRV', description: 'Mock team A',
+            color: '#28D091', color2: '#0f766e', logoUrl: null, logoSecondaryUrl: null, logoTertiaryUrl: null,
+            players: roster('crimson', 11),
+          },
+          {
+            id: 'mock-team-b', name: 'Azure Syndicate', tag: 'AZS', description: 'Mock team B',
+            color: '#FF3549', color2: '#7f1d1d', logoUrl: null, logoSecondaryUrl: null, logoTertiaryUrl: null,
+            players: roster('azure', 26),
+          },
+        ],
+      }
+    })
+  }, [])
+
   const showToast = useCallback((message: string) => {
     setToastMessage(message)
     setTimeout(() => setToastMessage(null), 2000)
   }, [])
   // ---- Persistence (localStorage + Supabase site_settings) ----
   const [hasChanges, setHasChanges] = useState(false)
+  // Set when a NEWER remote workspace arrives while we hold local edits.
+  const [pendingRemoteRev, setPendingRemoteRev] = useState<number | null>(null)
 
   // `hasChanges` is driven purely by user edits (setState marks dirtyRef, then we
   // sync that into a state flag). Background/silent syncs never trigger it.
@@ -548,13 +625,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!dirtyRef.current) return
     const h = setTimeout(() => {
+      // One envelope per flush, stamped for BOTH mirror keys (room + tournament).
+      // Previously the tournament key saved raw state with a stale _rev while the
+      // room key bumped — readers of broadcast:<tid> then saw un-regressed
+      // revisions and blind-merged stale snapshots.
+      const stamped = stampEnvelope(state, bumpRev())
+      subRef.current = stamped._sub
       // Room-keyed mirror: works even without a connected tournament, so any
       // PC joining the server code sees the exact same workspace.
       if (state.serverCode) {
-        apiSaveRoomBroadcast(state.serverCode, { ...state, _rev: bumpRev() }).catch(() => { /* best-effort */ })
+        apiSaveRoomBroadcast(state.serverCode, stamped).catch(() => { /* best-effort */ })
       }
       if (state.connectedTournamentId) {
-        apiSaveBroadcastState(state.connectedTournamentId, state).catch(() => { /* best-effort */ })
+        apiSaveBroadcastState(state.connectedTournamentId, stamped).catch(() => { /* best-effort */ })
       }
     }, 2000)
     return () => clearTimeout(h)
@@ -569,9 +652,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false
     const adopt = (remote: any) => {
       if (!remote || cancelled || typeof remote !== 'object') return
+      const verdict = classifyRemote(remote, { rev: revRef.current, sub: subRef.current })
+      if (verdict === 'same' || verdict === 'stale') return
+      if (verdict === 'conflict') console.warn('[sync] room havoc rev tie (two writers) — adopting server copy', (remote as any)._rev)
       const remoteRev = Number((remote as any)._rev || 0)
-      if (!remoteRev || remoteRev <= revRef.current) return
-      if (dirtyRef.current) return
+      if (dirtyRef.current) {
+        // Local edits in progress: never clobber — surface the newer server
+        // revision on the save bar so the operator chooses Restore vs Save.
+        setPendingRemoteRev(remoteRev)
+        return
+      }
       setStateSilent(prev => {
         const merged: any = { ...prev, ...(remote as Partial<AppState>) }
         const seen = new Set<string>()
@@ -581,11 +671,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
           seen.add(k); return true
         })
         merged._rev = remoteRev
+        merged._sub = (remote as any)._sub ?? merged._sub
         savedRef.current = JSON.parse(JSON.stringify(merged))
         dirtyRef.current = false
         return merged
       })
       revRef.current = remoteRev
+      subRef.current = String((remote as any)._sub || '')
+      setPendingRemoteRev(null)
       setHasChanges(false)
       console.debug('[sync] adopted room havoc rev', remoteRev)
     }
@@ -600,18 +693,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [state.serverCode])
 
   const saveChanges = useCallback(() => {
-    const snapshot = JSON.stringify(state)
+    // Stamp FIRST so the persisted baseline carries the exact envelope of the
+    // last write — on reload, revRef/subRef resume at the true server revision.
+    const stamped = stampEnvelope(state, bumpRev())
+    subRef.current = stamped._sub
+    const snapshot = JSON.stringify(stamped)
     savedRef.current = JSON.parse(snapshot)
     dirtyRef.current = false
     setHasChanges(false)
+    setPendingRemoteRev(null)
     try { localStorage.setItem(SAVE_KEY, snapshot) } catch (err) {
       console.warn('[state] localStorage save failed (quota?) — oversized logos can cause this:', err)
     }
     if (state.serverCode) {
-      apiSaveRoomBroadcast(state.serverCode, { ...state, _rev: bumpRev() }).catch(e => console.warn('room broadcast save failed', e))
+      apiSaveRoomBroadcast(state.serverCode, stamped).catch(e => console.warn('room broadcast save failed', e))
     }
     if (state.connectedTournamentId) {
-      apiSaveBroadcastState(state.connectedTournamentId, state).catch(e => console.warn('broadcast save failed', e))
+      apiSaveBroadcastState(state.connectedTournamentId, stamped).catch(e => console.warn('broadcast save failed', e))
       // Create real Supabase team rows for teams that only exist locally (temp ids)
       // so they're not dropped on a hard refresh.
     }
@@ -745,6 +843,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addSponsor, deleteSponsor, updateSponsor,
       showToast, toastMessage,
       hasChanges, saveChanges, discardChanges, restoreFromServer,
+      isDirtyNow: () => dirtyRef.current,
+      pendingRemoteRev,
     }}>
       {children}
       {/* Toast */}
@@ -771,6 +871,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           border: '1px solid hsla(0,0%,100%,0.12)',
         }}>
           <span style={{ whiteSpace: 'nowrap' }}>âš ï¸ Unsaved changes</span>
+          {pendingRemoteRev != null && (
+            <span style={{ whiteSpace: 'nowrap', color: '#f87171', fontWeight: 600 }}>
+              · a newer version exists on the server — Restore to load it, or Save to overwrite
+            </span>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <button onClick={() => { void restoreFromServer() }} style={{
               background: 'transparent', border: 'none', color: 'hsl(var(--muted-foreground))',

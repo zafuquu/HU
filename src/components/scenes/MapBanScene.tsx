@@ -48,7 +48,18 @@ function VetoCard({
   const teamLogo = slot.team === 'TEAM_B' ? rightTeamLogo : leftTeamLogo
   const sideAbbr = slot.side === 'Offense' ? 'ATK' : slot.side === 'Defense' ? 'DEF' : null
   return (
-    <div style={{ left: `${left}px`, position: 'absolute', top: '345px', width: '228px' } as React.CSSProperties}>
+    <div
+      style={{
+        left: `${left}px`,
+        position: 'absolute',
+        top: '345px',
+        width: '228px',
+        // Veto replay: each rack card reveals in veto order (ban → pick →
+        // decider) every time the map-ban scene mounts (overlay + editor).
+        animation: 'mvCardIn 480ms cubic-bezier(0.22, 1, 0.36, 1) both',
+        animationDelay: `${index * 160}ms`,
+      } as React.CSSProperties}
+    >
       <div className="absolute top-0 flex w-full flex-col items-start px-2" style={{ visibility: 'visible' } as React.CSSProperties}>
         {/* Header */}
         <div className="mb-[7px] flex h-[calc(62px+36px)] w-full flex-col items-start overflow-hidden">
@@ -70,7 +81,7 @@ function VetoCard({
                   <div className="auto-scaler-wrapper flex h-9 w-full items-center justify-around" style={{ overflow: 'visible', position: 'relative' } as React.CSSProperties}>
                     <div className="auto-scaler-container" style={{ maxWidth: '100%', overflow: 'visible', width: '100%' } as React.CSSProperties}>
                       <div className="auto-scaler-content min-w-full h-full whitespace-nowrap" style={{ left: '50%', overflow: 'visible', position: 'absolute', top: '50%', transform: 'scale(1) translate(-50%, -50%)', transformOrigin: 'left top' } as React.CSSProperties}>
-                        <img alt={slot.team === 'TEAM_B' ? 'right' : 'left'} className="h-full object-contain" src={teamLogo || ''} />
+                        {teamLogo ? <img alt={slot.team === 'TEAM_B' ? 'right' : 'left'} className="h-full object-contain" src={teamLogo} /> : null}
                       </div>
                     </div>
                   </div>
@@ -102,7 +113,7 @@ function VetoCard({
                       ) : (
                         <h2>
                           <span className="inline-flex items-center gap-1.5">
-                            <img alt={slot.team === 'TEAM_B' ? 'right' : 'left'} className="h-[1.1em] object-contain" src={teamLogo || ''} />
+                            {teamLogo ? <img alt={slot.team === 'TEAM_B' ? 'right' : 'left'} className="h-[1.1em] object-contain" src={teamLogo} /> : null}
                             {isBan ? 'BANS' : 'PICK'}
                           </span>
                         </h2>
@@ -147,7 +158,10 @@ function VetoCard({
                         <div className="auto-scaler-content relative flex h-full min-w-full items-center justify-center" style={{ left: '50%', overflow: 'visible', position: 'absolute', top: '50%', transform: 'scale(1) translate(-50%, -50%)', transformOrigin: 'left top' } as React.CSSProperties}>
                           <h1 className="m-0 flex items-center gap-1 font-mussels text-[17px] leading-none font-semibold tracking-[0.02em] uppercase">
                             <span className="inline-flex items-center gap-1 text-[#F5F5F5]">
-                              <img alt={slot.team === 'TEAM_B' ? 'right' : slot.team === 'TEAM_A' ? 'left' : ''} className="h-[1.2em] object-contain" src={teamLogo || ''} /> PICK
+                              {/* Team logo renders once in the card header — the
+                                  footer duplicate (logo + PICK over the map
+                                  image) was removed as reported. */}
+                              PICK
                             </span>
                             {sideAbbr && <span style={{ color: 'rgb(40, 208, 145)' } as React.CSSProperties}>{sideAbbr}</span>}
                           </h1>
@@ -200,6 +214,7 @@ export function MapBanScene(props: MapBanSceneProps) {
         .mv-anim > *:nth-child(4) { animation-delay: 280ms; }
         .mv-anim > *:nth-child(5) { animation-delay: 360ms; }
         .mv-anim > *:nth-child(n+6) { animation-delay: 440ms; }
+        @keyframes mvCardIn { from { opacity: 0; transform: translateY(34px) scale(0.96); } to { opacity: 1; transform: none; } }
       `}</style>
       <div className={`clickable-component cursor-pointer transition-opacity relative size-full overflow-hidden text-[#F5F5F5]${activeComponentId === 'card' ? ' selected' : ''}${isToggled('card') ? '' : ' opacity-50 [&>*]:invisible'}`} data-component-id="card" data-make-transparent="true" onClick={(e) => { e.stopPropagation(); onSelectComponent?.('card'); }}>
         {/* Title */}

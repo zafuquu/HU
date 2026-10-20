@@ -546,3 +546,22 @@ input[type="number"]::-webkit-outer-spin-button {
   font-weight: 400;
   src: url('/huds/fonts/Consola.ttf') format('truetype');
 }
+
+/* ===== Scene entrance animations (HUD editor scene switching + agent-select
+   map reveal — the `agentSelectMapReveal` class was a dangling hook with no
+   CSS, which is why those scenes looked static) ===== */
+@keyframes sceneEnter {
+  from { opacity: 0; transform: scale(1.012); }
+  to { opacity: 1; transform: none; }
+}
+.scene-enter {
+  animation: sceneEnter 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes agentSelectMapReveal {
+  from { opacity: 0; transform: translateY(46px); }
+  to { opacity: 1; transform: none; }
+}
+.agentSelectMapReveal {
+  animation: agentSelectMapReveal 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}

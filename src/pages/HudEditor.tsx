@@ -7,6 +7,7 @@ import { BuyRoundScene } from '../components/scenes/BuyRoundScene'
 import { IngameHudScene } from '../components/scenes/IngameHudScene'
 import { MapBanScene } from '../components/scenes/MapBanScene'
 import { PostgameScene } from '../components/scenes/PostgameScene'
+import { TimeoutOverlay } from '../components/scenes/TimeoutOverlay'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
 
 // ===== SCENE & COMPONENT DEFINITIONS (Matching original bundle definitions) =====
@@ -170,7 +171,9 @@ export const VAL_SCENES: Record<string, SceneConfig> = {
 
 const SCENE_DISPLAY_NAMES: Record<string, string> = {
   'agent-select': 'Agent Select',
-  'buy-round': 'Buy Round (Part of HUD)',
+  // 'buy-round' intentionally NOT listed: Buy is a HUD *state* (Main | Buy |
+  // Timeout tabs on the Ingame HUD scene), not a standalone scene. The
+  // sceneKeyMap entry below stays so legacy selectedScene values resolve.
   'default': 'Ingame HUD',
   'map-ban': 'Map Ban',
   'post-game': 'Postgame',
@@ -211,6 +214,12 @@ export default function HudEditor() {
   const selectedSceneKey = sceneKeyMap[selectedSceneName] || 'default'
   const sceneConfig = VAL_SCENES[selectedSceneKey]
   const components = sceneConfig?.components || {}
+
+  // P3: HUD state preview tabs (BLOB Main | Buy | Timeout) — hot-swap the
+  // ingame canvas into a state without needing a live game/producer.
+  const [hudPreview, setHudPreview] = useState<'Main' | 'Buy' | 'Timeout'>('Main')
+  const timeoutPreviewRef = useRef<{ team: 'left' | 'right'; calledAt: number; timeoutType: string } | null>(null)
+  const isHudScene = selectedSceneKey === 'default' || selectedSceneKey === 'ingame-hud'
 
   const leftTeam = state.teams.find(t => t.id === state.leftTeamId) || state.teams[0]
   const rightTeam = state.teams.find(t => t.id === state.rightTeamId) || state.teams[1] || state.teams[0]
@@ -369,6 +378,33 @@ export default function HudEditor() {
             </button>
           </div>
         </div>
+
+        {/* P3: HUD state preview tabs (ingame scene only) — BLOB's Main | Buy | Timeout */}
+        {isHudScene && (
+          <div>
+            <label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>HUD State</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 0, border: '1px solid hsl(var(--border))', borderRadius: 6, overflow: 'hidden' }}>
+                {(['Main', 'Buy', 'Timeout'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      setHudPreview(t)
+                      if (t === 'Timeout') timeoutPreviewRef.current = { team: 'left', calledAt: Date.now(), timeoutType: 'tactical' }
+                    }}
+                    style={{
+                      padding: '6px 12px', fontSize: 12, border: 'none', cursor: 'pointer',
+                      background: hudPreview === t ? 'hsl(var(--accent))' : 'transparent',
+                      color: hudPreview === t ? 'hsl(var(--accent-foreground))' : 'hsla(var(--muted-foreground))',
+                    }}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Colors */}
         <div>
@@ -535,7 +571,7 @@ export default function HudEditor() {
               }}
             >
             <div style={{ width: 1920, height: 1080, position: "relative", overflow: "hidden" }}>
-              <div className="relative size-full min-h-full bg-[#1B1D1F]" id="huds-havoc-main-overlay" style={{ width: 1920, height: 1080 }}>
+              <div key={`${selectedSceneKey}:${hudPreview}`} className="scene-enter relative size-full min-h-full bg-[#1B1D1F]" id="huds-havoc-main-overlay" style={{ width: 1920, height: 1080 }}>
 
                 {selectedSceneKey === 'agent-select' && (
                   <AgentSelectScene
@@ -552,7 +588,7 @@ export default function HudEditor() {
                     isToggled={isToggled}
                   />
                 )}
-                {selectedSceneKey === 'buy-round' && (
+                {(selectedSceneKey === 'buy-round' || (((hudPreview === 'Buy' || hudPreview === 'Timeout') && isHudScene))) && (
                   <BuyRoundScene
                     leftTeamName={leftName}
                     rightTeamName={rightName}
@@ -567,7 +603,7 @@ export default function HudEditor() {
                     isToggled={isToggled}
                   />
                 )}
-                {(selectedSceneKey === 'default' || selectedSceneKey === 'ingame-hud') && (
+                {(selectedSceneKey === 'default' || selectedSceneKey === 'ingame-hud') && hudPreview === 'Main' && (
                   <IngameHudScene
                     leftTeamName={leftName}
                     rightTeamName={rightName}
@@ -609,7 +645,17 @@ export default function HudEditor() {
                     teamStatsLeftColor={getFieldValue('team-stats', 'team-stats-left-color', '#EFF1FF')}
                     teamStatsRightColor={getFieldValue('team-stats', 'team-stats-right-color', '#EFF1FF')}
                     activeComponentId={activeComponentId}
-                    gameEvent="ACE"
+                    eventsHighlight={eventsHighlight}
+                    gameEventsIndividual={getFieldValue('game-events', 'game-events-individual-uploads', false)}
+                    gameEventsUploads={{
+                      'game-events-bg-round-winner': getFieldValue('game-events', 'game-events-bg-round-winner', null),
+                      'game-events-bg-ace': getFieldValue('game-events', 'game-events-bg-ace', null),
+                      'game-events-bg-clutch': getFieldValue('game-events', 'game-events-bg-clutch', null),
+                      'game-events-bg-flawless': getFieldValue('game-events', 'game-events-bg-flawless', null),
+                      'game-events-bg-team-ace': getFieldValue('game-events', 'game-events-bg-team-ace', null),
+                      'game-events-bg-thrifty': getFieldValue('game-events', 'game-events-bg-thrifty', null),
+                    }}
+                    ceremonyPersistent
                     roundNumber={13}
                     roundEnd={{ winner: 'blue', reason: 'elimination' }}
                     tournamentLogo={state.tournamentLogoUrls?.[0] || null}
@@ -617,8 +663,22 @@ export default function HudEditor() {
                     isToggled={isToggled}
                   />
                 )}
+                {/* P3: Timeout preview = Buy Round scene + tactical banner
+                    (user spec: the timeout lives with the buy-round HUD state). */}
+                {isHudScene && hudPreview === 'Timeout' && timeoutPreviewRef.current && (
+                  <TimeoutOverlay
+                    timeout={timeoutPreviewRef.current}
+                    leftTeamName={leftName}
+                    rightTeamName={rightName}
+                    leftTeamColor={colorA}
+                    rightTeamColor={colorB}
+                    leftTeamLogo={leftTeam?.logoUrl || null}
+                    rightTeamLogo={rightTeam?.logoUrl || null}
+                  />
+                )}
                 {selectedSceneKey === 'map-ban' && (
                   <MapBanScene
+                    key={`map-ban-${state.vetoReplayRun || 0}`}
                     leftTeamName={leftName}
                     rightTeamName={rightName}
                     leftTeamColor={colorA}
