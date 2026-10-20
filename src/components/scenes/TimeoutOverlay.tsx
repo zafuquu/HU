@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react'
 
 interface TimeoutOverlayProps {
-  timeout: { team: 'left' | 'right'; calledAt: number; timeoutType: string } | null
+  /**
+   * `team` is null when the CALLING team is unknown — GEP never attributes it
+   * (the original desktop shipped no team either). The banner then renders a
+   * neutral tactical presentation instead of mislabeling a side.
+   */
+  timeout: { team: 'left' | 'right' | null; calledAt: number; timeoutType: string } | null
   leftTeamName?: string
   rightTeamName?: string
   leftTeamColor?: string
@@ -56,10 +61,11 @@ export function TimeoutOverlay({
   if (!visible || !snap) return null
 
   const isTech = snap.timeoutType === 'tech_pause'
+  const hasTeam = snap.team === 'left' || snap.team === 'right'
   const isLeft = snap.team === 'left'
-  const teamName = isLeft ? (leftTeamName || 'TEAM A') : (rightTeamName || 'TEAM B')
+  const teamName = hasTeam ? (isLeft ? (leftTeamName || 'TEAM A') : (rightTeamName || 'TEAM B')) : 'TACTICAL TIMEOUT'
   const teamColor = isLeft ? leftTeamColor : rightTeamColor
-  const teamLogo = isLeft ? (leftTeamLogo ?? null) : (rightTeamLogo ?? null)
+  const teamLogo = hasTeam ? (isLeft ? (leftTeamLogo ?? null) : (rightTeamLogo ?? null)) : null
 
   const elapsed = Math.max(0, Math.floor((Date.now() - snap.calledAt) / 1000))
   const remaining = Math.max(0, TACTICAL_DURATION - elapsed)
@@ -70,7 +76,9 @@ export function TimeoutOverlay({
 
   const gradient = isTech
     ? 'linear-gradient(to top, rgba(120, 130, 160, 0.75) 0%, rgba(120, 130, 160, 0) 90%), rgba(15, 25, 35, 1)'
-    : `linear-gradient(to ${isLeft ? 'right' : 'left'}, ${teamColor}bf 0%, rgba(15, 25, 35, 1) 90%)`
+    : hasTeam
+      ? `linear-gradient(to ${isLeft ? 'right' : 'left'}, ${teamColor}bf 0%, rgba(15, 25, 35, 1) 90%)`
+      : 'linear-gradient(to top, rgba(120, 130, 160, 0.6) 0%, rgba(120, 130, 160, 0) 90%), rgba(15, 25, 35, 1)'
 
   return (
     <div
@@ -109,14 +117,16 @@ export function TimeoutOverlay({
       ) : (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-around', minHeight: 0 }}>
-            <img
-              alt=""
-              src={teamLogo ?? undefined}
-              style={{ maxHeight: 120, maxWidth: 300, objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))' }}
-            />
+            {hasTeam && (
+              <img
+                alt=""
+                src={teamLogo ?? undefined}
+                style={{ maxHeight: 120, maxWidth: 300, objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))' }}
+              />
+            )}
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
               <p style={{ fontFamily: 'Barlow Condensed, sans-serif', fontSize: 20, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                {teamName} — TACTICAL TIMEOUT
+                {hasTeam ? `${teamName} — TACTICAL TIMEOUT` : 'TACTICAL TIMEOUT'}
               </p>
               <div style={{ display: 'flex', gap: 6 }}>
                 {[0, 1].map((i) => (
