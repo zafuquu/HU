@@ -2,7 +2,7 @@ import React from 'react'
 import { resolveAgent } from '../../data/valAgentMeta'
 import { fitScaleFor, contentWidth, refitAfterFonts } from '../../lib/autoFit'
 
-interface IngameHudSceneProps {
+export interface IngameHudSceneProps {
   leftTeamName?: string
   rightTeamName?: string
   leftTeamSeed?: number | string
@@ -292,7 +292,7 @@ export function RoundReasonsStrip({
   )
 }
 
-function getWeaponImg(weapon: any) {
+export function getWeaponImg(weapon: any) {
   if (!weapon || typeof weapon !== 'string') return '/game/val/weapons/classic.png'
   let w = weapon.toLowerCase().replace(/tx_hud_weapon_|tx_hud_pistol_|tx_hud_|weapon_/g, '').trim()
   if (w === 'knife' || w === 'tactical knife') w = 'melee'
@@ -303,7 +303,7 @@ function getWeaponImg(weapon: any) {
   return `/game/val/weapons/${w}.png`
 }
 
-function getShieldImg(p: any) {
+export function getShieldImg(p: any) {
   const armor = Number(p?.armor ?? p?.shield ?? 0)
   // GEP shield TIER enum (VS Armor table): 0 none / 1 light / 2 heavy /
   // 3 enemy-unknown (assume heavy) / 4 regen. Tier wins over points so a
@@ -338,7 +338,7 @@ const DEMO_RIGHT = [
 
 // VS spike-planted parity: the planted spike icon blinks faster as detonation
 // approaches (1s -> 0.5s -> 0.25s -> 0.125s over the 45s fuse).
-function useSpikeBlink(active: boolean) {
+export function useSpikeBlink(active: boolean) {
   const [on, setOn] = React.useState(true)
   React.useEffect(() => {
     if (!active) { setOn(true); return }
@@ -367,7 +367,7 @@ const CEREMONY_CSS = '@keyframes cerIn { from { opacity: 0; transform: translate
 //   Frame 1 — CENTERED: brand logo + reason text (ROUND WIN / ACE / CLUTCH ...)
 //   then the whole frame slides DOWN to the very bottom center, where
 //   Frame 2 — [team logo / team name / ATTACKER-DEFENDER]  [brand logo / ROUND n]
-function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, winnerFromLeft, leftColor, rightColor, gameEventLogo, tournamentLogo, clutchHighlight, baseColor, accentColor, eventImage, persistent, activeComponentId, onSelectComponent }: {
+export function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winnerName, winnerLogo, winnerColor, winnerFromLeft, leftColor, rightColor, gameEventLogo, tournamentLogo, clutchHighlight, baseColor, accentColor, eventImage, persistent, activeComponentId, onSelectComponent }: {
   trigger: string | null
   reasonText: string | null
   roundNumber: number | null

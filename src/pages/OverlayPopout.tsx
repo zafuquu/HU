@@ -16,6 +16,9 @@ import { CasterCard } from '../components/scenes/CasterCard'
 import { EconomyTracker } from '../components/scenes/EconomyTracker'
 import { PostgameMVP } from '../components/scenes/PostgameMVP'
 import { OverlayToast } from '../components/scenes/OverlayToast'
+import { BroadcastIngameHudScene } from '../components/scenes/BroadcastIngameHudScene'
+import { BroadcastBuyRoundScene } from '../components/scenes/BroadcastBuyRoundScene'
+import { BroadcastPostgameScene } from '../components/scenes/BroadcastPostgameScene'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
 
 /**
@@ -66,12 +69,20 @@ export default function OverlayPopout() {
   const urlSceneKey = (() => {
     const screenParam = new URLSearchParams(window.location.search).get('screen')
     const id = (overlayIdRaw || screenParam || 'default').toLowerCase()
-    if (id === 'ingame-hud' || id === 'buy-round-part-of-hud' || id === 'postgame') {
+    if (id === 'ingame-hud' || id === 'buy-round-part-of-hud' || id === 'postgame' || id === 'broadcast') {
       if (id === 'buy-round-part-of-hud') return 'buy-round'
       if (id === 'postgame') return 'post-game'
       return 'default'
     }
     return id
+  })()
+  // Broadcast kit: ?screen=broadcast (or overlayId "broadcast") swaps the
+  // ingame-hud / buy-round / post-game scenes for the kit designs. Agent-select,
+  // map-ban, the timeout banner, caster cards and toasts are shared with the
+  // classic overlay unchanged (copied per the design brief).
+  const kitMode = (() => {
+    const sp = new URLSearchParams(window.location.search).get('screen')
+    return sp === 'broadcast' || overlayIdRaw === 'broadcast'
   })()
   const pickedMap = VAL_MAPS.find(m => m.mapId === (state.mapPicks?.[0]?.mapId || state.vetoSelectedMapIds?.[0]))
   const { live: desktopLive } = useDesktopPresence(roomCode)
@@ -869,6 +880,9 @@ export default function OverlayPopout() {
   const spikeSite = ((spikeRaw && typeof spikeRaw === 'object' && spikeRaw.site) || (snapState as any)?.plantSite || null) as string | null
   const spikeState = (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null) || ((snapState as any)?.bombPlanted ? 'planted' : null) || ((snapState as any)?.plantSite ? 'planted' : null)) as 'none' | 'planted' | 'defusing' | null
 
+  const PrimaryHud = kitMode ? BroadcastIngameHudScene : IngameHudScene
+  const PrimaryBuy = kitMode ? BroadcastBuyRoundScene : BuyRoundScene
+  const PrimaryPost = kitMode ? BroadcastPostgameScene : PostgameScene
   return (
     <div data-source-of-truth={sourceOfTruth ?? ''} style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
       {/* Scene-change fade — must live OUTSIDE any conditional render (it used
@@ -913,7 +927,7 @@ export default function OverlayPopout() {
       >
         <div key={sceneKey} className="scene-fade">
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'shopping' && (
-          <BuyRoundScene
+          <PrimaryBuy
             leftTeamName={hudLeftName}
             rightTeamName={hudRightName}
             leftTeamSeed={hudLeftSeed}
@@ -942,7 +956,7 @@ export default function OverlayPopout() {
           />
         )}
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && !(liveScores && (gamePhase === 'shopping' || gamePhase === 'game_start')) && (
-          <IngameHudScene
+          <PrimaryHud
             leftTeamName={hudLeftName}
             rightTeamName={hudRightName}
             leftTeamSeed={hudLeftSeed}
@@ -1002,7 +1016,7 @@ export default function OverlayPopout() {
           />
         )}
         {sceneKey === 'buy-round' && (
-          <BuyRoundScene
+          <PrimaryBuy
             leftTeamName={hudLeftName}
             rightTeamName={hudRightName}
             leftTeamColor={hudLeftColor}
@@ -1030,7 +1044,7 @@ export default function OverlayPopout() {
           />
         )}
         {sceneKey === 'post-game' && (
-          <PostgameScene
+          <PrimaryPost
             leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
             rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
             leftTeamColor={leftTeam?.color || '#28D091'}
@@ -1081,8 +1095,9 @@ export default function OverlayPopout() {
           </div>
         )}
 
-        {/* Postgame MVP card (#17) */}
-        {(sceneKey === 'post-game' || sceneKey === 'default') && liveMvpPlayer && (
+        {/* Postgame MVP card (#17) — suppressed in kit mode: the kit's
+            post-game scene renders per-team MVP rows instead (no double MVP). */}
+        {(sceneKey === 'post-game' || sceneKey === 'default') && !kitMode && liveMvpPlayer && (
           <PostgameMVP
             mvp={liveMvpPlayer}
             leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
