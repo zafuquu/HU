@@ -120,3 +120,45 @@ export const REASON_ICON: Record<string, string> = {
   defusion: 'defused',
   time: 'timeout',
 }
+
+/** Broadcast-kit identity. The redesigned overlay kit ships as "Version 1";
+ *  the classic overlay remains the default theme for every scene. */
+export type KitKind = 'classic' | 'version1'
+
+export const KIT_VERSION_LABEL = 'Version 1'
+export const KIT_CLASSIC_LABEL = 'Classic'
+export const KIT_DEFAULT: KitKind = 'classic'
+
+/** Tokens that opt into the Version 1 kit. */
+const V1_TOKENS = new Set(['version1', 'version 1', 'v1', 'broadcast'])
+/** Tokens that opt into the classic kit. */
+const CLASSIC_TOKENS = new Set(['classic'])
+
+function pickKit(token: string | null): KitKind | null {
+  if (!token) return null
+  const t = token.toLowerCase()
+  if (CLASSIC_TOKENS.has(t)) return 'classic'
+  if (V1_TOKENS.has(t)) return 'version1'
+  return null
+}
+
+/**
+ * Resolve which kit an overlay should render.
+ * Priority: explicit ?kit= param → ?screen= param → persisted workspace
+ * setting (state.broadcastKit, synced to localStorage + Supabase from the HUD
+ * editor / live game page) → default classic unless overridden.
+ */
+export function resolveKitKind(
+  kitParam: string | null,
+  screenParam: string | null,
+  overlayId: string | null,
+  persistedKit: string | null,
+): KitKind {
+  return (
+    pickKit(kitParam) ??
+    pickKit(screenParam) ??
+    pickKit(overlayId) ??
+    pickKit(persistedKit) ??
+    KIT_DEFAULT
+  )
+}

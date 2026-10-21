@@ -20,6 +20,8 @@ import { BroadcastIngameHudScene } from '../components/scenes/BroadcastIngameHud
 import { BroadcastBuyRoundScene } from '../components/scenes/BroadcastBuyRoundScene'
 import { BroadcastPostgameScene } from '../components/scenes/BroadcastPostgameScene'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
+import { resolveKitKind } from '../components/scenes/broadcastKit'
+import type { KitKind } from '../components/scenes/broadcastKit'
 
 /**
  * Overlay popout page â€” the page the HAVOC UNLEASH desktop overlay windows load:
@@ -66,10 +68,11 @@ export default function OverlayPopout() {
   useRealtimeSync()
   const { roomCode, overlayId: overlayIdRaw } = useParams<{ roomCode: string; overlayId: string }>()
   // Normalize the overlayId to a scene key (desktop uses a few aliases)
+  const screenParam = new URLSearchParams(window.location.search).get('screen')
+  const kitParam = new URLSearchParams(window.location.search).get('kit')
   const urlSceneKey = (() => {
-    const screenParam = new URLSearchParams(window.location.search).get('screen')
     const id = (overlayIdRaw || screenParam || 'default').toLowerCase()
-    if (id === 'ingame-hud' || id === 'buy-round-part-of-hud' || id === 'postgame' || id === 'broadcast') {
+    if (id === 'ingame-hud' || id === 'buy-round-part-of-hud' || id === 'postgame' || id === 'broadcast' || id === 'classic') {
       if (id === 'buy-round-part-of-hud') return 'buy-round'
       if (id === 'postgame') return 'post-game'
       return 'default'
@@ -80,10 +83,12 @@ export default function OverlayPopout() {
   // ingame-hud / buy-round / post-game scenes for the kit designs. Agent-select,
   // map-ban, the timeout banner, caster cards and toasts are shared with the
   // classic overlay unchanged (copied per the design brief).
-  const kitMode = (() => {
-    const sp = new URLSearchParams(window.location.search).get('screen')
-    return sp === 'broadcast' || overlayIdRaw === 'broadcast'
-  })()
+  // Kit selection state (Classic | Version 1). Explicit URL params (?kit= /
+  // ?screen=) win for direct OBS / deep links; otherwise the persisted
+  // workspace setting (state.broadcastKit, synced to localStorage + Supabase
+  // from the HUD editor / live game page) wins; defaults to classic unless
+  // overridden.
+  const kit: KitKind = resolveKitKind(kitParam, screenParam, overlayIdRaw ?? null, state.broadcastKit ?? null)
   const pickedMap = VAL_MAPS.find(m => m.mapId === (state.mapPicks?.[0]?.mapId || state.vetoSelectedMapIds?.[0]))
   const { live: desktopLive } = useDesktopPresence(roomCode)
   const [liveScores, setLiveScores] = useState<{ scores?: any; snapshot?: any; event?: any; updatedAt?: number; timeout?: any; killBanner?: any; economy?: any; mvpPlayer?: any; casterCards?: any; forceScene?: string | null; overlayHidden?: boolean; toast?: any; audioCuesEnabled?: boolean; currentlyObserving?: any; spike?: any } | null>(null)
@@ -880,9 +885,9 @@ export default function OverlayPopout() {
   const spikeSite = ((spikeRaw && typeof spikeRaw === 'object' && spikeRaw.site) || (snapState as any)?.plantSite || null) as string | null
   const spikeState = (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null) || ((snapState as any)?.bombPlanted ? 'planted' : null) || ((snapState as any)?.plantSite ? 'planted' : null)) as 'none' | 'planted' | 'defusing' | null
 
-  const PrimaryHud = kitMode ? BroadcastIngameHudScene : IngameHudScene
-  const PrimaryBuy = kitMode ? BroadcastBuyRoundScene : BuyRoundScene
-  const PrimaryPost = kitMode ? BroadcastPostgameScene : PostgameScene
+  const PrimaryHud = kit === 'version1' ? BroadcastIngameHudScene : IngameHudScene
+  const PrimaryBuy = kit === 'version1' ? BroadcastBuyRoundScene : BuyRoundScene
+  const PrimaryPost = kit === 'version1' ? BroadcastPostgameScene : PostgameScene
   return (
     <div data-source-of-truth={sourceOfTruth ?? ''} style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
       {/* Scene-change fade — must live OUTSIDE any conditional render (it used
@@ -1097,7 +1102,7 @@ export default function OverlayPopout() {
 
         {/* Postgame MVP card (#17) — suppressed in kit mode: the kit's
             post-game scene renders per-team MVP rows instead (no double MVP). */}
-        {(sceneKey === 'post-game' || sceneKey === 'default') && !kitMode && liveMvpPlayer && (
+        {(sceneKey === 'post-game' || sceneKey === 'default') && kit === 'classic' && liveMvpPlayer && (
           <PostgameMVP
             mvp={liveMvpPlayer}
             leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}

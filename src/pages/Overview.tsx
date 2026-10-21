@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Copy, MoreHorizontal, Eye, EyeOff, Pencil, X, Check, Search, UserRound } from 'lucide-react'
+import { Copy, MoreHorizontal, Eye, EyeOff, X, Check, Search, UserRound } from 'lucide-react'
 import { useAppStore } from '../store/AppContext'
 import { useAuth } from '../lib/useAuth'
 import { MOCK_EVENT, MOCK_TOURNAMENT } from '../lib/mockEvent'
@@ -221,10 +221,11 @@ export default function Overview() {
           </div>
           <div>
             <label style={{ fontSize: 12, color: 'hsla(var(--muted-foreground))', marginBottom: 6, display: 'block' }}>Broadcast kit</label>
-            <div className="copy-field" style={{ cursor: 'pointer' }}>
-              <span style={{ flex: 1 }}>{state.broadcastKit}</span>
-              <Pencil size={14} style={{ color: 'hsla(var(--muted-foreground))' }} />
-            </div>
+            <Dropdown
+              value={state.broadcastKit}
+              options={['Classic', 'Version 1']}
+              onChange={v => setState(prev => ({ ...prev, broadcastKit: v }))}
+            />
           </div>
         </div>
       </div>
