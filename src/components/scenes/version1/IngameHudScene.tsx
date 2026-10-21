@@ -25,7 +25,6 @@ import { resolveAgent } from '../../../data/valAgentMeta'
 /** Broadcast kit — VCT-style ingame HUD (player panels, scorebug, 1v1 duel mode). */
 
 const KIT_CSS = `
-@keyframes kitSpin { to { transform: rotate(360deg); } }
 @keyframes kitFlame {
   0% { box-shadow: 0 0 8px 2px rgba(255,110,40,0.55); }
   100% { box-shadow: 0 0 16px 5px rgba(255,150,60,0.92); }
@@ -49,20 +48,20 @@ const EYE_SVG = (
   </svg>
 )
 
-/** Ultimate orb — dashed spinning ring + burning/flame glow when fully charged. */
-function UltOrb({ player }: { player: any }) {
+/** Ultimate orb — static ring + team-color glow when fully charged. */
+function UltOrb({ player, teamColor }: { player: any; teamColor: string }) {
   const ready = ultReadyOf(player)
   return (
     <div className="relative grid size-[27px] shrink-0 place-items-center">
       {ready && (
         <span
           className="absolute -inset-[3px] rounded-full border-2 border-dashed"
-          style={{ borderColor: '#FF8A3D', animation: 'kitSpin 5s linear infinite' }}
+          style={{ borderColor: teamColor }}
         />
       )}
       <span
         className="absolute inset-0 rounded-full border border-white/35 bg-black/80"
-        style={ready ? { animation: 'kitFlame 900ms ease-in-out infinite alternate' } : undefined}
+        style={ready ? { boxShadow: `0 0 14px 4px ${hexRgba(teamColor, 0.9)}` } : undefined}
       />
       <img
         src={abilityImg(player, 'X')}
@@ -114,7 +113,7 @@ function KitPanel({
   const weaponSrc = getWeaponImg(player.weapon || player.weaponName)
   const st = player.abilityState
   return (
-    <div className="relative w-[300px]" style={{ opacity: alive ? 1 : 0.78 }}>
+    <div className="relative" style={{ width: alive ? 300 : 200, opacity: alive ? 1 : 0.6 }}>
       {/* Spike carrier badge — small white circle on the panel's outer edge (image 1) */}
       {player.hasSpike && (
         <div
@@ -155,14 +154,12 @@ function KitPanel({
               </div>
             )}
           </div>
-          <div className={`flex min-w-0 flex-1 flex-col ${isRight ? 'items-end' : 'items-start'}`}>
-            <h1 className="w-full truncate font-barlowCond text-[16px] font-semibold leading-tight text-white">
-              {alias}
-            </h1>
-            <span className="font-barlowCond text-[11px] font-semibold leading-none tabular-nums text-white/55">
-              {k}/{d}/{a}
-            </span>
-          </div>
+          <h1 className="w-full truncate font-barlowCond text-[16px] font-semibold leading-tight text-white">
+            {alias}
+          </h1>
+          <span className="font-barlowCond text-[11px] font-semibold leading-none tabular-nums text-white/55">
+            {k}/{d}/{a}
+          </span>
           <div className={`flex shrink-0 items-center gap-1.5 ${isRight ? 'flex-row-reverse' : ''}`}>
             <div
               className="grid size-[21px] place-items-center"
@@ -195,7 +192,7 @@ function KitPanel({
         </div>
         {/* Row 2 — ult orb, ability charge bars, weapon, credits */}
         <div className={`flex h-[32px] items-center gap-2 bg-[#0A0C11] px-2 ${isRight ? 'flex-row-reverse' : ''}`}>
-          <UltOrb player={player} />
+          <UltOrb player={player} teamColor={teamColor} />
           <span className="h-[18px] w-px bg-white/10" />
           <div className={`flex items-center gap-2 ${isRight ? 'flex-row-reverse' : ''}`}>
             <AbilityCharge player={player} slot="C" st={st} />
@@ -203,13 +200,15 @@ function KitPanel({
             <AbilityCharge player={player} slot="E" st={st} />
           </div>
           <div className="flex-1" />
-          <img
-            src={weaponSrc}
-            alt=""
-            className={`max-h-[17px] max-w-[74px] object-contain ${isRight ? '' : '-scale-x-100'}`}
-            style={{ opacity: alive ? 0.92 : 0.25 }}
-            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
-          />
+          {alive && (
+            <img
+              src={weaponSrc}
+              alt=""
+              className={`max-h-[17px] max-w-[74px] object-contain ${isRight ? '' : '-scale-x-100'}`}
+              style={{ opacity: 0.92 }}
+              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
+            />
+          )}
           {credits != null && (
             <span
               className="flex items-center gap-1 font-barlowCond text-[13px] font-bold tabular-nums"
@@ -284,31 +283,46 @@ function Scorebug(props: {
     const score = isRight ? scoreRight : scoreLeft
     const series = isRight ? seriesRight : seriesLeft
     const logo = isRight ? rightLogo : leftLogo
+    const logoEl = showLogos && logo ? (
+      <img
+        src={logo}
+        alt=""
+        className="size-[36px] shrink-0 object-contain"
+        onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
+      />
+    ) : (
+      <div className="grid size-[32px] shrink-0 place-items-center rounded-full" style={{ background: color }}>
+        <span className="font-schabo text-[15px] leading-none text-black/80">{name.slice(0, 1)}</span>
+      </div>
+    )
+    const nameCol = (
+      <div className={`flex min-w-0 flex-1 flex-col gap-0.5 ${isRight ? 'items-end' : 'items-start'}`}>
+        {seed != null && seed !== '' && (
+          <span className="font-baijam text-[9px] font-bold tracking-[0.14em] text-white/50">#{seed}</span>
+        )}
+        <span className="w-full truncate font-schabo text-[25px] uppercase leading-none text-white">{name}</span>
+        {showSeries && diamonds(series, color, isRight)}
+      </div>
+    )
+    const scoreEl = <span className="shrink-0 font-schabo text-[38px] leading-none tabular-nums text-white">{score}</span>
     return (
       <div
         className={`flex flex-1 items-center gap-2.5 px-3 ${isRight ? 'flex-row-reverse' : ''}`}
         style={{ borderBottom: `3px solid ${color}` }}
       >
-        {showLogos && logo ? (
-          <img
-            src={logo}
-            alt=""
-            className="size-[36px] shrink-0 object-contain"
-            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
-          />
+        {isRight ? (
+          <>
+            {scoreEl}
+            {logoEl}
+            {nameCol}
+          </>
         ) : (
-          <div className="grid size-[32px] shrink-0 place-items-center rounded-full" style={{ background: color }}>
-            <span className="font-schabo text-[15px] leading-none text-black/80">{(name || '?').slice(0, 1)}</span>
-          </div>
+          <>
+            {logoEl}
+            {nameCol}
+            {scoreEl}
+          </>
         )}
-        <div className={`flex min-w-0 flex-1 flex-col gap-0.5 ${isRight ? 'items-end' : 'items-start'}`}>
-          {seed != null && seed !== '' && (
-            <span className="font-baijam text-[9px] font-bold tracking-[0.14em] text-white/50">#{seed}</span>
-          )}
-          <span className="w-full truncate font-schabo text-[25px] uppercase leading-none text-white">{name}</span>
-          {showSeries && diamonds(series, color, isRight)}
-        </div>
-        <span className="shrink-0 font-schabo text-[38px] leading-none tabular-nums text-white">{score}</span>
       </div>
     )
   }
@@ -316,9 +330,9 @@ function Scorebug(props: {
     <div className="absolute left-1/2 top-0 z-20 -translate-x-1/2" style={{ width: 812 }}>
       <div className="flex h-[64px] items-stretch overflow-hidden rounded-b-[6px] border border-t-0 border-white/25 bg-black/90">
         {teamCell('left')}
-        <div className="relative flex w-[172px] shrink-0 flex-col items-center justify-center">
-          <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.22em] text-white/60">{roundLabel}</span>
-          <div className="flex items-center gap-2">
+        <div className="relative flex w-[150px] shrink-0 flex-col items-center justify-center gap-1">
+          <span className="font-baijam text-[9px] font-bold uppercase tracking-[0.22em] text-white/60">{roundLabel}</span>
+          <div className="flex items-center gap-1">
             {spikeActive && (
               <img
                 src="/game/val/misc/Spike_Icon.svg"
@@ -655,7 +669,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
 
   return (
     <div
-      className="scene-root relative size-full select-none overflow-hidden bg-transparent font-schabo text-[#DADBE3]"
+      className="scene-root relative size-full select-none overflow-hidden bg-transparent font-schabo text-[#DADBE3] animate-[fadeIn_300ms_ease-out]"
       style={
         {
           width: 1920,

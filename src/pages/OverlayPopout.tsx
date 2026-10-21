@@ -19,6 +19,8 @@ import { OverlayToast } from '../components/scenes/OverlayToast'
 import Version1IngameHudScene from '../components/scenes/version1/IngameHudScene'
 import Version1BuyRoundScene from '../components/scenes/version1/BuyRoundScene'
 import Version1PostgameScene from '../components/scenes/version1/PostgameScene'
+import Version1GameEventsScene from '../components/scenes/version1/GameEventsScene'
+import { RoundResult } from '../components/scenes/RoundResult'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
 import { resolveKitKind } from '../components/scenes/broadcastKit'
 import type { KitKind } from '../components/scenes/broadcastKit'
@@ -155,6 +157,18 @@ export default function OverlayPopout() {
     return urlSceneKey
   })()
   const [scale, setScale] = useState(1)
+  // Professional scene cross-fade transitions
+  const [prevSceneKey, setPrevSceneKey] = useState<string | null>(null)
+  const [sceneTransitioning, setSceneTransitioning] = useState(false)
+  const sceneTransitionRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (sceneKey !== prevSceneKey) {
+      setPrevSceneKey(sceneKey)
+      setSceneTransitioning(true)
+      if (sceneTransitionRef.current) clearTimeout(sceneTransitionRef.current)
+      sceneTransitionRef.current = setTimeout(() => setSceneTransitioning(false), 400)
+    }
+  }, [sceneKey, prevSceneKey])
   // Sponsor cycler: rotate through the tournament's sponsors every 8s
   // (ValoSpectra sponsor-cycle parity). Logos are 1:1 square; backdrops 875x200.
   const sponsorList = (state.sponsors || []).map((s: any) => s?.imageUrl).filter((u: any): u is string => !!u)
@@ -800,6 +814,35 @@ export default function OverlayPopout() {
   const ceremonyTrigger = hudRoundEnd
     ? `rd:${nativeRoundNumber ?? 0}:${hudRoundEnd.winner}`
     : (kbFresh ? `kb:${kbFresh.at}` : null)
+
+  // ====== Game Events / Round Ceremony derived props ======
+  const [lastGameEventTrigger, setLastGameEventTrigger] = useState<string | null>(null)
+  const GAME_EVENT_RESULT_MAP: Record<string, GameEventsSceneProps['result']> = {
+    ACE: 'ace',
+    CLUTCH: 'clutch',
+    'TEAM ACE': 'team_ace',
+    FLAWLESS: 'flawless',
+    THRIFTY: 'thrifty',
+  }
+  const gameEventResult: GameEventsSceneProps['result'] =
+    ceremonyText ? (GAME_EVENT_RESULT_MAP[ceremonyText] ?? 'round_won') : null
+  const gameEventTeamColor =
+    ceremonyWinner === 'right' ? rightTeam?.color : ceremonyWinner === 'left' ? leftTeam?.color : undefined
+  const gameEventTeamName =
+    ceremonyWinner === 'right' ? rightTeam?.name : ceremonyWinner === 'left' ? leftTeam?.name : undefined
+  const gameEventPlayerName = (hudRoundEnd as any)?.highlightPlayer?.name ?? null
+  const gameEventAgent = (hudRoundEnd as any)?.highlightPlayer?.agent ?? null
+
+  const onGameEventComplete = () => {
+    setLastGameEventTrigger(ceremonyTrigger)
+  }
+
+  const showGameEvent =
+    !!ceremonyText &&
+    ceremonyTrigger &&
+    ceremonyTrigger !== lastGameEventTrigger &&
+    gamePhase !== 'shopping' &&
+    gamePhase !== 'game_start'
   // Phantom-camera guard: only treat the configured player as a live publisher
   // when the desktop is connected AND they are in the current live roster.
   // Otherwise no camera box is rendered and no viewer connection is opened.
@@ -888,11 +931,11 @@ export default function OverlayPopout() {
   const PrimaryHud = kit === 'version1' ? Version1IngameHudScene : ClassicIngameHudScene
   const PrimaryBuy = kit === 'version1' ? Version1BuyRoundScene : BuyRoundScene
   const PrimaryPost = kit === 'version1' ? Version1PostgameScene : PostgameScene
+  const PrimaryGameEvents = kit === 'version1' ? Version1GameEventsScene : RoundResult
   return (
     <div data-source-of-truth={sourceOfTruth ?? ''} style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
-      {/* Scene-change fade — must live OUTSIDE any conditional render (it used
-          to sit inside the stale badge, so the animation never played). */}
-      <style>{`.scene-fade { animation: sceneFade 320ms ease; will-change: opacity, transform; } @keyframes sceneFade { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }`}</style>
+      {/* Scene-change cross-fade — must live OUTSIDE any conditional render */ }
+      <style>{`.scene-stage { position: relative; width: 1920px; height: 1080px; } .scene-wrap { position: absolute; inset: 0; opacity: 1; transition: opacity 350ms ease, transform 350ms ease; will-change: opacity; } .scene-wrap.scene-exit { opacity: 0; transform: translateY(8px); }`}</style>
       {/* Spectator badge: shown while the desktop reports an observing role */}
       {spectating && (
         <div style={{
@@ -930,7 +973,7 @@ export default function OverlayPopout() {
           top: `calc(50% - ${(1080 * scale) / 2}px)`,
         }}
       >
-        <div key={sceneKey} className="scene-fade">
+        <div key={sceneKey} className={`scene-wrap ${sceneTransitioning ? 'scene-exit' : ''}`}>
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'shopping' && (
           <PrimaryBuy
             leftTeamName={hudLeftName}
@@ -1061,6 +1104,21 @@ export default function OverlayPopout() {
             leftTeamPlayers={leftPlayers}
             rightTeamPlayers={rightPlayers}
             allowDemo={false}
+          />
+        )}
+
+        {/* ====== Game Events / Round Ceremony (VCT-style) ====== */}
+        {showGameEvent && (
+          <PrimaryGameEvents
+            key={`game-event-${ceremonyTrigger}`}
+            result={gameEventResult}
+            teamColor={gameEventTeamColor}
+            teamName={gameEventTeamName}
+            playerName={gameEventPlayerName}
+            agent={gameEventAgent}
+            roundNumber={liveRoundNumber ?? null}
+            displayMs={3000}
+            onComplete={onGameEventComplete}
           />
         )}
 

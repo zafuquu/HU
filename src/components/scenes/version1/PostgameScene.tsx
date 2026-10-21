@@ -2,7 +2,7 @@ import {
   type PostgamePlayer,
   type PostGameSceneProps,
 } from '../classic/PostgameScene'
-import { agentPortrait, hexRgba } from '../broadcastKit'
+import { agentIcon, agentPortrait, hexRgba } from '../broadcastKit'
 
 /**
  * Broadcast kit — post-game scene: side score headers, per-player KO/ACS
@@ -102,22 +102,22 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
       <div className="absolute left-0 top-[124px] flex w-full justify-between px-[190px]">
         <div className="flex flex-col gap-[14px]">
           {leftRows.map((p, i) => (
-            <PostRow key={p.id ?? i} player={p} side="left" teamColor={leftTeamColor} showAcs={showAcs} />
+            <PostRow key={p.id ?? i} player={p} side="left" teamColor={leftTeamColor} />
           ))}
         </div>
         <div className="flex flex-col items-end gap-[14px]">
           {rightRows.map((p, i) => (
-            <PostRow key={p.id ?? i} player={p} side="right" teamColor={rightTeamColor} showAcs={showAcs} />
+            <PostRow key={p.id ?? i} player={p} side="right" teamColor={rightTeamColor} />
           ))}
         </div>
       </div>
 
       {/* ===== Team MVP rows with full agent art ===== */}
       {leftMvp && (
-        <MvpBlock player={leftMvp} side="left" teamColor={leftTeamColor} showAcs={showAcs} showFirstKills={showFirstKills} />
+        <MvpBlock player={leftMvp} side="left" teamColor={leftTeamColor} showFirstKills={showFirstKills} />
       )}
       {rightMvp && (
-        <MvpBlock player={rightMvp} side="right" teamColor={rightTeamColor} showAcs={showAcs} showFirstKills={showFirstKills} />
+        <MvpBlock player={rightMvp} side="right" teamColor={rightTeamColor} showFirstKills={showFirstKills} />
       )}
     </div>
   )
@@ -128,12 +128,10 @@ function PostRow({
   player,
   side,
   teamColor,
-  showAcs,
 }: {
   player: PostgamePlayer
   side: 'left' | 'right'
   teamColor: string
-  showAcs: boolean
 }) {
   const isRight = side === 'right'
   const name = player.alias || player.name || player.riotId || 'Player'
@@ -141,16 +139,16 @@ function PostRow({
   const k = player.kills ?? 0
   const d = player.deaths ?? 0
   const a = player.assists ?? 0
-  const art = player.photoUrl || player.avatarUrl || player.avatar || agentPortrait(player)
+  const art = player.photoUrl || player.avatarUrl || player.avatar || agentIcon(player)
   return (
     <div className={`flex items-center gap-3 ${isRight ? 'flex-row-reverse' : ''}`}>
-      {/* Portrait tile */}
+      {/* Agent icon tile */}
       <div className="relative size-[54px] shrink-0 overflow-hidden rounded-[2px] border border-white/10 bg-black/40">
         <img
-          src={art || agentPortrait(player)}
+          src={art || agentIcon(player)}
           alt=""
           className="size-full object-cover"
-          onError={e => { (e.currentTarget as HTMLImageElement).src = agentPortrait(player) }}
+          onError={e => { (e.currentTarget as HTMLImageElement).src = agentIcon(player) }}
         />
       </div>
       {/* Name pill */}
@@ -170,11 +168,9 @@ function PostRow({
         <p className="font-barlowCond text-[19px] font-extrabold italic leading-tight tabular-nums text-white">
           {k} / {d} / {a}
         </p>
-        {showAcs && (
-          <p className="font-barlowCond text-[15px] font-extrabold italic leading-tight tabular-nums text-white/45">
-            {player.acs ?? '–'}
-          </p>
-        )}
+        <p className="font-barlowCond text-[15px] font-extrabold italic leading-tight tabular-nums text-white/45">
+          {player.acs ?? '–'}
+        </p>
       </div>
     </div>
   )
@@ -185,13 +181,11 @@ function MvpBlock({
   player,
   side,
   teamColor,
-  showAcs,
   showFirstKills,
 }: {
   player: PostgamePlayer
   side: 'left' | 'right'
   teamColor: string
-  showAcs: boolean
   showFirstKills: boolean
 }) {
   const isRight = side === 'right'
@@ -210,7 +204,7 @@ function MvpBlock({
       <img
         src={agentPortrait(player)}
         alt=""
-        className="absolute bottom-0 h-[470px] max-w-none object-contain"
+        className="absolute bottom-0 h-[470px] max-w-none object-cover object-top"
         style={{
           [isRight ? 'right' : 'left']: '-30px',
           opacity: 0.85,
@@ -237,11 +231,9 @@ function MvpBlock({
         <p className="h-[30px] font-barlowCond text-[22px] font-extrabold italic leading-[30px] tabular-nums text-white">
           {k} / {d} / {a}
         </p>
-        {showAcs && (
-          <p className="h-[26px] font-barlowCond text-[17px] font-extrabold italic leading-[26px] tabular-nums text-white/50">
-            {player.acs ?? '–'}
-          </p>
-        )}
+        <p className="h-[26px] font-barlowCond text-[17px] font-extrabold italic leading-[26px] tabular-nums text-white/50">
+          {player.acs ?? '–'}
+        </p>
         {showFirstKills && (
           <p className="h-[26px] font-barlowCond text-[17px] font-extrabold italic leading-[26px] tabular-nums text-white/80">
             {fk ?? 0}

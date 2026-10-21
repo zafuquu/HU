@@ -4,7 +4,7 @@ import {
   BLANK_IMG,
   abilityImg,
   agentCodename,
-  agentBust,
+  agentIcon,
   chargeBarStyle,
   chargeState,
   creditsOf,
@@ -141,23 +141,26 @@ function BuyAbility({ player, slot, st }: { player: any; slot: 'C' | 'Q' | 'E'; 
   )
 }
 
-function BuyUlt({ player }: { player: any }) {
+function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
   const ready = ultReadyOf(player)
-  const points = Number(player?.currUltPoints ?? player?.ultPoints ?? 0) || 0
-  const max = Number(player?.maxUltPoints ?? player?.ultMax ?? 8) || 8
-  const pct = max > 0 ? Math.max(0, Math.min(100, Math.round((points / max) * 100))) : 0
   return (
-    <div className="flex flex-col items-center">
+    <div className="relative grid size-[20px] shrink-0 place-items-center">
+      {ready && (
+        <span
+          className="absolute -inset-[2px] rounded-full border-2 border-dashed"
+          style={{ borderColor: teamColor }}
+        />
+      )}
+      <span
+        className="absolute inset-0 rounded-full border border-white/35 bg-black/80"
+        style={ready ? { boxShadow: `0 0 10px 3px ${hexRgba(teamColor, 0.9)}` } : undefined}
+      />
       <img
         src={abilityImg(player, 'X')}
         alt=""
-        className="size-[19px] object-contain"
+        className="relative size-[12px] object-contain"
         style={{ opacity: ready ? 1 : 0.7 }}
         onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
-      />
-      <span
-        className="mt-1 block h-[3px] w-[18px] rounded-full"
-        style={{ background: `linear-gradient(90deg, #FFFFFF ${pct}%, rgba(255,255,255,0.18) ${pct}%)` }}
       />
     </div>
   )
@@ -190,18 +193,18 @@ function KitBuyCard({
   const spent = spentOf(player) ?? 0
   const next = Math.max(0, credits + income)
   const st = player.abilityState
-  const portraitFallback = agentCodename(player) ? `/game/val/agents/${agentCodename(player)}/portrait.png` : BLANK_IMG
+  const iconFallback = agentCodename(player) ? `/game/val/agents/${agentCodename(player)}/icon.png` : BLANK_IMG
   return (
     <div className="relative w-[152px] overflow-hidden rounded-[3px] bg-[#0B0E13]/95">
       {/* top accent */}
       <div className="h-[3px] w-full" style={{ background: teamColor }} />
-      {/* Portrait */}
-      <div className="relative mt-2 grid h-[102px] place-items-center">
+      {/* Agent icon */}
+      <div className="relative mt-2 grid h-[48px] w-[48px] place-items-center">
         <img
-          src={agentBust(player) || portraitFallback}
+          src={agentIcon(player) || iconFallback}
           alt=""
-          className="h-[102px] object-contain"
-          onError={e => { (e.currentTarget as HTMLImageElement).src = portraitFallback }}
+          className="size-[48px] object-contain"
+          onError={e => { (e.currentTarget as HTMLImageElement).src = iconFallback }}
         />
       </div>
       <p
@@ -218,7 +221,7 @@ function KitBuyCard({
         <BuyAbility player={player} slot="C" st={st} />
         <BuyAbility player={player} slot="Q" st={st} />
         <BuyAbility player={player} slot="E" st={st} />
-        <BuyUlt player={player} />
+        <BuyUlt player={player} teamColor={teamColor} />
       </div>
       {/* Weapon + shield */}
       <div className="mt-2 flex h-[26px] items-center justify-center gap-2">
@@ -309,7 +312,7 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
       </div>
       {/* ===== Player cards ===== */}
       <div
-        className="absolute inset-x-0 top-[168px] flex justify-center"
+        className="absolute inset-x-0 bottom-[16px] flex items-center px-6"
         style={{ animation: 'kitBuyIn 420ms ease-out' }}
       >
         <div className="flex gap-2.5">
@@ -317,7 +320,7 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
             <KitBuyCard key={p.id || i} player={p} teamColor={leftTeamColor} income={incomeLeft} />
           ))}
         </div>
-        <div className="w-8 shrink-0" />
+        <div className="flex-1" />
         <div className="flex gap-2.5">
           {rightTeamPlayers.map((p: any, i: number) => (
             <KitBuyCard key={p.id || i} player={p} teamColor={rightTeamColor} income={incomeRight} />
