@@ -8,6 +8,11 @@ import { IngameHudScene } from '../components/scenes/IngameHudScene'
 import { MapBanScene } from '../components/scenes/MapBanScene'
 import { PostgameScene } from '../components/scenes/PostgameScene'
 import { TimeoutOverlay } from '../components/scenes/TimeoutOverlay'
+import { BroadcastIngameHudScene } from '../components/scenes/BroadcastIngameHudScene'
+import { BroadcastBuyRoundScene } from '../components/scenes/BroadcastBuyRoundScene'
+import { BroadcastPostgameScene } from '../components/scenes/BroadcastPostgameScene'
+import { resolveKitKind } from '../components/scenes/broadcastKit'
+import type { KitKind } from '../components/scenes/broadcastKit'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
 
 // ===== SCENE & COMPONENT DEFINITIONS (Matching original bundle definitions) =====
@@ -220,6 +225,12 @@ export default function HudEditor() {
   const [hudPreview, setHudPreview] = useState<'Main' | 'Buy' | 'Timeout'>('Main')
   const timeoutPreviewRef = useRef<{ team: 'left' | 'right'; calledAt: number; timeoutType: string } | null>(null)
   const isHudScene = selectedSceneKey === 'default' || selectedSceneKey === 'ingame-hud'
+// Broadcast kit: Version 1 swaps the buy-round / ingame-hud / post-game scenes
+// for the redesigned broadcast kit (agent-select & map-ban stay shared with classic).
+const kit: KitKind = resolveKitKind(null, null, null, state.broadcastKit ?? null)
+const PrimaryHud = kit === 'version1' ? BroadcastIngameHudScene : IngameHudScene
+const PrimaryBuy = kit === 'version1' ? BroadcastBuyRoundScene : BuyRoundScene
+const PrimaryPost = kit === 'version1' ? BroadcastPostgameScene : PostgameScene
 
   const leftTeam = state.teams.find(t => t.id === state.leftTeamId) || state.teams[0]
   const rightTeam = state.teams.find(t => t.id === state.rightTeamId) || state.teams[1] || state.teams[0]
@@ -589,7 +600,7 @@ export default function HudEditor() {
                   />
                 )}
                 {(selectedSceneKey === 'buy-round' || (((hudPreview === 'Buy' || hudPreview === 'Timeout') && isHudScene))) && (
-                  <BuyRoundScene
+                  <PrimaryBuy
                     leftTeamName={leftName}
                     rightTeamName={rightName}
                     leftTeamColor={colorA}
@@ -604,7 +615,7 @@ export default function HudEditor() {
                   />
                 )}
                 {(selectedSceneKey === 'default' || selectedSceneKey === 'ingame-hud') && hudPreview === 'Main' && (
-                  <IngameHudScene
+                  <PrimaryHud
                     leftTeamName={leftName}
                     rightTeamName={rightName}
                     leftTeamColor={colorA}
@@ -698,7 +709,7 @@ export default function HudEditor() {
                   />
                 )}
                 {selectedSceneKey === 'post-game' && (
-                  <PostgameScene
+                  <PrimaryPost
                     leftTeamName={leftName}
                     rightTeamName={rightName}
                     leftTeamColor={colorA}

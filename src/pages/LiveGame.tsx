@@ -2,6 +2,9 @@ import { useState, useRef, useEffect } from 'react'
 import { Copy, Info, ChevronDown, Minus, Plus, Eye, EyeOff, Tv, Download, Upload, Mic, Film, Video, Bell, Sun, Moon, BarChart3, History, Send, Clock, X } from 'lucide-react'
 import { useAppStore } from '../store/AppContext'
 import { IngameHudScene } from '../components/scenes/IngameHudScene'
+import { BroadcastIngameHudScene } from '../components/scenes/BroadcastIngameHudScene'
+import { resolveKitKind } from '../components/scenes/broadcastKit'
+import type { KitKind } from '../components/scenes/broadcastKit'
 import { buildMapHistoryItems } from './MapVeto'
 import { persistMatchScore } from '../lib/dataLayer'
 import { ReplaySystem } from '../components/ReplaySystem'
@@ -75,6 +78,9 @@ export default function LiveGame() {
   const [showAnalytics, setShowAnalytics] = useState(false)
   const [themeMode, setThemeMode] = useState<'dark' | 'light'>('dark')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Broadcast kit: Version 1 swaps the ingame HUD for the redesigned broadcast scene.
+  const kit: KitKind = resolveKitKind(null, null, null, state.broadcastKit ?? null)
+  const PrimaryHud = kit === 'version1' ? BroadcastIngameHudScene : IngameHudScene
 
   const toggleObsConnection = async () => {
     if (obsConnected) {
@@ -1341,7 +1347,7 @@ export default function LiveGame() {
                   }}
                   className="pointer-events-none"
                 >
-                  <IngameHudScene
+                  <PrimaryHud
                     leftTeamName={teamA?.name || ''}
                     rightTeamName={teamB?.name || ''}
                     leftTeamColor={teamA?.color || '#28D091'}
