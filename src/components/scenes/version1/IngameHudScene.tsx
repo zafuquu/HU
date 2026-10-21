@@ -307,14 +307,14 @@ function Scorebug(props: {
     const scoreEl = <span className="shrink-0 font-schabo text-[38px] leading-none tabular-nums text-white">{score}</span>
     return (
       <div
-        className={`flex flex-1 items-center gap-2.5 px-3 ${isRight ? 'flex-row-reverse' : ''}`}
+        className={`flex flex-1 items-center gap-1.5 px-2 ${isRight ? 'flex-row-reverse' : ''}`}
         style={{ borderBottom: `3px solid ${color}` }}
       >
         {isRight ? (
           <>
-            {scoreEl}
             {logoEl}
             {nameCol}
+            {scoreEl}
           </>
         ) : (
           <>
@@ -330,7 +330,7 @@ function Scorebug(props: {
     <div className="absolute left-1/2 top-0 z-20 -translate-x-1/2" style={{ width: 812 }}>
       <div className="flex h-[64px] items-stretch overflow-hidden rounded-b-[6px] border border-t-0 border-white/25 bg-black/90">
         {teamCell('left')}
-        <div className="relative flex w-[150px] shrink-0 flex-col items-center justify-center gap-1">
+        <div className="relative flex w-[110px] shrink-0 flex-col items-center justify-center gap-1">
           <span className="font-baijam text-[9px] font-bold uppercase tracking-[0.22em] text-white/60">{roundLabel}</span>
           <div className="flex items-center gap-1">
             {spikeActive && (

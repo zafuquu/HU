@@ -37,6 +37,7 @@ interface BroadcastBuyRoundProps {
   } | null
   sponsorImageUrl?: string | null
   roundHistory?: RoundRow[]
+  mapHistoryItems?: { slot: string; mapId: string; mapName: string; kind: 'pick' | 'ban' | 'decider' | 'pool'; score?: string }[]
   isToggled?: (id: string) => boolean
 }
 
@@ -253,6 +254,8 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
     rightTeamPlayers = [],
     economy = null,
     roundHistory = [],
+    mapHistoryItems = [],
+    sponsorImageUrl = null,
     isToggled = () => true,
   } = props
   if (!isToggled('buy-round')) return null
@@ -269,6 +272,18 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
   // The engine's economy totals (when present) back the REM summary line.
   const remLeft = economy?.left?.total != null ? economy.left.total : leftRem
   const remRight = economy?.right?.total != null ? economy.right.total : rightRem
+
+  // Map history (non-pool, non-ban entries, labeled)
+  const activeMapHistory = (mapHistoryItems || []).filter((i: any) => i.kind !== 'pool' && i.kind !== 'ban')
+  const labeledMapHistory = (() => {
+    let n = 0
+    return activeMapHistory.map((item: any) => {
+      if (item.kind === 'decider') return { ...item, label: 'DECIDER:' }
+      if (item.kind === 'ban') return { ...item, label: 'BAN:' }
+      n += 1
+      return { ...item, label: `MAP ${n}:` }
+    })
+  })()
   return (
     <div
       className="relative size-full select-none overflow-hidden"
@@ -280,6 +295,27 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
       }}
     >
       <style>{KIT_BUY_CSS}</style>
+      {/* Map history strip (top left) */}
+      {labeledMapHistory.length > 0 && (
+        <div className="absolute top-[44px] left-[44px] flex items-center gap-2 rounded-sm border border-white/20 bg-black/80 px-3 py-1 shadow-xl z-20">
+          {labeledMapHistory.map((item: any, i: number) => (
+            <React.Fragment key={item.slot + item.mapId + i}>
+              {i > 0 && <span className="text-white/30">|</span>}
+              <span className="font-baijam text-[10px] font-bold text-white/70 uppercase">{item.label}</span>
+              <span className={'font-baijam text-[10px] font-extrabold uppercase ' + (item.kind === 'ban' ? 'text-[#FF4848]' : item.kind === 'decider' ? 'text-white' : 'text-[#1DCD9B]')}>
+                {item.mapName}
+              </span>
+              {item.score ? <span className="font-baijam text-[10px] font-bold text-white/80 px-1">{item.score}</span> : null}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+      {/* Sponsor (top right) */}
+      {sponsorImageUrl && (
+        <div className="absolute top-[44px] right-[44px] z-20">
+          <img src={sponsorImageUrl} alt="sponsor" className="h-[64px] object-contain drop-shadow-lg z-20" />
+        </div>
+      )}
       {/* ===== Top bar: team econ + round timeline ===== */}
       <div
         className="absolute inset-x-0 top-0 flex items-center justify-between bg-black/45 px-8 py-3"
@@ -308,6 +344,39 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
           <span className="font-schabo text-[34px] uppercase leading-none" style={{ color: rightTeamColor }}>
             {rightTeamName}
           </span>
+        </div>
+      </div>
+      {/* ===== Scoreline ===== */}
+      <div
+        className="absolute inset-x-0 bottom-[210px] flex items-center justify-center px-8"
+        style={{ animation: 'kitBuyIn 520ms ease-out' }}
+      >
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-2">
+            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">SPENT</span>
+            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FF4D4D]">-{leftSpent}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">REM</span>
+            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FFD166]">{remLeft}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">NEXT</span>
+            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-white">{nextMin(leftTeamPlayers, incomeLeft)}</span>
+          </div>
+          <div className="w-px h-[24px] bg-white/20 mx-4" />
+          <div className="flex items-center gap-2">
+            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">NEXT</span>
+            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-white">{nextMin(rightTeamPlayers, incomeRight)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">REM</span>
+            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FFD166]">{remRight}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">SPENT</span>
+            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FF4D4D]">-{rightSpent}</span>
+          </div>
         </div>
       </div>
       {/* ===== Player cards ===== */}
