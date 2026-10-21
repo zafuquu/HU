@@ -1,8 +1,8 @@
 import {
   type PostgamePlayer,
   type PostGameSceneProps,
-} from './PostgameScene'
-import { agentPortrait, hexRgba } from './broadcastKit'
+} from '../classic/PostgameScene'
+import { agentPortrait, hexRgba } from '../broadcastKit'
 
 /**
  * Broadcast kit — post-game scene: side score headers, per-player KO/ACS

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 const BLANK_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAALSURBVBhXY2AAAgAABQABqtXIUQAAAABJRU5ErkJggg=='
-import { resolveAgent as resolveAgentMeta, preloadAgentPortraits, type AgentMeta } from '../../data/valAgentMeta'
-import { fitScaleFor, contentWidth, refitAfterFonts } from '../../lib/autoFit'
+import { resolveAgent as resolveAgentMeta, preloadAgentPortraits, type AgentMeta } from '../../../data/valAgentMeta'
+import { fitScaleFor, contentWidth, refitAfterFonts } from '../../../lib/autoFit'
 
 /** Auto-fit team name: measures the rendered text and scales down ONLY when
  *  it overflows its box (e.g. "HAVOC UNLEASH") — short names render at 100%. */

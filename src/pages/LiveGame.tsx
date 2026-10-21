@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { Copy, Info, ChevronDown, Minus, Plus, Eye, EyeOff, Tv, Download, Upload, Mic, Film, Video, Bell, Sun, Moon, BarChart3, History, Send, Clock, X } from 'lucide-react'
 import { useAppStore } from '../store/AppContext'
-import { IngameHudScene } from '../components/scenes/IngameHudScene'
-import { BroadcastIngameHudScene } from '../components/scenes/BroadcastIngameHudScene'
+import { IngameHudScene as ClassicIngameHudScene } from '../components/scenes/classic/IngameHudScene'
+import Version1IngameHudScene from '../components/scenes/version1/IngameHudScene'
 import { resolveKitKind } from '../components/scenes/broadcastKit'
 import type { KitKind } from '../components/scenes/broadcastKit'
 import { buildMapHistoryItems } from './MapVeto'
@@ -80,7 +80,7 @@ export default function LiveGame() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Broadcast kit: Version 1 swaps the ingame HUD for the redesigned broadcast scene.
   const kit: KitKind = resolveKitKind(null, null, null, state.broadcastKit ?? null)
-  const PrimaryHud = kit === 'version1' ? BroadcastIngameHudScene : IngameHudScene
+  const PrimaryHud = kit === 'version1' ? Version1IngameHudScene : ClassicIngameHudScene
 
   const toggleObsConnection = async () => {
     if (obsConnected) {

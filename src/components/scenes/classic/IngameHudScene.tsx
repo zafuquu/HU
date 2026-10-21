@@ -1,6 +1,6 @@
 import React from 'react'
-import { resolveAgent } from '../../data/valAgentMeta'
-import { fitScaleFor, contentWidth, refitAfterFonts } from '../../lib/autoFit'
+import { resolveAgent } from '../../../data/valAgentMeta'
+import { fitScaleFor, contentWidth, refitAfterFonts } from '../../../lib/autoFit'
 
 export interface IngameHudSceneProps {
   leftTeamName?: string

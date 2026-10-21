@@ -4,7 +4,7 @@ import {
   getWeaponImg,
   useSpikeBlink,
   type IngameHudSceneProps,
-} from './IngameHudScene'
+} from '../classic/IngameHudScene'
 import {
   BLANK_IMG,
   abilityImg,
@@ -19,8 +19,8 @@ import {
   hpOf,
   kdaOf,
   ultReadyOf,
-} from './broadcastKit'
-import { resolveAgent } from '../../data/valAgentMeta'
+} from '../broadcastKit'
+import { resolveAgent } from '../../../data/valAgentMeta'
 
 /** Broadcast kit — VCT-style ingame HUD (player panels, scorebug, 1v1 duel mode). */
 

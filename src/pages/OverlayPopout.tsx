@@ -4,21 +4,21 @@ import { useAppStore } from '../store/AppContext'
 import { useRealtimeSync } from '../lib/realtimeSync'
 import { supabase } from '../lib/supabase'
 import { useDesktopPresence } from '../lib/useDesktopPresence'
-import { IngameHudScene } from '../components/scenes/IngameHudScene'
-import { AgentSelectScene } from '../components/scenes/AgentSelectScene'
-import { BuyRoundScene } from '../components/scenes/BuyRoundScene'
-import { MapBanScene } from '../components/scenes/MapBanScene'
-import { PostgameScene } from '../components/scenes/PostgameScene'
+import { IngameHudScene as ClassicIngameHudScene } from '../components/scenes/classic/IngameHudScene'
+import { AgentSelectScene } from '../components/scenes/classic/AgentSelectScene'
+import { BuyRoundScene } from '../components/scenes/classic/BuyRoundScene'
+import { MapBanScene } from '../components/scenes/classic/MapBanScene'
+import { PostgameScene } from '../components/scenes/classic/PostgameScene'
 import { pickSource } from '../lib/sourceSelection'
 import { winnerSideFromViewer, winnerSideFromStart } from '../lib/broadcast'
-import { TimeoutOverlay } from '../components/scenes/TimeoutOverlay'
+import { TimeoutOverlay } from '../components/scenes/classic/TimeoutOverlay'
 import { CasterCard } from '../components/scenes/CasterCard'
 import { EconomyTracker } from '../components/scenes/EconomyTracker'
 import { PostgameMVP } from '../components/scenes/PostgameMVP'
 import { OverlayToast } from '../components/scenes/OverlayToast'
-import { BroadcastIngameHudScene } from '../components/scenes/BroadcastIngameHudScene'
-import { BroadcastBuyRoundScene } from '../components/scenes/BroadcastBuyRoundScene'
-import { BroadcastPostgameScene } from '../components/scenes/BroadcastPostgameScene'
+import Version1IngameHudScene from '../components/scenes/version1/IngameHudScene'
+import Version1BuyRoundScene from '../components/scenes/version1/BuyRoundScene'
+import Version1PostgameScene from '../components/scenes/version1/PostgameScene'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
 import { resolveKitKind } from '../components/scenes/broadcastKit'
 import type { KitKind } from '../components/scenes/broadcastKit'
@@ -885,9 +885,9 @@ export default function OverlayPopout() {
   const spikeSite = ((spikeRaw && typeof spikeRaw === 'object' && spikeRaw.site) || (snapState as any)?.plantSite || null) as string | null
   const spikeState = (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null) || ((snapState as any)?.bombPlanted ? 'planted' : null) || ((snapState as any)?.plantSite ? 'planted' : null)) as 'none' | 'planted' | 'defusing' | null
 
-  const PrimaryHud = kit === 'version1' ? BroadcastIngameHudScene : IngameHudScene
-  const PrimaryBuy = kit === 'version1' ? BroadcastBuyRoundScene : BuyRoundScene
-  const PrimaryPost = kit === 'version1' ? BroadcastPostgameScene : PostgameScene
+  const PrimaryHud = kit === 'version1' ? Version1IngameHudScene : ClassicIngameHudScene
+  const PrimaryBuy = kit === 'version1' ? Version1BuyRoundScene : BuyRoundScene
+  const PrimaryPost = kit === 'version1' ? Version1PostgameScene : PostgameScene
   return (
     <div data-source-of-truth={sourceOfTruth ?? ''} style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
       {/* Scene-change fade — must live OUTSIDE any conditional render (it used

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react'
-import { resolveAgent } from '../../data/valAgentMeta'
+import { resolveAgent } from '../../../data/valAgentMeta'
 
 export interface PostgamePlayer {
   id: string | number

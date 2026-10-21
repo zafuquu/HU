@@ -1,8 +1,8 @@
 import React from 'react'
-import { ROUND_WIN_REASON_PRESENTATION } from '../../lib/broadcast'
-import { EconomyTracker } from './EconomyTracker'
-import { resolveAgent, agentByCodename } from '../../data/valAgentMeta'
-import { measureTextWidth, contentWidth, refitAfterFonts } from '../../lib/autoFit'
+import { ROUND_WIN_REASON_PRESENTATION } from '../../../lib/broadcast'
+import { EconomyTracker } from '../EconomyTracker'
+import { resolveAgent, agentByCodename } from '../../../data/valAgentMeta'
+import { measureTextWidth, contentWidth, refitAfterFonts } from '../../../lib/autoFit'
 
 // Agent identity: GEP codename (agentKey) wins, then the agent display-name
 // meta. Unpicked/unknown agents render a blank cell — never a hardcoded

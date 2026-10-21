@@ -2,15 +2,15 @@ import { useState, useRef, useEffect } from 'react'
 import { Check, ClipboardCopy, Settings, X } from 'lucide-react'
 import { useAppStore } from '../store/AppContext'
 import Dropdown from '../components/Dropdown'
-import { AgentSelectScene } from '../components/scenes/AgentSelectScene'
-import { BuyRoundScene } from '../components/scenes/BuyRoundScene'
-import { IngameHudScene } from '../components/scenes/IngameHudScene'
-import { MapBanScene } from '../components/scenes/MapBanScene'
-import { PostgameScene } from '../components/scenes/PostgameScene'
-import { TimeoutOverlay } from '../components/scenes/TimeoutOverlay'
-import { BroadcastIngameHudScene } from '../components/scenes/BroadcastIngameHudScene'
-import { BroadcastBuyRoundScene } from '../components/scenes/BroadcastBuyRoundScene'
-import { BroadcastPostgameScene } from '../components/scenes/BroadcastPostgameScene'
+import { AgentSelectScene } from '../components/scenes/classic/AgentSelectScene'
+import { BuyRoundScene } from '../components/scenes/classic/BuyRoundScene'
+import { IngameHudScene as ClassicIngameHudScene } from '../components/scenes/classic/IngameHudScene'
+import { MapBanScene } from '../components/scenes/classic/MapBanScene'
+import { PostgameScene } from '../components/scenes/classic/PostgameScene'
+import { TimeoutOverlay } from '../components/scenes/classic/TimeoutOverlay'
+import Version1IngameHudScene from '../components/scenes/version1/IngameHudScene'
+import Version1BuyRoundScene from '../components/scenes/version1/BuyRoundScene'
+import Version1PostgameScene from '../components/scenes/version1/PostgameScene'
 import { resolveKitKind } from '../components/scenes/broadcastKit'
 import type { KitKind } from '../components/scenes/broadcastKit'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
@@ -228,9 +228,9 @@ export default function HudEditor() {
 // Broadcast kit: Version 1 swaps the buy-round / ingame-hud / post-game scenes
 // for the redesigned broadcast kit (agent-select & map-ban stay shared with classic).
 const kit: KitKind = resolveKitKind(null, null, null, state.broadcastKit ?? null)
-const PrimaryHud = kit === 'version1' ? BroadcastIngameHudScene : IngameHudScene
-const PrimaryBuy = kit === 'version1' ? BroadcastBuyRoundScene : BuyRoundScene
-const PrimaryPost = kit === 'version1' ? BroadcastPostgameScene : PostgameScene
+const PrimaryHud = kit === 'version1' ? Version1IngameHudScene : ClassicIngameHudScene
+const PrimaryBuy = kit === 'version1' ? Version1BuyRoundScene : BuyRoundScene
+const PrimaryPost = kit === 'version1' ? Version1PostgameScene : PostgameScene
 
   const leftTeam = state.teams.find(t => t.id === state.leftTeamId) || state.teams[0]
   const rightTeam = state.teams.find(t => t.id === state.rightTeamId) || state.teams[1] || state.teams[0]

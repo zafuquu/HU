@@ -1,5 +1,5 @@
 import React from 'react'
-import { getShieldImg, getWeaponImg } from './IngameHudScene'
+import { getShieldImg, getWeaponImg } from '../classic/IngameHudScene'
 import {
   BLANK_IMG,
   abilityImg,
@@ -15,7 +15,7 @@ import {
   ultReadyOf,
   REASON_ICON,
   type RoundRow,
-} from './broadcastKit'
+} from '../broadcastKit'
 
 /**
  * Broadcast kit — buy-round scene (VCT economy strip): team econ summary,
