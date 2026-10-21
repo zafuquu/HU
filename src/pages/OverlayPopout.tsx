@@ -20,6 +20,7 @@ import Version1IngameHudScene from '../components/scenes/version1/IngameHudScene
 import Version1BuyRoundScene from '../components/scenes/version1/BuyRoundScene'
 import Version1PostgameScene from '../components/scenes/version1/PostgameScene'
 import Version1GameEventsScene from '../components/scenes/version1/GameEventsScene'
+import type { GameEventResult } from '../components/scenes/version1/GameEventsScene'
 import { RoundResult } from '../components/scenes/RoundResult'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
 import { resolveKitKind } from '../components/scenes/broadcastKit'
@@ -817,25 +818,37 @@ export default function OverlayPopout() {
 
   // ====== Game Events / Round Ceremony derived props ======
   const [lastGameEventTrigger, setLastGameEventTrigger] = useState<string | null>(null)
-  const GAME_EVENT_RESULT_MAP: Record<string, GameEventsSceneProps['result']> = {
+  const GAME_EVENT_RESULT_MAP: Record<string, GameEventResult> = {
     ACE: 'ace',
     CLUTCH: 'clutch',
     'TEAM ACE': 'team_ace',
     FLAWLESS: 'flawless',
     THRIFTY: 'thrifty',
   }
-  const gameEventResult: GameEventsSceneProps['result'] =
+  const gameEventResult: GameEventResult =
     ceremonyText ? (GAME_EVENT_RESULT_MAP[ceremonyText] ?? 'round_won') : null
   const gameEventTeamColor =
-    ceremonyWinner === 'right' ? rightTeam?.color : ceremonyWinner === 'left' ? leftTeam?.color : undefined
+    ceremonyWinner === 'red' ? rightTeam?.color : ceremonyWinner === 'blue' ? leftTeam?.color : undefined
   const gameEventTeamName =
-    ceremonyWinner === 'right' ? rightTeam?.name : ceremonyWinner === 'left' ? leftTeam?.name : undefined
+    ceremonyWinner === 'red' ? rightTeam?.name : ceremonyWinner === 'blue' ? leftTeam?.name : undefined
   const gameEventPlayerName = (hudRoundEnd as any)?.highlightPlayer?.name ?? null
   const gameEventAgent = (hudRoundEnd as any)?.highlightPlayer?.agent ?? null
 
   const onGameEventComplete = () => {
     setLastGameEventTrigger(ceremonyTrigger)
   }
+
+  const gamePhase = (function(){
+    const st = snapState || {}
+    return (
+      st.roundPhase ||
+      (st.roundInfo && st.roundInfo.roundPhase) ||
+      st.phase ||
+      (st.currentRound && st.currentRound.roundPhase) ||
+      (st.isAgentSelectPhase === true ? 'game_start' : null) ||
+      null
+    )
+  })()
 
   const showGameEvent =
     !!ceremonyText &&
@@ -869,18 +882,6 @@ export default function OverlayPopout() {
   const liveEventText = liveEventKind && liveScores?.event?.at && (Date.now() - Number(liveScores.event.at)) < 8000
     ? ((EVENT_TEXT as Record<string, string>)[liveEventKind] || null)
     : null
-
-    const gamePhase = (function(){
-    const st = snapState || {}
-    return (
-      st.roundPhase ||
-      (st.roundInfo && st.roundInfo.roundPhase) ||
-      st.phase ||
-      (st.currentRound && st.currentRound.roundPhase) ||
-      (st.isAgentSelectPhase === true ? 'game_start' : null) ||
-      null
-    )
-  })()
 
   // Original-HAVOC behaviour: the browser source renders NOTHING (fully
   // transparent) until there is real data â€” desktop connected + snapshot,
