@@ -50,6 +50,7 @@ interface BroadcastBuyRoundProps {
 
 const KIT_BUY_CSS = `
 @keyframes kitBuyIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes kitBuyScoreIn { from { opacity: 0; } to { opacity: 1; } }
 `
 
 const TEAM_INCOME_SIDE = { left: 'blue', right: 'red' } as const
@@ -365,7 +366,7 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
         </div>
       </div>
       {/* ===== Actual match scoreline from live match state ===== */}
-      <div className="absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center overflow-hidden rounded-sm border border-white/20 bg-black/90 shadow-xl" style={{ animation: 'kitBuyIn 520ms ease-out', minWidth: 360 }}>
+      <div className="absolute top-3 z-20 flex -translate-x-1/2 items-center overflow-hidden rounded-sm border border-white/20 bg-black/90 shadow-xl" style={{ left: '50%', animation: 'kitBuyScoreIn 520ms ease-out', minWidth: 360 }}>
         <div className="flex min-w-[150px] items-center justify-start gap-2 px-3 py-2">
           {leftTeamLogo ? <img src={leftTeamLogo} alt="" className="size-[28px] shrink-0 object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} /> : <span className="grid size-[28px] shrink-0 place-items-center rounded-full font-schabo text-sm text-black" style={{ background: leftTeamColor }}>{leftTeamName.slice(0, 1)}</span>}
           <span className="max-w-[110px] truncate font-schabo text-[18px] uppercase leading-none text-white">{leftTeamName}</span>
