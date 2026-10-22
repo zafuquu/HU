@@ -366,14 +366,18 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
       </div>
       {/* ===== Actual match scoreline from live match state ===== */}
       <div className="absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center overflow-hidden rounded-sm border border-white/20 bg-black/90 shadow-xl" style={{ animation: 'kitBuyIn 520ms ease-out', minWidth: 360 }}>
-        <div className="flex min-w-[150px] items-center justify-end gap-2 px-3 py-2">
-          <span className="max-w-[110px] truncate text-right font-schabo text-[18px] uppercase leading-none text-white">{leftTeamName}</span>
+        <div className="flex min-w-[150px] items-center justify-start gap-2 px-3 py-2">
           {leftTeamLogo ? <img src={leftTeamLogo} alt="" className="size-[28px] shrink-0 object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} /> : <span className="grid size-[28px] shrink-0 place-items-center rounded-full font-schabo text-sm text-black" style={{ background: leftTeamColor }}>{leftTeamName.slice(0, 1)}</span>}
+          <span className="max-w-[110px] truncate font-schabo text-[18px] uppercase leading-none text-white">{leftTeamName}</span>
         </div>
-        <span className="border-x border-white/15 px-4 py-1 font-schabo text-[28px] leading-none tabular-nums text-white">{scoreLeft} <span className="text-white/45">:</span> {scoreRight}</span>
-        <div className="flex min-w-[150px] items-center gap-2 px-3 py-2">
+        <div className="flex flex-col items-center border-x border-white/15 px-4 py-1">
+          {roundText && <span className="font-baijam text-[8px] font-bold uppercase tracking-wider text-white/50">{roundText}</span>}
+          <span className="font-schabo text-[28px] leading-none tabular-nums text-white">{scoreLeft} <span className="text-white/45">:</span> {scoreRight}</span>
+          <span className="font-baijam text-[8px] font-bold uppercase tracking-wider text-white/40">SERIES {seriesScoreLeft} : {seriesScoreRight}</span>
+        </div>
+        <div className="flex min-w-[150px] items-center justify-end gap-2 px-3 py-2">
+          <span className="max-w-[110px] truncate text-right font-schabo text-[18px] uppercase leading-none text-white">{rightTeamName}</span>
           {rightTeamLogo ? <img src={rightTeamLogo} alt="" className="size-[28px] shrink-0 object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} /> : <span className="grid size-[28px] shrink-0 place-items-center rounded-full font-schabo text-sm text-black" style={{ background: rightTeamColor }}>{rightTeamName.slice(0, 1)}</span>}
-          <span className="max-w-[110px] truncate font-schabo text-[18px] uppercase leading-none text-white">{rightTeamName}</span>
         </div>
       </div>
       {/* ===== Player cards ===== */}
