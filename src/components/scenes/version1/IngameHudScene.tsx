@@ -154,7 +154,7 @@ function KitPanel({
               </div>
             )}
           </div>
-          <h1 className="w-full truncate font-barlowCond text-[16px] font-semibold leading-tight text-white">
+          <h1 className={`w-full truncate font-barlowCond text-[16px] font-semibold leading-tight text-white ${isRight ? 'text-right' : 'text-left'}`}>
             {alias}
           </h1>
           <span className="font-barlowCond text-[11px] font-semibold leading-none tabular-nums text-white/55">
@@ -300,7 +300,7 @@ function Scorebug(props: {
         {seed != null && seed !== '' && (
           <span className="font-baijam text-[9px] font-bold tracking-[0.14em] text-white/50">#{seed}</span>
         )}
-        <span className="w-full truncate font-schabo text-[25px] uppercase leading-none text-white">{name}</span>
+        <span className={`w-full truncate font-schabo text-[25px] uppercase leading-none text-white ${isRight ? 'text-right' : 'text-left'}`}>{name}</span>
         {showSeries && diamonds(series, color, isRight)}
       </div>
     )
