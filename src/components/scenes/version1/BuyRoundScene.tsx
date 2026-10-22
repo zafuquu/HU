@@ -208,7 +208,7 @@ function KitBuyCard({
       {/* top accent */}
       <div className="h-[3px] w-full" style={{ background: teamColor }} />
       {/* Agent icon */}
-      <div className="relative mt-2 grid h-[48px] w-[48px] place-items-center">
+      <div className="relative mx-auto mt-2 grid h-[48px] w-[48px] place-items-center">
         <img
           src={agentIcon(player) || iconFallback}
           alt=""
@@ -312,7 +312,7 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
       <style>{KIT_BUY_CSS}</style>
       {/* Map history strip (top left), matching IngameHUD Main. */}
       {isToggled('map-history') && labeledMapHistory.length > 0 && (
-        <div className="absolute top-3 left-4 z-30 flex items-center gap-2 rounded-sm border border-white/20 bg-black/90 px-3 py-1 shadow-xl backdrop-blur-sm">
+        <div className="absolute top-3 left-4 z-30 flex h-8 items-center gap-2 rounded-sm border border-white/20 bg-black/90 px-3 shadow-xl backdrop-blur-sm">
           {labeledMapHistory.map((item: any, i: number) => (
             <React.Fragment key={item.slot + item.mapId + i}>
               {i > 0 && <span className="text-white/30">|</span>}
@@ -370,7 +370,7 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
         </div>
       </div>
       {/* ===== Actual match scoreline from live match state ===== */}
-      <div className="absolute top-3 z-20 flex -translate-x-1/2 items-center overflow-hidden rounded-sm border border-white/20 bg-black/90 shadow-xl" style={{ left: '50%', animation: 'kitBuyScoreIn 520ms ease-out', minWidth: 360 }}>
+      <div className="absolute top-3 z-20 flex items-center overflow-hidden rounded-sm border border-white/20 bg-black/90 shadow-xl" style={{ left: '50%', transform: 'translateX(-50%)', animation: 'kitBuyScoreIn 520ms ease-out', minWidth: 360 }}>
         <div className="flex min-w-[150px] items-center justify-start gap-2 px-3 py-2">
           {leftTeamLogo ? <img src={leftTeamLogo} alt="" className="size-[28px] shrink-0 object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} /> : <span className="grid size-[28px] shrink-0 place-items-center rounded-full font-schabo text-sm text-black" style={{ background: leftTeamColor }}>{leftTeamName.slice(0, 1)}</span>}
           <span className="max-w-[110px] truncate font-schabo text-[18px] uppercase leading-none text-white">{leftTeamName}</span>
@@ -385,18 +385,18 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
           {rightTeamLogo ? <img src={rightTeamLogo} alt="" className="size-[28px] shrink-0 object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} /> : <span className="grid size-[28px] shrink-0 place-items-center rounded-full font-schabo text-sm text-black" style={{ background: rightTeamColor }}>{rightTeamName.slice(0, 1)}</span>}
         </div>
       </div>
-      {/* ===== Player cards ===== */}
+      {/* ===== Player cards: fill the broadcast width evenly, without outer gaps ===== */}
       <div
-        className="absolute inset-x-0 bottom-[16px] flex items-center justify-center gap-3 px-6"
+        className="absolute inset-x-0 bottom-[16px] flex items-center justify-between px-4"
         style={{ animation: 'kitBuyIn 420ms ease-out' }}
       >
-        <div className="flex shrink-0 gap-2.5">
-          {leftTeamPlayers.map((p: any, i: number) => (
+        <div className="flex min-w-0 flex-1 justify-between gap-1">
+          {leftTeamPlayers.slice(0, 5).map((p: any, i: number) => (
             <KitBuyCard key={p.id || i} player={p} teamColor={leftTeamColor} income={incomeLeft} />
           ))}
         </div>
-        <div className="flex shrink-0 gap-2.5">
-          {rightTeamPlayers.map((p: any, i: number) => (
+        <div className="flex min-w-0 flex-1 flex-row-reverse justify-between gap-1">
+          {rightTeamPlayers.slice(0, 5).map((p: any, i: number) => (
             <KitBuyCard key={p.id || i} player={p} teamColor={rightTeamColor} income={incomeRight} />
           ))}
         </div>
