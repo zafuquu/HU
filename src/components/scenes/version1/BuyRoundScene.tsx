@@ -348,7 +348,7 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
       </div>
       {/* ===== Economy header: moved directly above the player cards ===== */}
       <div
-        className="absolute inset-x-0 bottom-[300px] z-20 flex items-center justify-between gap-5 border-y border-white/10 bg-black/75 px-8 py-3 backdrop-blur-sm"
+        className="absolute inset-x-0 bottom-[240px] z-20 flex items-center justify-between gap-5 border-y border-white/10 bg-black/75 px-8 py-3 backdrop-blur-sm"
         style={{ animation: 'kitBuyIn 320ms ease-out' }}
       >
         <div className="flex items-center gap-7">
