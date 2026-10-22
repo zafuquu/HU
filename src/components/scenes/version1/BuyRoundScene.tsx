@@ -335,6 +335,17 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
           </div>
         </div>
       )}
+      {/* Round history remains in the upper HUD lane so it cannot squeeze the economy header. */}
+      <div className="absolute left-1/2 top-[104px] z-10 -translate-x-1/2 rounded-sm border border-white/10 bg-black/55 px-4 py-2">
+        <RoundTimeline
+          roundHistory={roundHistory}
+          leftTeamColor={leftTeamColor}
+          rightTeamColor={rightTeamColor}
+          leftName={leftTeamName}
+          rightName={rightTeamName}
+          currentRound={currentRound}
+        />
+      </div>
       {/* ===== Economy header: moved directly above the player cards ===== */}
       <div
         className="absolute inset-x-0 bottom-[300px] z-20 flex items-center justify-between gap-5 border-y border-white/10 bg-black/75 px-8 py-3 backdrop-blur-sm"
@@ -348,14 +359,7 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
           <StatCell label="REM" value={String(remLeft)} color="#FFD166" />
           <StatCell label="NEXT(MIN)" value={String(nextMin(leftTeamPlayers, incomeLeft))} />
         </div>
-        <RoundTimeline
-          roundHistory={roundHistory}
-          leftTeamColor={leftTeamColor}
-          rightTeamColor={rightTeamColor}
-          leftName={leftTeamName}
-          rightName={rightTeamName}
-          currentRound={currentRound}
-        />
+
         <div className="flex items-center gap-7">
           <StatCell label="NEXT(MIN)" value={String(nextMin(rightTeamPlayers, incomeRight))} />
           <StatCell label="REM" value={String(remRight)} color="#FFD166" />
