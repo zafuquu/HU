@@ -327,7 +327,7 @@ function Scorebug(props: {
     )
   }
   return (
-    <div className="absolute left-1/2 top-0 z-20 -translate-x-1/2" style={{ width: 812 }}>
+    <div className="absolute top-0 z-20" style={{ left: '50%', width: 812, transform: 'translateX(-50%)' }}>
       <div className="flex h-[64px] items-stretch overflow-hidden rounded-b-[6px] border border-t-0 border-white/25 bg-black/90">
         {teamCell('left')}
         <div className="relative flex w-[110px] shrink-0 flex-col items-center justify-center gap-1">
@@ -526,7 +526,8 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
   const leftRoster = leftTeamPlayers || []
   const rightRoster = rightTeamPlayers || []
 
-  const activeMapHistory = (mapHistoryItems || []).filter(i => i.kind !== 'pool' && i.kind !== 'ban')
+  // Keep bans visible as in the classic Ingame HUD; the label/color renderer below supports them.
+  const activeMapHistory = (mapHistoryItems || []).filter(i => i.kind !== 'pool')
   const labeledMapHistory = (() => {
     let n = 0
     return activeMapHistory.map(item => {
