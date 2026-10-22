@@ -36,6 +36,13 @@ interface BroadcastBuyRoundProps {
     right: { total: number; avgCredits: number; ecoType: string; playerCount: number }
   } | null
   sponsorImageUrl?: string | null
+  leftTeamLogo?: string | null
+  rightTeamLogo?: string | null
+  scoreLeft?: number
+  scoreRight?: number
+  seriesScoreLeft?: number
+  seriesScoreRight?: number
+  roundText?: string
   roundHistory?: RoundRow[]
   mapHistoryItems?: { slot: string; mapId: string; mapName: string; kind: 'pick' | 'ban' | 'decider' | 'pool'; score?: string }[]
   isToggled?: (id: string) => boolean
@@ -256,6 +263,13 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
     roundHistory = [],
     mapHistoryItems = [],
     sponsorImageUrl = null,
+    leftTeamLogo = null,
+    rightTeamLogo = null,
+    scoreLeft = 0,
+    scoreRight = 0,
+    seriesScoreLeft = 0,
+    seriesScoreRight = 0,
+    roundText = '',
     isToggled = () => true,
   } = props
   if (!isToggled('buy-round')) return null
@@ -273,8 +287,8 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
   const remLeft = economy?.left?.total != null ? economy.left.total : leftRem
   const remRight = economy?.right?.total != null ? economy.right.total : rightRem
 
-  // Map history (non-pool, non-ban entries, labeled)
-  const activeMapHistory = (mapHistoryItems || []).filter((i: any) => i.kind !== 'pool' && i.kind !== 'ban')
+  // Match IngameHUD Main: retain map picks and decider; omit pool entries.
+  const activeMapHistory = (mapHistoryItems || []).filter((i: any) => i.kind !== 'pool')
   const labeledMapHistory = (() => {
     let n = 0
     return activeMapHistory.map((item: any) => {
@@ -295,9 +309,9 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
       }}
     >
       <style>{KIT_BUY_CSS}</style>
-      {/* Map history strip (top left) */}
-      {labeledMapHistory.length > 0 && (
-        <div className="absolute top-[44px] left-[44px] flex items-center gap-2 rounded-sm border border-white/20 bg-black/80 px-3 py-1 shadow-xl z-20">
+      {/* Map history strip (top left), matching IngameHUD Main. */}
+      {isToggled('map-history') && labeledMapHistory.length > 0 && (
+        <div className="absolute top-3 left-4 z-30 flex items-center gap-2 rounded-sm border border-white/20 bg-black/90 px-3 py-1 shadow-xl backdrop-blur-sm">
           {labeledMapHistory.map((item: any, i: number) => (
             <React.Fragment key={item.slot + item.mapId + i}>
               {i > 0 && <span className="text-white/30">|</span>}
@@ -310,15 +324,19 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
           ))}
         </div>
       )}
-      {/* Sponsor (top right) */}
-      {sponsorImageUrl && (
-        <div className="absolute top-[44px] right-[44px] z-20">
-          <img src={sponsorImageUrl} alt="sponsor" className="h-[64px] object-contain drop-shadow-lg z-20" />
+      {/* Sponsor (top right), matching IngameHUD Main fallback and visibility. */}
+      {isToggled('sponsors') && (
+        <div className="absolute right-1.5 top-1.5 z-30 flex h-[74px] w-[245px] justify-center">
+          <div className="relative size-full overflow-hidden rounded-sm p-1">
+            <div className="absolute inset-0 bg-[#000000BD]" />
+            <img src={sponsorImageUrl || '/sponsor/Sponsor-1.png'} alt="sponsor" className="relative z-10 size-full object-contain"
+              onError={e => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = '/sponsor/Sponsor-1.png' } }} />
+          </div>
         </div>
       )}
-      {/* ===== Top bar: team econ + round timeline ===== */}
+      {/* ===== Economy header: moved directly above the player cards ===== */}
       <div
-        className="absolute inset-x-0 top-0 flex items-center justify-between bg-black/45 px-8 py-3"
+        className="absolute inset-x-0 bottom-[300px] z-20 flex items-center justify-between gap-5 border-y border-white/10 bg-black/75 px-8 py-3 backdrop-blur-sm"
         style={{ animation: 'kitBuyIn 320ms ease-out' }}
       >
         <div className="flex items-center gap-7">
@@ -346,51 +364,29 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
           </span>
         </div>
       </div>
-      {/* ===== Scoreline ===== */}
-      <div
-        className="absolute inset-x-0 bottom-[210px] flex items-center justify-center px-8"
-        style={{ animation: 'kitBuyIn 520ms ease-out' }}
-      >
-        <div className="flex items-center gap-8">
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">SPENT</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FF4D4D]">-{leftSpent}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">REM</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FFD166]">{remLeft}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">NEXT</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-white">{nextMin(leftTeamPlayers, incomeLeft)}</span>
-          </div>
-          <div className="w-px h-[24px] bg-white/20 mx-4" />
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">NEXT</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-white">{nextMin(rightTeamPlayers, incomeRight)}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">REM</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FFD166]">{remRight}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">SPENT</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FF4D4D]">-{rightSpent}</span>
-          </div>
+      {/* ===== Actual match scoreline from live match state ===== */}
+      <div className="absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center overflow-hidden rounded-sm border border-white/20 bg-black/90 shadow-xl" style={{ animation: 'kitBuyIn 520ms ease-out', minWidth: 360 }}>
+        <div className="flex min-w-[150px] items-center justify-end gap-2 px-3 py-2">
+          <span className="max-w-[110px] truncate text-right font-schabo text-[18px] uppercase leading-none text-white">{leftTeamName}</span>
+          {leftTeamLogo ? <img src={leftTeamLogo} alt="" className="size-[28px] shrink-0 object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} /> : <span className="grid size-[28px] shrink-0 place-items-center rounded-full font-schabo text-sm text-black" style={{ background: leftTeamColor }}>{leftTeamName.slice(0, 1)}</span>}
+        </div>
+        <span className="border-x border-white/15 px-4 py-1 font-schabo text-[28px] leading-none tabular-nums text-white">{scoreLeft} <span className="text-white/45">:</span> {scoreRight}</span>
+        <div className="flex min-w-[150px] items-center gap-2 px-3 py-2">
+          {rightTeamLogo ? <img src={rightTeamLogo} alt="" className="size-[28px] shrink-0 object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} /> : <span className="grid size-[28px] shrink-0 place-items-center rounded-full font-schabo text-sm text-black" style={{ background: rightTeamColor }}>{rightTeamName.slice(0, 1)}</span>}
+          <span className="max-w-[110px] truncate font-schabo text-[18px] uppercase leading-none text-white">{rightTeamName}</span>
         </div>
       </div>
       {/* ===== Player cards ===== */}
       <div
-        className="absolute inset-x-0 bottom-[16px] flex items-center px-6"
+        className="absolute inset-x-0 bottom-[16px] flex items-center justify-center gap-3 px-6"
         style={{ animation: 'kitBuyIn 420ms ease-out' }}
       >
-        <div className="flex gap-2.5">
+        <div className="flex shrink-0 gap-2.5">
           {leftTeamPlayers.map((p: any, i: number) => (
             <KitBuyCard key={p.id || i} player={p} teamColor={leftTeamColor} income={incomeLeft} />
           ))}
         </div>
-        <div className="flex-1" />
-        <div className="flex gap-2.5">
+        <div className="flex shrink-0 gap-2.5">
           {rightTeamPlayers.map((p: any, i: number) => (
             <KitBuyCard key={p.id || i} player={p} teamColor={rightTeamColor} income={incomeRight} />
           ))}
