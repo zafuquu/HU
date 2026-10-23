@@ -1073,7 +1073,15 @@ export default function OverlayPopout() {
             leftTeamPlayers={hudLeftPlayers}
             rightTeamPlayers={hudRightPlayers}
             economy={liveEconomy}
-            sponsorImageUrl={sponsorImageUrl}
+            sponsorImageUrl={sponsorImageUrl || tournamentLogoUrl}
+            leftTeamLogo={hudLeftLogo}
+            rightTeamLogo={hudRightLogo}
+            scoreLeft={hudScoreLeft}
+            scoreRight={hudScoreRight}
+            seriesScoreLeft={hudSeriesLeft}
+            seriesScoreRight={hudSeriesRight}
+            roundText={roundText}
+            mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds, state.mapResults)}
             roundHistory={hudRoundHistory}
           />
         )}
