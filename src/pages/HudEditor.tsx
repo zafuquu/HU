@@ -11,6 +11,7 @@ import { TimeoutOverlay } from '../components/scenes/classic/TimeoutOverlay'
 import Version1IngameHudScene from '../components/scenes/version1/IngameHudScene'
 import Version1BuyRoundScene from '../components/scenes/version1/BuyRoundScene'
 import Version1PostgameScene from '../components/scenes/version1/PostgameScene'
+import Version1AgentSelectScene from '../components/scenes/version1/AgentSelectScene'
 import { resolveKitKind } from '../components/scenes/broadcastKit'
 import type { KitKind } from '../components/scenes/broadcastKit'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
@@ -231,6 +232,7 @@ const kit: KitKind = resolveKitKind(null, null, null, state.broadcastKit ?? null
 const PrimaryHud = kit === 'version1' ? Version1IngameHudScene : ClassicIngameHudScene
 const PrimaryBuy = kit === 'version1' ? Version1BuyRoundScene : BuyRoundScene
 const PrimaryPost = kit === 'version1' ? Version1PostgameScene : PostgameScene
+const PrimaryAgentSelect = kit === 'version1' ? Version1AgentSelectScene : AgentSelectScene
 
   const leftTeam = state.teams.find(t => t.id === state.leftTeamId) || state.teams[0]
   const rightTeam = state.teams.find(t => t.id === state.rightTeamId) || state.teams[1] || state.teams[0]
@@ -585,11 +587,13 @@ const PrimaryPost = kit === 'version1' ? Version1PostgameScene : PostgameScene
               <div key={`${selectedSceneKey}:${hudPreview}`} className="scene-enter relative size-full min-h-full bg-[#1B1D1F]" id="huds-havoc-main-overlay" style={{ width: 1920, height: 1080 }}>
 
                 {selectedSceneKey === 'agent-select' && (
-                  <AgentSelectScene
+                  <PrimaryAgentSelect
                     leftTeamName={leftName}
                     rightTeamName={rightName}
                     leftTeamColor={colorA}
                     rightTeamColor={colorB}
+                    leftTeamLogo={(leftTeam?.logoUrl) || null}
+                    rightTeamLogo={(rightTeam?.logoUrl) || null}
                     mapName={((VAL_MAPS.find(function(m){ return m.mapId === (state.mapPicks && state.mapPicks[0] ? state.mapPicks[0].mapId : (state.vetoSelectedMapIds && state.vetoSelectedMapIds[0])) }) || {}).mapName) || 'Sunset'}
                     mapImage={((VAL_MAPS.find(function(m){ return m.mapId === (state.mapPicks && state.mapPicks[0] ? state.mapPicks[0].mapId : (state.vetoSelectedMapIds && state.vetoSelectedMapIds[0])) }) || {}).image) || '/game/val/maps/juliett/splash-small.png'}
                     leftTeamPlayers={leftRoster}

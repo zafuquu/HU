@@ -20,6 +20,7 @@ import Version1IngameHudScene from '../components/scenes/version1/IngameHudScene
 import Version1BuyRoundScene from '../components/scenes/version1/BuyRoundScene'
 import Version1PostgameScene from '../components/scenes/version1/PostgameScene'
 import Version1GameEventsScene from '../components/scenes/version1/GameEventsScene'
+import Version1AgentSelectScene from '../components/scenes/version1/AgentSelectScene'
 import type { GameEventResult } from '../components/scenes/version1/GameEventsScene'
 import { RoundResult } from '../components/scenes/RoundResult'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
@@ -933,6 +934,7 @@ export default function OverlayPopout() {
   const PrimaryBuy = kit === 'version1' ? Version1BuyRoundScene : BuyRoundScene
   const PrimaryPost = kit === 'version1' ? Version1PostgameScene : PostgameScene
   const PrimaryGameEvents = kit === 'version1' ? Version1GameEventsScene : RoundResult
+  const PrimaryAgentSelect = kit === 'version1' ? Version1AgentSelectScene : AgentSelectScene
   return (
     <div data-source-of-truth={sourceOfTruth ?? ''} style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
       {/* Scene-change cross-fade — must live OUTSIDE any conditional render */ }
@@ -991,7 +993,7 @@ export default function OverlayPopout() {
           />
         )}
         {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'game_start' && (
-          <AgentSelectScene
+          <PrimaryAgentSelect
             leftTeamName={hudLeftName}
             rightTeamName={hudRightName}
             leftTeamColor={hudLeftColor}
@@ -1051,7 +1053,7 @@ export default function OverlayPopout() {
           />
         )}
         {sceneKey === 'agent-select' && (
-          <AgentSelectScene
+          <PrimaryAgentSelect
             leftTeamName={hudLeftName}
             rightTeamName={hudRightName}
             leftTeamColor={hudLeftColor}
