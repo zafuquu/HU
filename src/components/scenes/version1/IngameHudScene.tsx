@@ -154,7 +154,7 @@ function KitPanel({
               </div>
             )}
           </div>
-          <h1 className="w-full truncate font-barlowCond text-[16px] font-semibold leading-tight text-white">
+          <h1 className={`w-full truncate font-barlowCond text-[16px] font-semibold leading-tight text-white ${isRight ? 'text-right' : 'text-left'}`}>
             {alias}
           </h1>
           <span className="font-barlowCond text-[11px] font-semibold leading-none tabular-nums text-white/55">
@@ -227,8 +227,7 @@ function KitPanel({
   )
 }
 
-/** Top-center scorebug: names, seeds, scores, series diamonds, round clock / spike timer. */
-function Scorebug(props: {
+export interface ScorebugProps {
   leftName: string
   rightName: string
   leftSeed?: number | string
@@ -239,21 +238,24 @@ function Scorebug(props: {
   scoreRight: number
   seriesLeft: number
   seriesRight: number
-  bestOf: number
-  showSeries: boolean
-  showLogos: boolean
+  bestOf?: number
+  showSeries?: boolean
+  showLogos?: boolean
   leftLogo?: string | null
   rightLogo?: string | null
-  roundLabel: string
-  timerText: string
-  timerColor: string
-  spikeActive: boolean
-  spikeBlinkOn: boolean
-  seriesTitleText: string
-  gameSeriesText: string
-  eventTitleText: string
-  roundText: string
-}) {
+  roundLabel?: string
+  timerText?: string
+  timerColor?: string
+  spikeActive?: boolean
+  spikeBlinkOn?: boolean
+  seriesTitleText?: string
+  gameSeriesText?: string
+  eventTitleText?: string
+  roundText?: string
+}
+
+/** Top-center scorebug: names, seeds, scores, series diamonds, round clock / spike timer. */
+export function Scorebug(props: ScorebugProps) {
   const {
     leftName, rightName, leftSeed, rightSeed, leftColor, rightColor,
     scoreLeft, scoreRight, seriesLeft, seriesRight, bestOf,
@@ -300,7 +302,7 @@ function Scorebug(props: {
         {seed != null && seed !== '' && (
           <span className="font-baijam text-[9px] font-bold tracking-[0.14em] text-white/50">#{seed}</span>
         )}
-        <span className="w-full truncate font-schabo text-[25px] uppercase leading-none text-white">{name}</span>
+        <span className={`w-full truncate font-schabo text-[25px] uppercase leading-none text-white ${isRight ? 'text-right' : 'text-left'}`}>{name}</span>
         {showSeries && diamonds(series, color, isRight)}
       </div>
     )
@@ -327,7 +329,7 @@ function Scorebug(props: {
     )
   }
   return (
-    <div className="absolute left-1/2 top-0 z-20 -translate-x-1/2" style={{ width: 812 }}>
+    <div className="absolute top-0 z-20" style={{ left: '50%', width: 812, transform: 'translateX(-50%)' }}>
       <div className="flex h-[64px] items-stretch overflow-hidden rounded-b-[6px] border border-t-0 border-white/25 bg-black/90">
         {teamCell('left')}
         <div className="relative flex w-[110px] shrink-0 flex-col items-center justify-center gap-1">
@@ -526,7 +528,8 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
   const leftRoster = leftTeamPlayers || []
   const rightRoster = rightTeamPlayers || []
 
-  const activeMapHistory = (mapHistoryItems || []).filter(i => i.kind !== 'pool' && i.kind !== 'ban')
+  // Keep bans visible as in the classic Ingame HUD; the label/color renderer below supports them.
+  const activeMapHistory = (mapHistoryItems || []).filter(i => i.kind !== 'pool')
   const labeledMapHistory = (() => {
     let n = 0
     return activeMapHistory.map(item => {

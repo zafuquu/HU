@@ -2,7 +2,7 @@ import {
   type PostgamePlayer,
   type PostGameSceneProps,
 } from '../classic/PostgameScene'
-import { agentIcon, agentPortrait, hexRgba } from '../broadcastKit'
+import { agentBust, agentIcon, agentPortrait, hexRgba } from '../broadcastKit'
 
 /**
  * Broadcast kit — post-game scene: side score headers, per-player KO/ACS
@@ -176,7 +176,7 @@ function PostRow({
   )
 }
 
-/** Team MVP row: full-height agent art bleeding off the corner + big name + MVP pill. */
+/** Team MVP block: upper-body agent art confined to the bottom-left / bottom-right corner + name + stats. */
 function MvpBlock({
   player,
   side,
@@ -195,28 +195,60 @@ function MvpBlock({
   const d = player.deaths ?? 0
   const a = player.assists ?? 0
   const fk = (player as any).firstKills ?? null
+  const bust = agentBust(player)
+  const portrait = agentPortrait(player)
+  const artSrc = player.photoUrl || (player as any).avatarUrl || (player as any).avatar || bust || portrait
+
   return (
     <div
-      className="pointer-events-none absolute bottom-0 h-[520px] w-[960px]"
+      className="pointer-events-none absolute bottom-0 z-10 flex h-[360px] w-[580px] items-end"
       style={{ [isRight ? 'right' : 'left']: 0 }}
     >
-      {/* Full agent art, anchored to the outer bottom corner with a soft fade */}
-      <img
-        src={agentPortrait(player)}
-        alt=""
-        className="absolute bottom-0 h-[470px] max-w-none object-cover object-top"
-        style={{
-          [isRight ? 'right' : 'left']: '-30px',
-          opacity: 0.85,
-          maskImage: 'linear-gradient(to top, rgba(0,0,0,1) 62%, rgba(0,0,0,0) 100%)',
-          WebkitMaskImage: 'linear-gradient(to top, rgba(0,0,0,1) 62%, rgba(0,0,0,0) 100%)',
-        }}
-        onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
-      />
+      {/* Upper-body agent art confined to the corner box (max 320px wide, 360px high) */}
+      <div
+        className={`absolute bottom-0 h-[360px] w-[320px] overflow-hidden ${
+          isRight ? 'right-0' : 'left-0'
+        }`}
+      >
+        <img
+          src={artSrc}
+          alt=""
+          className={`size-full object-cover ${bust ? 'object-center' : 'object-top'}`}
+          style={{
+            transform: isRight ? 'scaleX(-1)' : undefined,
+            maskImage:
+              'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 20%, rgba(0,0,0,1) 75%, rgba(0,0,0,0) 100%), linear-gradient(' +
+              (isRight ? 'to left' : 'to right') +
+              ', rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%)',
+            WebkitMaskImage:
+              'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 20%, rgba(0,0,0,1) 75%, rgba(0,0,0,0) 100%), linear-gradient(' +
+              (isRight ? 'to left' : 'to right') +
+              ', rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%)',
+            maskComposite: 'intersect',
+            WebkitMaskComposite: 'destination-in',
+            opacity: 0.85,
+          }}
+          onError={e => {
+            if (artSrc !== portrait) {
+              ;(e.currentTarget as HTMLImageElement).src = portrait
+            } else {
+              ;(e.currentTarget as HTMLImageElement).style.visibility = 'hidden'
+            }
+          }}
+        />
+      </div>
+
       {/* Name + MVP pill */}
-      <div className={`absolute bottom-[70px] flex flex-col ${isRight ? 'right-[150px] items-end' : 'left-[150px] items-start'}`}>
+      <div
+        className={`relative z-10 mb-8 flex flex-col ${
+          isRight ? 'mr-[120px] items-end ml-auto' : 'ml-[120px] items-start mr-auto'
+        }`}
+      >
         <span className="font-baijam text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">{agentLabel}</span>
-        <span className="font-schabo text-[52px] uppercase italic leading-none text-white" style={{ textShadow: '0 3px 18px rgba(0,0,0,0.8)' }}>
+        <span
+          className="font-schabo text-[52px] uppercase italic leading-none text-white"
+          style={{ textShadow: '0 3px 18px rgba(0,0,0,0.8)' }}
+        >
           {name}
         </span>
         <span
@@ -226,8 +258,13 @@ function MvpBlock({
           MVP
         </span>
       </div>
+
       {/* Stats toward the center */}
-      <div className={`absolute bottom-[96px] w-[150px] ${isRight ? 'left-[420px] text-left' : 'right-[420px] text-right'}`}>
+      <div
+        className={`relative z-10 mb-8 w-[140px] shrink-0 ${
+          isRight ? 'text-left pl-4' : 'text-right pr-4'
+        }`}
+      >
         <p className="h-[30px] font-barlowCond text-[22px] font-extrabold italic leading-[30px] tabular-nums text-white">
           {k} / {d} / {a}
         </p>

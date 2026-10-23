@@ -1,5 +1,7 @@
 import React from 'react'
 import { getShieldImg, getWeaponImg } from '../classic/IngameHudScene'
+import { Scorebug } from './IngameHudScene'
+import { EconomyTracker } from '../EconomyTracker'
 import {
   BLANK_IMG,
   abilityImg,
@@ -8,7 +10,6 @@ import {
   chargeBarStyle,
   chargeState,
   creditsOf,
-  hexRgba,
   incomeEstimate,
   kdaOf,
   spentOf,
@@ -36,90 +37,176 @@ interface BroadcastBuyRoundProps {
     right: { total: number; avgCredits: number; ecoType: string; playerCount: number }
   } | null
   sponsorImageUrl?: string | null
+  leftTeamLogo?: string | null
+  rightTeamLogo?: string | null
+  scoreLeft?: number
+  scoreRight?: number
+  seriesScoreLeft?: number
+  seriesScoreRight?: number
+  roundText?: string
   roundHistory?: RoundRow[]
   mapHistoryItems?: { slot: string; mapId: string; mapName: string; kind: 'pick' | 'ban' | 'decider' | 'pool'; score?: string }[]
   isToggled?: (id: string) => boolean
+  seriesTitleText?: string
+  gameSeriesText?: string
+  eventTitleText?: string
+  timerText?: string
+  timerColor?: string
+  bestOf?: number
+  showSeries?: boolean
+  showLogos?: boolean
 }
 
 const KIT_BUY_CSS = `
 @keyframes kitBuyIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes kitBuyScoreIn { from { opacity: 0; } to { opacity: 1; } }
 `
 
 const TEAM_INCOME_SIDE = { left: 'blue', right: 'red' } as const
 
-function StatCell({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div className="flex flex-col items-start leading-none">
-      <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/45">{label}</span>
-      <span className="mt-1 font-barlowCond text-[21px] font-extrabold tabular-nums" style={{ color: color || '#E8EAF0' }}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
-/** Round-win timeline: numbers row + two icon rows (left team top, right bottom). */
-function RoundTimeline({
-  roundHistory,
-  leftTeamColor,
-  rightTeamColor,
-  leftName,
-  rightName,
-  currentRound,
+/** Match history grid in the middle above player panels with round reason win icons */
+function MatchHistoryGrid({
+  roundHistory = [],
+  leftTeamName = 'LEFT',
+  rightTeamName = 'RIGHT',
+  leftTeamColor = '#28D091',
+  rightTeamColor = '#FF3549',
 }: {
   roundHistory: RoundRow[]
+  leftTeamName: string
+  rightTeamName: string
   leftTeamColor: string
   rightTeamColor: string
-  leftName: string
-  rightName: string
-  currentRound: number | null
 }) {
-  if (roundHistory.length === 0) return null
-  const maxRound = Math.max(24, ...roundHistory.map(h => Number(h.round) || 0))
-  const groups: number[][] = []
-  for (let s = 1; s <= maxRound; s += 24) {
-    groups.push(Array.from({ length: Math.min(24, maxRound - s + 1) }, (_, i) => s + i))
+  const otMax = Math.max(24, ...(roundHistory || []).map((h: any) => Number(h?.round) || 0))
+  const otGroups: number[][] = []
+  for (let s = 25; s <= otMax; s += 24) {
+    otGroups.push(Array.from({ length: Math.min(24, otMax - s + 1) }, (_, i) => s + i))
   }
-  const wonRounds = new Set(roundHistory.map(h => h.round))
-  const cellTint = (hex: string, on: boolean): React.CSSProperties =>
-    on
-      ? { background: hexRgba(hex, 0.28), boxShadow: `inset 0 0 0 1px ${hexRgba(hex, 0.55)}` }
-      : { background: 'rgba(255,255,255,0.03)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.10)' }
+  const tint = (hex: string | undefined, on: boolean) => {
+    if (!on) return 'rgb(26, 26, 26)'
+    let h = String(hex || '#1DCD9B').replace('#', '')
+    if (h.length === 3) h = h.split('').map(c => c + c).join('')
+    const r = parseInt(h.slice(0, 2), 16)
+    const g = parseInt(h.slice(2, 4), 16)
+    const b = parseInt(h.slice(4, 6), 16)
+    return `rgba(${r}, ${g}, ${b}, 0.55)`
+  }
+
   return (
-    <div className="flex flex-col items-center gap-[3px]">
-      {groups.map((group, gi) => (
-        <div key={gi} className="flex items-start gap-6">
-          {group.map(r => {
-            const row = roundHistory.find(h => h.round === r)
-            return (
-              <div key={r} className="flex w-[24px] flex-col items-center gap-[3px]">
-                <span
-                  className="font-baijam text-[10px] font-bold tabular-nums"
-                  style={{
-                    color: currentRound === r ? '#FFD166' : 'rgba(255,255,255,0.55)',
-                    borderBottom: currentRound === r ? '2px solid #FFD166' : '2px solid transparent',
-                  }}
-                >
-                  {r}
-                </span>
-                <div className="grid h-[19px] w-[24px] place-items-center" style={cellTint(leftTeamColor, !!row && row.winner === 'blue')}>
-                  {row && row.winner === 'blue' && wonRounds.has(r) && (
-                    <img src={`/game/val/roundWinReason/${REASON_ICON[row.reason] || 'kills'}.webp`} alt="" className="size-[13px] object-contain" />
-                  )}
-                </div>
-                <div className="grid h-[19px] w-[24px] place-items-center" style={cellTint(rightTeamColor, !!row && row.winner === 'red')}>
-                  {row && row.winner === 'red' && wonRounds.has(r) && (
-                    <img src={`/game/val/roundWinReason/${REASON_ICON[row.reason] || 'kills'}.webp`} alt="" className="size-[13px] object-contain" />
-                  )}
-                </div>
-              </div>
-            )
-          })}
+    <div className="flex w-[1065px] flex-col mx-auto">
+      {/* 1st Half / 2nd Half header */}
+      <div className="font-semibold flex h-[27px] w-full items-center gap-1 rounded-[3.37px] bg-[#0000007A] p-1 font-mussels text-[12px] tracking-wider uppercase">
+        <div className="w-[119px] text-center">
+          <h1>1st Half</h1>
         </div>
-      ))}
-      <div className="mt-0.5 flex w-full justify-between px-1">
-        <span className="font-unbounded text-[10px] font-extrabold uppercase text-white/80">{leftName}</span>
-        <span className="font-unbounded text-[10px] font-extrabold uppercase text-white/80">{rightName}</span>
+        <div className="flex h-full flex-1 justify-between">
+          <div className="mr-3 flex h-full flex-row justify-end gap-1 overflow-hidden">
+            {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map(n => (
+              <div key={n} className="w-[34.6px] text-center font-baijam text-[12px] text-[#D2D2D2]">
+                <h1>{n}</h1>
+              </div>
+            ))}
+          </div>
+          <div className="flex h-full flex-row justify-end gap-1 overflow-hidden">
+            {['13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24'].map(n => (
+              <div key={n} className="w-[34.6px] text-center font-baijam text-[12px] text-[#737373]">
+                <h1>{n}</h1>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Grid rows */}
+      <div className="mt-1 flex w-full flex-row items-center gap-1 rounded-sm border border-white/20 bg-[#151515] p-1 shadow-lg">
+        {/* Team names column */}
+        <div className="font-semibold flex h-[50px] w-[119px] shrink-0 flex-col items-center gap-1 font-barlowCond uppercase">
+          <div className="font-unbounded flex size-full flex-1 items-center bg-[#1A1A1A] font-extrabold text-white overflow-hidden">
+            <div className="h-full w-[6px] shrink-0" style={{ backgroundColor: leftTeamColor }} />
+            <span className="truncate px-2 text-[12px]">{leftTeamName}</span>
+          </div>
+          <div className="font-unbounded flex size-full flex-1 items-center bg-[#1A1A1A] font-extrabold text-white overflow-hidden">
+            <div className="h-full w-[6px] shrink-0" style={{ backgroundColor: rightTeamColor }} />
+            <span className="truncate px-2 text-[12px]">{rightTeamName}</span>
+          </div>
+        </div>
+
+        {/* Round boxes */}
+        <div className="flex h-[50px] flex-1 justify-between">
+          {/* Half 1 */}
+          <div className="flex h-full flex-row justify-end gap-1 overflow-hidden">
+            {Array.from({ length: 12 }, (_, i) => {
+              const n = i + 1
+              const rec = (roundHistory || []).find((h: any) => h.round === n)
+              const wonLeft = !!rec && rec.winner === 'blue'
+              const wonRight = !!rec && rec.winner === 'red'
+              const icon = rec ? REASON_ICON[rec.reason] || 'kills' : null
+              return (
+                <div key={n} className="flex h-full w-[34.6px] flex-col items-center justify-center gap-1">
+                  <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
+                    {wonLeft && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                  </div>
+                  <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
+                    {wonRight && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Half 2 */}
+          <div className="flex h-full flex-row justify-end gap-1 overflow-hidden">
+            {Array.from({ length: 12 }, (_, i) => {
+              const n = 12 + i + 1
+              const rec = (roundHistory || []).find((h: any) => h.round === n)
+              const wonLeft = !!rec && rec.winner === 'blue'
+              const wonRight = !!rec && rec.winner === 'red'
+              const icon = rec ? REASON_ICON[rec.reason] || 'kills' : null
+              return (
+                <div key={n} className="flex h-full w-[34.6px] flex-col items-center justify-center gap-1">
+                  <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
+                    {wonLeft && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                  </div>
+                  <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
+                    {wonRight && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Overtime continuation */}
+          {otGroups.length > 0 && (
+            <div className="flex w-full flex-col gap-1">
+              {otGroups.map((g: number[], gi: number) => (
+                <div key={'ot' + gi} className="flex h-[34.6px] flex-row justify-start gap-1 overflow-hidden">
+                  <div className="flex h-full w-[119px] items-center text-center font-baijam text-[12px] text-[#D2D2D2]">
+                    <h1>OT{gi + 1}</h1>
+                  </div>
+                  <div className="flex h-full flex-1 flex-row gap-1 overflow-hidden">
+                    {g.map((n: number) => {
+                      const rec = (roundHistory || []).find((h: any) => h.round === n)
+                      const wonLeft = !!rec && rec.winner === 'blue'
+                      const wonRight = !!rec && rec.winner === 'red'
+                      const icon = rec ? REASON_ICON[rec.reason] || 'kills' : null
+                      return (
+                        <div key={n} className="flex h-full w-[34.6px] flex-col items-center justify-center gap-1">
+                          <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
+                            {wonLeft && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                          </div>
+                          <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
+                            {wonRight && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -154,7 +241,7 @@ function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
       )}
       <span
         className="absolute inset-0 rounded-full border border-white/35 bg-black/80"
-        style={ready ? { boxShadow: `0 0 10px 3px ${hexRgba(teamColor, 0.9)}` } : undefined}
+        style={ready ? { boxShadow: `0 0 10px 3px ${teamColor}` } : undefined}
       />
       <img
         src={abilityImg(player, 'X')}
@@ -178,7 +265,7 @@ function EconCell({ label, value, color }: { label: string; value: string; color
   )
 }
 
-/** One buy-round player card (portrait, name, KDA, abilities, gun+shield, econ). */
+/** One buy-round player card: portrait, name, KDA, abilities, gun+shield, econ. */
 function KitBuyCard({
   player,
   teamColor,
@@ -196,20 +283,20 @@ function KitBuyCard({
   const st = player.abilityState
   const iconFallback = agentCodename(player) ? `/game/val/agents/${agentCodename(player)}/icon.png` : BLANK_IMG
   return (
-    <div className="relative w-[152px] overflow-hidden rounded-[3px] bg-[#0B0E13]/95">
+    <div className="relative flex-1 min-w-0 overflow-hidden rounded-[3px] bg-[#0B0E13]/95 flex flex-col items-center">
       {/* top accent */}
       <div className="h-[3px] w-full" style={{ background: teamColor }} />
-      {/* Agent icon */}
-      <div className="relative mt-2 grid h-[48px] w-[48px] place-items-center">
+      {/* Agent icon - centered horizontally */}
+      <div className="relative mx-auto mt-2 flex h-[48px] w-full items-center justify-center">
         <img
           src={agentIcon(player) || iconFallback}
           alt=""
-          className="size-[48px] object-contain"
+          className="size-[48px] object-contain mx-auto"
           onError={e => { (e.currentTarget as HTMLImageElement).src = iconFallback }}
         />
       </div>
       <p
-        className="mt-1 truncate px-2 text-center font-schabo text-[21px] uppercase leading-none"
+        className="mt-1 w-full truncate px-2 text-center font-schabo text-[21px] uppercase leading-none"
         style={{ color: teamColor }}
       >
         {alias}
@@ -218,7 +305,7 @@ function KitBuyCard({
         {k}/{d}/{a}
       </p>
       {/* Abilities + charge bars */}
-      <div className="mt-2 flex items-start justify-center gap-3">
+      <div className="mt-2 flex items-start justify-center gap-2.5">
         <BuyAbility player={player} slot="C" st={st} />
         <BuyAbility player={player} slot="Q" st={st} />
         <BuyAbility player={player} slot="E" st={st} />
@@ -235,7 +322,7 @@ function KitBuyCard({
         <img src={getShieldImg(player)} alt="" className="h-[20px] object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
       </div>
       {/* Econ */}
-      <div className="mt-2 grid grid-cols-3 gap-0.5 px-1.5 pb-2">
+      <div className="mt-2 grid w-full grid-cols-3 gap-0.5 px-1 pb-2">
         <EconCell label="SPENT" value={`-${spent}`} color="#FF4D4D" />
         <EconCell label="REM" value={String(credits)} color="#FFD166" />
         <EconCell label="NEXT" value={String(next)} color="rgba(255,255,255,0.62)" />
@@ -248,6 +335,8 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
   const {
     leftTeamName = 'LEFT',
     rightTeamName = 'RIGHT',
+    leftTeamSeed,
+    rightTeamSeed,
     leftTeamColor = '#28D091',
     rightTeamColor = '#FF3549',
     leftTeamPlayers = [],
@@ -256,25 +345,43 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
     roundHistory = [],
     mapHistoryItems = [],
     sponsorImageUrl = null,
+    leftTeamLogo = null,
+    rightTeamLogo = null,
+    scoreLeft = 0,
+    scoreRight = 0,
+    seriesScoreLeft = 0,
+    seriesScoreRight = 0,
+    roundText = '',
+    seriesTitleText = '',
+    gameSeriesText = '',
+    eventTitleText = '',
+    timerText = 'BUY ROUND',
+    timerColor = '#DADBE3',
+    bestOf = 3,
+    showSeries = true,
+    showLogos = true,
     isToggled = () => true,
   } = props
   if (!isToggled('buy-round')) return null
-  const currentRound = roundHistory.length > 0 ? (Number(roundHistory[roundHistory.length - 1]?.round) || 0) + 1 : null
+
   const incomeLeft = incomeEstimate(roundHistory, TEAM_INCOME_SIDE.left)
   const incomeRight = incomeEstimate(roundHistory, TEAM_INCOME_SIDE.right)
-  const sum = (arr: any[], f: (p: any) => number | null) => arr.reduce((acc, p) => acc + (f(p) ?? 0), 0)
-  const leftSpent = sum(leftTeamPlayers, spentOf)
-  const rightSpent = sum(rightTeamPlayers, spentOf)
-  const leftRem = sum(leftTeamPlayers, creditsOf)
-  const rightRem = sum(rightTeamPlayers, creditsOf)
-  const nextMin = (arr: any[], income: number) =>
-    arr.length > 0 ? Math.min(...arr.map(p => (creditsOf(p) ?? 0) + income)) : 0
-  // The engine's economy totals (when present) back the REM summary line.
-  const remLeft = economy?.left?.total != null ? economy.left.total : leftRem
-  const remRight = economy?.right?.total != null ? economy.right.total : rightRem
 
-  // Map history (non-pool, non-ban entries, labeled)
-  const activeMapHistory = (mapHistoryItems || []).filter((i: any) => i.kind !== 'pool' && i.kind !== 'ban')
+  // Compute live economy fallback for EconomyTracker
+  const calcEco = (players: any[]) => {
+    const creds = players.map(p => Number(p.credits ?? p.money)).filter(v => Number.isFinite(v) && v > 0)
+    const total = creds.reduce((a, b) => a + b, 0)
+    const avg = creds.length ? Math.round(total / creds.length) : 0
+    const ecoType = avg >= 4000 ? 'full-buy' : avg >= 2600 ? 'half-buy' : avg >= 1500 ? 'force-buy' : 'eco'
+    return { total, avgCredits: avg, ecoType, playerCount: creds.length || 5 }
+  }
+  const effectiveEconomy = economy || {
+    left: calcEco(leftTeamPlayers),
+    right: calcEco(rightTeamPlayers),
+  }
+
+  // Match IngameHUD Main: retain map picks and decider; omit pool entries.
+  const activeMapHistory = (mapHistoryItems || []).filter((i: any) => i.kind !== 'pool')
   const labeledMapHistory = (() => {
     let n = 0
     return activeMapHistory.map((item: any) => {
@@ -284,6 +391,7 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
       return { ...item, label: `MAP ${n}:` }
     })
   })()
+
   return (
     <div
       className="relative size-full select-none overflow-hidden"
@@ -295,9 +403,10 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
       }}
     >
       <style>{KIT_BUY_CSS}</style>
-      {/* Map history strip (top left) */}
-      {labeledMapHistory.length > 0 && (
-        <div className="absolute top-[44px] left-[44px] flex items-center gap-2 rounded-sm border border-white/20 bg-black/80 px-3 py-1 shadow-xl z-20">
+
+      {/* Map history strip (top left), matching IngameHUD Main. */}
+      {isToggled('map-history') && labeledMapHistory.length > 0 && (
+        <div className="absolute top-3 left-4 z-30 flex h-8 items-center gap-2 rounded-sm border border-white/20 bg-black/90 px-3 shadow-xl backdrop-blur-sm">
           {labeledMapHistory.map((item: any, i: number) => (
             <React.Fragment key={item.slot + item.mapId + i}>
               {i > 0 && <span className="text-white/30">|</span>}
@@ -310,90 +419,83 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
           ))}
         </div>
       )}
-      {/* Sponsor (top right) */}
-      {sponsorImageUrl && (
-        <div className="absolute top-[44px] right-[44px] z-20">
-          <img src={sponsorImageUrl} alt="sponsor" className="h-[64px] object-contain drop-shadow-lg z-20" />
+
+      {/* Sponsor (top right), matching IngameHUD Main fallback and visibility. */}
+      {isToggled('sponsors') && (
+        <div className="absolute right-1.5 top-1.5 z-30 flex h-[74px] w-[245px] justify-center">
+          <div className="relative size-full overflow-hidden rounded-sm p-1">
+            <div className="absolute inset-0 bg-[#000000BD]" />
+            <img src={sponsorImageUrl || '/sponsor/Sponsor-1.png'} alt="sponsor" className="relative z-10 size-full object-contain"
+              onError={e => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = '/sponsor/Sponsor-1.png' } }} />
+          </div>
         </div>
       )}
-      {/* ===== Top bar: team econ + round timeline ===== */}
-      <div
-        className="absolute inset-x-0 top-0 flex items-center justify-between bg-black/45 px-8 py-3"
-        style={{ animation: 'kitBuyIn 320ms ease-out' }}
-      >
-        <div className="flex items-center gap-7">
-          <span className="font-schabo text-[34px] uppercase leading-none" style={{ color: leftTeamColor }}>
-            {leftTeamName}
-          </span>
-          <StatCell label="SPENT" value={`-${leftSpent}`} color="#FF4D4D" />
-          <StatCell label="REM" value={String(remLeft)} color="#FFD166" />
-          <StatCell label="NEXT(MIN)" value={String(nextMin(leftTeamPlayers, incomeLeft))} />
-        </div>
-        <RoundTimeline
-          roundHistory={roundHistory}
-          leftTeamColor={leftTeamColor}
-          rightTeamColor={rightTeamColor}
+
+      {/* ===== Top Scorebug: exact same size and centered as Ingame HUD Main ===== */}
+      {isToggled('score-line') && (
+        <Scorebug
           leftName={leftTeamName}
           rightName={rightTeamName}
-          currentRound={currentRound}
+          leftSeed={leftTeamSeed}
+          rightSeed={rightTeamSeed}
+          leftColor={leftTeamColor}
+          rightColor={rightTeamColor}
+          scoreLeft={scoreLeft}
+          scoreRight={scoreRight}
+          seriesLeft={seriesScoreLeft}
+          seriesRight={seriesScoreRight}
+          bestOf={bestOf}
+          showSeries={showSeries}
+          showLogos={showLogos}
+          leftLogo={leftTeamLogo}
+          rightLogo={rightTeamLogo}
+          roundLabel={roundText || ''}
+          timerText={timerText}
+          timerColor={timerColor}
+          seriesTitleText={seriesTitleText}
+          gameSeriesText={gameSeriesText}
+          eventTitleText={eventTitleText}
+          roundText={roundText || ''}
         />
-        <div className="flex items-center gap-7">
-          <StatCell label="NEXT(MIN)" value={String(nextMin(rightTeamPlayers, incomeRight))} />
-          <StatCell label="REM" value={String(remRight)} color="#FFD166" />
-          <StatCell label="SPENT" value={`-${rightSpent}`} color="#FF4D4D" />
-          <span className="font-schabo text-[34px] uppercase leading-none" style={{ color: rightTeamColor }}>
-            {rightTeamName}
-          </span>
-        </div>
-      </div>
-      {/* ===== Scoreline ===== */}
+      )}
+
+      {/* ===== Bottom HUD stack: Match History Grid -> Economy Tracker -> Player Cards ===== */}
       <div
-        className="absolute inset-x-0 bottom-[210px] flex items-center justify-center px-8"
-        style={{ animation: 'kitBuyIn 520ms ease-out' }}
+        className="absolute inset-x-0 bottom-2 z-20 flex flex-col items-center gap-1.5 px-0"
+        style={{ animation: 'kitBuyIn 360ms ease-out' }}
       >
-        <div className="flex items-center gap-8">
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">SPENT</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FF4D4D]">-{leftSpent}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">REM</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FFD166]">{remLeft}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">NEXT</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-white">{nextMin(leftTeamPlayers, incomeLeft)}</span>
-          </div>
-          <div className="w-px h-[24px] bg-white/20 mx-4" />
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">NEXT</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-white">{nextMin(rightTeamPlayers, incomeRight)}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">REM</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FFD166]">{remRight}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.14em] text-white/50">SPENT</span>
-            <span className="font-schabo text-[20px] font-extrabold tabular-nums text-[#FF4D4D]">-{rightSpent}</span>
-          </div>
+        {/* Match history grid in the middle above player panels */}
+        <MatchHistoryGrid
+          roundHistory={roundHistory}
+          leftTeamName={leftTeamName}
+          rightTeamName={rightTeamName}
+          leftTeamColor={leftTeamColor}
+          rightTeamColor={rightTeamColor}
+        />
+
+        {/* Economy tracker replacing old SPENT/REM/NEXT(MIN) cells */}
+        <div className="w-full flex justify-center py-1">
+          <EconomyTracker
+            economy={effectiveEconomy}
+            leftTeamName={leftTeamName}
+            rightTeamName={rightTeamName}
+            leftTeamColor={leftTeamColor}
+            rightTeamColor={rightTeamColor}
+          />
         </div>
-      </div>
-      {/* ===== Player cards ===== */}
-      <div
-        className="absolute inset-x-0 bottom-[16px] flex items-center px-6"
-        style={{ animation: 'kitBuyIn 420ms ease-out' }}
-      >
-        <div className="flex gap-2.5">
-          {leftTeamPlayers.map((p: any, i: number) => (
-            <KitBuyCard key={p.id || i} player={p} teamColor={leftTeamColor} income={incomeLeft} />
-          ))}
-        </div>
-        <div className="flex-1" />
-        <div className="flex gap-2.5">
-          {rightTeamPlayers.map((p: any, i: number) => (
-            <KitBuyCard key={p.id || i} player={p} teamColor={rightTeamColor} income={incomeRight} />
-          ))}
+
+        {/* Player cards: flush on both sides without outer gaps (px-0), centered agent icons */}
+        <div className="flex w-full items-stretch justify-between px-0 gap-3">
+          <div className="flex min-w-0 flex-1 justify-between gap-1.5">
+            {leftTeamPlayers.slice(0, 5).map((p: any, i: number) => (
+              <KitBuyCard key={p.id || i} player={p} teamColor={leftTeamColor} income={incomeLeft} />
+            ))}
+          </div>
+          <div className="flex min-w-0 flex-1 flex-row-reverse justify-between gap-1.5">
+            {rightTeamPlayers.slice(0, 5).map((p: any, i: number) => (
+              <KitBuyCard key={p.id || i} player={p} teamColor={rightTeamColor} income={incomeRight} />
+            ))}
+          </div>
         </div>
       </div>
     </div>
