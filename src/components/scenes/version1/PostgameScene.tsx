@@ -17,20 +17,44 @@ import { resolveAgent } from '../../../data/valAgentMeta'
  * - Upper-body agent bust art framed in bottom corners
  */
 
+function hexRgba(hex: string, alpha: number): string {
+  if (!hex) return `rgba(255, 255, 255, ${alpha})`
+  let c = hex.replace('#', '')
+  if (c.length === 3) c = c.split('').map(x => x + x).join('')
+  const num = parseInt(c, 16)
+  if (isNaN(num)) return `rgba(255, 255, 255, ${alpha})`
+  const r = (num >> 16) & 255
+  const g = (num >> 8) & 255
+  const b = num & 255
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function isDark(hex: string): boolean {
+  if (!hex) return false
+  let c = hex.replace('#', '')
+  if (c.length === 3) c = c.split('').map(x => x + x).join('')
+  const num = parseInt(c, 16)
+  if (isNaN(num)) return false
+  const r = (num >> 16) & 255
+  const g = (num >> 8) & 255
+  const b = num & 255
+  return (r * 299 + g * 587 + b * 114) / 1000 < 140
+}
+
 const DEMO_PLAYERS_LEFT: PostgamePlayer[] = [
-  { id: 'l1', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 6, acs: 246 },
-  { id: 'l2', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 5, acs: 246 },
-  { id: 'l3', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 4, acs: 246 },
-  { id: 'l4', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 7, acs: 246 },
+  { id: 'l1', alias: 'ZEKKEN', agentName: 'Jett', kills: 18, deaths: 14, assists: 6, acs: 246 },
+  { id: 'l2', alias: 'ZEKKEN', agentName: 'Jett', kills: 18, deaths: 14, assists: 5, acs: 246 },
+  { id: 'l3', alias: 'ZEKKEN', agentName: 'Jett', kills: 18, deaths: 14, assists: 4, acs: 246 },
+  { id: 'l4', alias: 'ZEKKEN', agentName: 'Jett', kills: 18, deaths: 14, assists: 7, acs: 246 },
   { id: 'l5', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 8, acs: 246 },
 ]
 
 const DEMO_PLAYERS_RIGHT: PostgamePlayer[] = [
-  { id: 'r1', alias: 'WALKEMDOWNBUFORD', agentName: 'Neon', kills: 18, deaths: 14, assists: 5, acs: 246 },
-  { id: 'r2', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 4, acs: 246 },
-  { id: 'r3', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 6, acs: 246 },
-  { id: 'r4', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 3, acs: 246 },
-  { id: 'r5', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 7, acs: 246 },
+  { id: 'r1', alias: 'WALKEMDOWNBUFORD', agentName: 'Fade', kills: 18, deaths: 14, assists: 8, acs: 246 },
+  { id: 'r2', alias: 'ZEKKEN', agentName: 'Jett', kills: 18, deaths: 14, assists: 4, acs: 246 },
+  { id: 'r3', alias: 'ZEKKEN', agentName: 'Jett', kills: 18, deaths: 14, assists: 6, acs: 246 },
+  { id: 'r4', alias: 'ZEKKEN', agentName: 'Jett', kills: 18, deaths: 14, assists: 3, acs: 246 },
+  { id: 'r5', alias: 'ZEKKEN', agentName: 'Jett', kills: 18, deaths: 14, assists: 7, acs: 246 },
 ]
 
 export function BroadcastPostgameScene(props: PostGameSceneProps) {
@@ -218,23 +242,26 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
               className="pointer-events-auto absolute flex h-full items-center justify-between"
               style={{ left: 330, width: 450 }}
             >
-              {/* Player Card: Portrait + Agent/Player Names */}
-              <div className="flex items-center gap-3.5">
-                <div className="relative h-[52px] w-[86px] shrink-0 overflow-hidden rounded-[2px] border border-white/15 bg-[#121620]">
-                  <img
-                    src={lp?.photoUrl || (lp as any)?.avatarUrl || agentIcon(lp)}
-                    alt=""
-                    className="size-full object-cover object-top"
-                    onError={e => {
-                      ;(e.currentTarget as HTMLImageElement).src = agentIcon(lp)
-                    }}
-                  />
-                </div>
+              {/* Player Card: Icon + Agent/Player Names with Team Color Gradient to Transparent */}
+              <div
+                className="relative flex items-center gap-3 rounded-[3px] py-1 pl-2 pr-7"
+                style={{
+                  background: `linear-gradient(90deg, ${hexRgba(leftTeamColor, 0.44)} 0%, ${hexRgba(leftTeamColor, 0.16)} 45%, transparent 100%)`,
+                }}
+              >
+                <img
+                  src={agentIcon(lp)}
+                  alt=""
+                  className="size-[46px] shrink-0 object-contain drop-shadow"
+                  onError={e => {
+                    ;(e.currentTarget as HTMLImageElement).style.visibility = 'hidden'
+                  }}
+                />
                 <div className="flex flex-col items-start leading-none">
-                  <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.2em] text-[#717A8C]">
+                  <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.2em] text-[#8E96A6]">
                     {lAgentName}
                   </span>
-                  <span className="mt-1 font-barlowCond text-[20px] font-bold uppercase tracking-wider text-white">
+                  <span className="mt-1 font-barlowCond text-[20px] font-black uppercase tracking-wider text-white">
                     {lPlayerName}
                   </span>
                 </div>
@@ -279,26 +306,29 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
                 </span>
               </div>
 
-              {/* Player Card: Agent/Player Names + Portrait (flipped order) */}
-              <div className="flex items-center gap-3.5">
+              {/* Player Card: Agent/Player Names + Icon with Team Color Gradient to Transparent (flipped order) */}
+              <div
+                className="relative flex items-center gap-3 rounded-[3px] py-1 pr-2 pl-7"
+                style={{
+                  background: `linear-gradient(270deg, ${hexRgba(rightTeamColor, 0.44)} 0%, ${hexRgba(rightTeamColor, 0.16)} 45%, transparent 100%)`,
+                }}
+              >
                 <div className="flex flex-col items-end leading-none">
-                  <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.2em] text-[#717A8C] text-right">
+                  <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.2em] text-[#8E96A6] text-right">
                     {rAgentName}
                   </span>
-                  <span className="mt-1 font-barlowCond text-[20px] font-bold uppercase tracking-wider text-white text-right">
+                  <span className="mt-1 font-barlowCond text-[20px] font-black uppercase tracking-wider text-white text-right">
                     {rPlayerName}
                   </span>
                 </div>
-                <div className="relative h-[52px] w-[86px] shrink-0 overflow-hidden rounded-[2px] border border-white/15 bg-[#121620]">
-                  <img
-                    src={rp?.photoUrl || (rp as any)?.avatarUrl || agentIcon(rp)}
-                    alt=""
-                    className="size-full object-cover object-top"
-                    onError={e => {
-                      ;(e.currentTarget as HTMLImageElement).src = agentIcon(rp)
-                    }}
-                  />
-                </div>
+                <img
+                  src={agentIcon(rp)}
+                  alt=""
+                  className="size-[46px] shrink-0 object-contain drop-shadow"
+                  onError={e => {
+                    ;(e.currentTarget as HTMLImageElement).style.visibility = 'hidden'
+                  }}
+                />
               </div>
             </div>
           </div>
@@ -326,17 +356,21 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
               <span className="mt-1 font-barlowCond text-[46px] font-black uppercase text-white leading-none tracking-wide drop-shadow-[0_4px_12px_rgba(0,0,0,0.95)]">
                 {(leftMvp.alias || leftMvp.name || leftMvp.riotId || 'ZEKKEN').toUpperCase()}
               </span>
-              {/* Glowing Cyan MVP Badge with Trailing Line */}
+              {/* Glowing Team-Color MVP Badge with Trailing Line */}
               <div className="mt-2.5 flex items-center gap-2">
                 <span
-                  className="rounded-[2px] px-2.5 py-0.5 font-baijam text-[11px] font-black uppercase tracking-wider text-[#0A0D14]"
-                  style={{ background: '#00E5FF', boxShadow: '0 0 12px rgba(0, 229, 255, 0.7)' }}
+                  className="rounded-[2px] px-2.5 py-0.5 font-baijam text-[11px] font-black uppercase tracking-wider"
+                  style={{
+                    background: leftTeamColor,
+                    color: isDark(leftTeamColor) ? '#FFFFFF' : '#0A0D14',
+                    boxShadow: `0 0 14px ${hexRgba(leftTeamColor, 0.75)}`,
+                  }}
                 >
                   MVP
                 </span>
                 <div
                   className="h-[2px] w-24"
-                  style={{ background: 'linear-gradient(90deg, #00E5FF, transparent)' }}
+                  style={{ background: `linear-gradient(90deg, ${leftTeamColor}, transparent)` }}
                 />
               </div>
             </div>
@@ -399,15 +433,19 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
               <span className="mt-1 font-barlowCond text-[44px] font-black uppercase text-white leading-none tracking-wide text-right drop-shadow-[0_4px_12px_rgba(0,0,0,0.95)]">
                 {(rightMvp.alias || rightMvp.name || rightMvp.riotId || 'WALKEMDOWNBUFORD').toUpperCase()}
               </span>
-              {/* Glowing Red MVP Badge with Trailing Line */}
+              {/* Glowing Team-Color MVP Badge with Trailing Line */}
               <div className="mt-2.5 flex items-center justify-end gap-2">
                 <div
                   className="h-[2px] w-24"
-                  style={{ background: 'linear-gradient(270deg, #FF3549, transparent)' }}
+                  style={{ background: `linear-gradient(270deg, ${rightTeamColor}, transparent)` }}
                 />
                 <span
-                  className="rounded-[2px] px-2.5 py-0.5 font-baijam text-[11px] font-black uppercase tracking-wider text-white"
-                  style={{ background: '#FF3549', boxShadow: '0 0 12px rgba(255, 53, 73, 0.7)' }}
+                  className="rounded-[2px] px-2.5 py-0.5 font-baijam text-[11px] font-black uppercase tracking-wider"
+                  style={{
+                    background: rightTeamColor,
+                    color: isDark(rightTeamColor) ? '#FFFFFF' : '#0A0D14',
+                    boxShadow: `0 0 14px ${hexRgba(rightTeamColor, 0.75)}`,
+                  }}
                 >
                   MVP
                 </span>

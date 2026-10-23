@@ -10,12 +10,14 @@ const BLANK =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAALSURBVBhXY2AAAgAABQABqtXIUQAAAABJRU5ErkJggg=='
 export const BLANK_IMG = BLANK
 
-/** GEP codename (agentKey) wins, then the display-name meta, then a name guess. */
+/** Resolved agent meta wins, then GEP codename (agentKey), then name guess. */
 export const agentCodename = (p: any): string | null => {
+  const resolved = resolveAgent(p)
+  if (resolved?.codename) return resolved.codename
+
   const key = p?.agentKey ? String(p.agentKey).replace(/_pc(_c)?$/i, '') : null
   return (
     (key && agentByCodename(key)?.codename) ||
-    resolveAgent(p)?.codename ||
     (p?.agentName ? String(p.agentName).toLowerCase().replace(/[^a-z0-9]/g, '') : null)
   )
 }

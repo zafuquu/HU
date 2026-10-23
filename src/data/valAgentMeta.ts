@@ -39,26 +39,41 @@ const BY_NAME: Record<string, AgentMeta> = Object.fromEntries(
   Object.values(BY_CODENAME).map(a => [a.name.toLowerCase(), a]),
 )
 
+const ALIASES: Record<string, string> = {
+  kayo: 'grenadier',
+  'kay/o': 'grenadier',
+  'kay-o': 'grenadier',
+  grenadier: 'grenadier',
+  gekko: 'aggrobot',
+  geeko: 'aggrobot',
+  aggrobot: 'aggrobot',
+}
+
 export function agentByCodename(codename: unknown): AgentMeta | null {
   // GEP emits suffixed variants: Sequoia_PC_C, Clay_PC, Stealth_PC_C ...
-  const k = String(codename ?? '').trim().toLowerCase().replace(/_pc(_c)?$/i, '')
-  return BY_CODENAME[k] || null
+  const raw = String(codename ?? '').trim().toLowerCase().replace(/_pc(_c)?$/i, '')
+  const norm = raw.replace(/[^a-z0-9]/g, '')
+  const key = ALIASES[raw] || ALIASES[norm] || raw
+  return BY_CODENAME[key] || BY_CODENAME[norm] || null
 }
 export function agentByName(name: unknown): AgentMeta | null {
-  const k = String(name ?? '').toLowerCase()
-  return BY_NAME[k] || null
+  const raw = String(name ?? '').trim().toLowerCase()
+  const norm = raw.replace(/[^a-z0-9]/g, '')
+  const key = ALIASES[raw] || ALIASES[norm]
+  if (key && BY_CODENAME[key]) return BY_CODENAME[key]
+  return BY_NAME[raw] || BY_NAME[norm] || null
 }
 
 /** Resolve the agent for a player object from any common field. */
 export function resolveAgent(player: any): AgentMeta | null {
   if (!player) return null
   return (
+    agentByName(player.agentName) ||
     agentByCodename(player.agentKey) ||
     agentByCodename(player.agentCodename) ||
-    agentByName(player.agentName) ||
-    agentByCodename(player.agentName) ||
     agentByName(player.agent) ||
     agentByCodename(player.agent) ||
+    agentByCodename(player.agentName) ||
     agentByName(player.character) ||
     agentByCodename(player.character) ||
     null

@@ -19,6 +19,8 @@ import {
   hexRgba,
   hpOf,
   kdaOf,
+  ultMaxOf,
+  ultPointsOf,
   ultReadyOf,
 } from '../broadcastKit'
 import { resolveAgent } from '../../../data/valAgentMeta'
@@ -206,6 +208,23 @@ function KitPanel({
   const st = player.abilityState
 
   const hasSpike = Boolean(player.hasSpike || player.carryingSpike || player.hasBomb || player.isCarrier)
+
+  // --- ultPoints transition detection (works for ALL players, player & observer) ---
+  // When ultPoints drops from max → 0, the player just used their ult.
+  // Auto-activate the Using Ult animation for 6 seconds.
+  const ultPts = ultPointsOf(player)
+  const ultMax = ultMaxOf(player)
+  const prevUltPts = React.useRef<number | null>(null)
+  React.useEffect(() => {
+    const prev = prevUltPts.current
+    prevUltPts.current = ultPts
+    // Guard: prev must have been at max, now dropped to 0, and player is alive
+    if (prev != null && prev >= ultMax && ultMax > 0 && ultPts === 0 && aliveOf(player)) {
+      setLocalUltActive(true)
+      const t = setTimeout(() => setLocalUltActive(false), 6000)
+      return () => clearTimeout(t)
+    }
+  }, [ultPts, ultMax])
 
   const isUsingUlt = Boolean(
     alive && (
