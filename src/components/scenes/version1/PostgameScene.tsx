@@ -2,292 +2,479 @@ import {
   type PostgamePlayer,
   type PostGameSceneProps,
 } from '../classic/PostgameScene'
-import { agentBust, agentIcon, agentPortrait, hexRgba } from '../broadcastKit'
+import { agentBust, agentIcon, agentPortrait } from '../broadcastKit'
+import { resolveAgent } from '../../../data/valAgentMeta'
 
 /**
- * Broadcast kit — post-game scene: side score headers, per-player KO/ACS
- * columns around a center legend, and team-MVP rows with full agent art.
- * Renders ONLY real players (no demo roster — allowDemo is honored as false
- * on live sources, same contract as the classic scene).
+ * Broadcast kit — post-game scene (exact replication of C:\Users\erna\Documents\KHALZ\Havoc Unleash\images\post game.png):
+ * - Perfectly centered and symmetrical layout in 1920x1080 canvas
+ * - Left block: X = 330px to 780px (width 450px)
+ * - Center column: X = 880px to 1040px (width 160px, center = 960px)
+ * - Right block: X = 1140px to 1590px (width 450px, 330px from right margin)
+ * - Top score headers aligned directly above player columns
+ * - 4 regular player rows (Rows 1-4) with repeated center KD / ACS labels
+ * - Bottom MVP section (Row 5) with glowing MVP badge and stats
+ * - Upper-body agent bust art framed in bottom corners
  */
+
+const DEMO_PLAYERS_LEFT: PostgamePlayer[] = [
+  { id: 'l1', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 6, acs: 246 },
+  { id: 'l2', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 5, acs: 246 },
+  { id: 'l3', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 4, acs: 246 },
+  { id: 'l4', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 7, acs: 246 },
+  { id: 'l5', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 8, acs: 246 },
+]
+
+const DEMO_PLAYERS_RIGHT: PostgamePlayer[] = [
+  { id: 'r1', alias: 'WALKEMDOWNBUFORD', agentName: 'Neon', kills: 18, deaths: 14, assists: 5, acs: 246 },
+  { id: 'r2', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 4, acs: 246 },
+  { id: 'r3', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 6, acs: 246 },
+  { id: 'r4', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 3, acs: 246 },
+  { id: 'r5', alias: 'ZEKKEN', agentName: 'Neon', kills: 18, deaths: 14, assists: 7, acs: 246 },
+]
 
 export function BroadcastPostgameScene(props: PostGameSceneProps) {
   const {
-    leftTeamName = 'TEAM A',
-    rightTeamName = 'TEAM B',
-    leftTeamColor = '#28D091',
+    leftTeamName = 'SENTINELS',
+    rightTeamName = 'SENTINELS',
+    leftTeamColor = '#1DCD9B',
     rightTeamColor = '#FF3549',
     leftTeamLogo = null,
     rightTeamLogo = null,
-    scoreLeft = 0,
-    scoreRight = 0,
+    scoreLeft = 12,
+    scoreRight = 13,
     leftTeamPlayers = [],
     rightTeamPlayers = [],
-    allowDemo = false,
+    allowDemo = true,
+    activeComponentId,
+    onSelectComponent,
   } = props
 
-  const hasAnyAcs = (arr: PostgamePlayer[]) => arr.some(p => p?.acs != null)
   const pickMvp = (arr: PostgamePlayer[]): PostgamePlayer | null => {
+    if (arr.length === 0) return null
     const sorted = [...arr].sort(
       (a, b) =>
         (b.kills ?? 0) - (a.kills ?? 0) ||
         (a.deaths ?? 0) - (b.deaths ?? 0) ||
         (b.assists ?? 0) - (a.assists ?? 0),
     )
-    return sorted.length > 0 ? sorted[0] : null
+    return sorted[0]
   }
-  const leftList = allowDemo ? leftTeamPlayers : leftTeamPlayers || []
-  const rightList = allowDemo ? rightTeamPlayers : rightTeamPlayers || []
-  const leftMvp = pickMvp(leftList)
-  const rightMvp = pickMvp(rightList)
-  const leftRows = leftList.filter(p => p !== leftMvp)
-  const rightRows = rightList.filter(p => p !== rightMvp)
-  const showAcs = hasAnyAcs(leftList) || hasAnyAcs(rightList)
-  const showFirstKills = [...leftList, ...rightList].some(p => ((p as any).firstKills ?? null) != null)
+
+  // Populate list with demo data if rosters are empty
+  const rawLeft = leftTeamPlayers && leftTeamPlayers.length > 0 ? leftTeamPlayers : (allowDemo ? DEMO_PLAYERS_LEFT : [])
+  const rawRight = rightTeamPlayers && rightTeamPlayers.length > 0 ? rightTeamPlayers : (allowDemo ? DEMO_PLAYERS_RIGHT : [])
+
+  const leftMvp = pickMvp(rawLeft)
+  const rightMvp = pickMvp(rawRight)
+
+  // Remaining 4 players for the top 4 rows
+  const leftRows = rawLeft.filter(p => p !== leftMvp).slice(0, 4)
+  const rightRows = rawRight.filter(p => p !== rightMvp).slice(0, 4)
+
+  // Pad to 4 if needed
+  while (leftRows.length < 4) {
+    leftRows.push({ id: `pad-l-${leftRows.length}`, alias: `PLAYER ${leftRows.length + 1}`, agentName: 'Neon', kills: 18, deaths: 14, acs: 246 })
+  }
+  while (rightRows.length < 4) {
+    rightRows.push({ id: `pad-r-${rightRows.length}`, alias: `PLAYER ${rightRows.length + 1}`, agentName: 'Neon', kills: 18, deaths: 14, acs: 246 })
+  }
 
   const leftWon = scoreLeft > scoreRight
   const rightWon = scoreRight > scoreLeft
 
   return (
     <div
-      className="relative size-full select-none overflow-hidden font-barlowCond"
+      className={`clickable-component scene-root relative size-full select-none overflow-hidden font-barlowCond ${
+        activeComponentId === 'card' || activeComponentId === 'background' ? 'selected' : ''
+      }`}
+      data-component-id="card"
+      onClick={() => onSelectComponent?.('card')}
       style={{
         width: 1920,
         height: 1080,
-        background:
-          'radial-gradient(1200px 700px at 50% 44%, rgba(28,38,54,0.55), transparent 70%), linear-gradient(180deg, #0A0E15 0%, #080B11 100%)',
+        background: '#090D14',
       }}
     >
-      {/* ===== Team score headers ===== */}
-      <div className="absolute left-[96px] top-[44px] flex items-center gap-4">
-        {leftTeamLogo ? (
-          <img src={leftTeamLogo} alt="" className="size-[44px] object-contain" />
-        ) : (
-          <div className="grid size-[40px] place-items-center rounded-full" style={{ background: leftTeamColor }}>
-            <span className="font-schabo text-[20px] text-black/80">{(leftTeamName || 'A').slice(0, 1)}</span>
-          </div>
-        )}
-        <span className="font-schabo text-[44px] uppercase leading-none text-white">{leftTeamName}</span>
-        <span
-          className="font-schabo text-[44px] leading-none tabular-nums"
-          style={{ color: leftWon ? '#FFFFFF' : 'rgba(255,255,255,0.38)' }}
-        >
-          {scoreLeft}
-        </span>
-      </div>
-      <div className="absolute right-[96px] top-[44px] flex items-center gap-4">
-        <span
-          className="font-schabo text-[44px] leading-none tabular-nums"
-          style={{ color: rightWon ? '#FFFFFF' : 'rgba(255,255,255,0.38)' }}
-        >
-          {scoreRight}
-        </span>
-        <span className="font-schabo text-[44px] uppercase leading-none text-white">{rightTeamName}</span>
-        {rightTeamLogo ? (
-          <img src={rightTeamLogo} alt="" className="size-[44px] object-contain" />
-        ) : (
-          <div className="grid size-[40px] place-items-center rounded-full" style={{ background: rightTeamColor }}>
-            <span className="font-schabo text-[20px] text-black/80">{(rightTeamName || 'B').slice(0, 1)}</span>
-          </div>
-        )}
-      </div>
-
-      {/* ===== Center stat legend ===== */}
-      <div className="absolute left-1/2 top-[136px] -translate-x-1/2 text-center italic">
-        <p className="font-barlowCond text-[15px] font-extrabold uppercase tracking-[0.12em] text-white/45">KO</p>
-        {showAcs && <p className="mt-[36px] font-barlowCond text-[15px] font-extrabold uppercase tracking-[0.12em] text-white/45">ACS</p>}
-      </div>
-
-      {/* ===== Player rows ===== */}
-      <div className="absolute left-0 top-[124px] flex w-full justify-between px-[190px]">
-        <div className="flex flex-col gap-[14px]">
-          {leftRows.map((p, i) => (
-            <PostRow key={p.id ?? i} player={p} side="left" teamColor={leftTeamColor} />
-          ))}
-        </div>
-        <div className="flex flex-col items-end gap-[14px]">
-          {rightRows.map((p, i) => (
-            <PostRow key={p.id ?? i} player={p} side="right" teamColor={rightTeamColor} />
-          ))}
-        </div>
-      </div>
-
-      {/* ===== Team MVP rows with upper-body agent art ===== */}
-      {leftMvp && (
-        <MvpBlock player={leftMvp} side="left" teamColor={leftTeamColor} showFirstKills={showFirstKills} />
-      )}
-      {/* Center MVP stat legend matching post game.png */}
-      <div className="pointer-events-none absolute bottom-[32px] left-1/2 z-10 -translate-x-1/2 text-center italic font-barlowCond">
-        <p className="h-[30px] text-[15px] font-extrabold uppercase tracking-[0.14em] text-white/45 leading-[30px]">KD</p>
-        <p className="h-[26px] text-[15px] font-extrabold uppercase tracking-[0.14em] text-white/45 leading-[26px]">ACS</p>
-        {showFirstKills && (
-          <p className="h-[26px] text-[15px] font-extrabold uppercase tracking-[0.14em] text-white/45 leading-[26px]">FIRST KILLS</p>
-        )}
-      </div>
-      {rightMvp && (
-        <MvpBlock player={rightMvp} side="right" teamColor={rightTeamColor} showFirstKills={showFirstKills} />
-      )}
-    </div>
-  )
-}
-
-/** One post-game stat row: portrait tile, agent label + name pill, KO/ACS lines. */
-function PostRow({
-  player,
-  side,
-  teamColor,
-}: {
-  player: PostgamePlayer
-  side: 'left' | 'right'
-  teamColor: string
-}) {
-  const isRight = side === 'right'
-  const name = player.alias || player.name || player.riotId || 'Player'
-  const agentLabel = String(player.agentName || player.agent || player.character || '').toUpperCase()
-  const k = player.kills ?? 0
-  const d = player.deaths ?? 0
-  const a = player.assists ?? 0
-  const art = player.photoUrl || player.avatarUrl || player.avatar || agentIcon(player)
-  return (
-    <div className={`flex items-center gap-3 ${isRight ? 'flex-row-reverse' : ''}`}>
-      {/* Agent icon tile */}
-      <div className="relative size-[54px] shrink-0 overflow-hidden rounded-[2px] border border-white/10 bg-black/40">
-        <img
-          src={art || agentIcon(player)}
-          alt=""
-          className="size-full object-cover"
-          onError={e => { (e.currentTarget as HTMLImageElement).src = agentIcon(player) }}
-        />
-      </div>
-      {/* Name pill */}
+      {/* Background radial gradient glow */}
       <div
-        className={`flex min-w-0 flex-col justify-center rounded-[2px] px-3 py-1 ${isRight ? 'items-end' : 'items-start'}`}
+        className="pointer-events-none absolute inset-0"
         style={{
-          background: `linear-gradient(${isRight ? '270deg' : '90deg'}, ${hexRgba(teamColor, 0.38)} 0%, rgba(10,14,20,0) 100%)`,
+          background:
+            'radial-gradient(1100px 650px at 50% 42%, rgba(26, 36, 52, 0.5), transparent 75%)',
         }}
+      />
+
+      {/* Background Cyber Circuit Traces (centered at X=960, matching post game.png) */}
+      <svg
+        className="pointer-events-none absolute inset-x-0 top-0 h-[650px] w-full opacity-25"
+        viewBox="0 0 1920 650"
+        fill="none"
       >
-        <span className="font-baijam text-[9px] font-bold uppercase tracking-[0.18em] text-white/50">{agentLabel}</span>
-        <span className="truncate font-barlowCond text-[17px] font-extrabold uppercase italic leading-tight text-white">
-          {name}
-        </span>
+        <path d="M 960 0 V 100 L 920 140 V 310 L 880 350 H 760" stroke="#38BDF8" strokeWidth="1.5" strokeOpacity="0.45" />
+        <path d="M 960 0 V 100 L 1000 140 V 310 L 1040 350 H 1160" stroke="#38BDF8" strokeWidth="1.5" strokeOpacity="0.45" />
+        <path d="M 920 50 L 840 130 V 270 L 790 320 H 720" stroke="#38BDF8" strokeWidth="1.5" strokeOpacity="0.3" />
+        <path d="M 1000 50 L 1080 130 V 270 L 1130 320 H 1200" stroke="#38BDF8" strokeWidth="1.5" strokeOpacity="0.3" />
+        <path d="M 960 140 V 240 L 935 265 V 360 L 900 395 H 850" stroke="#38BDF8" strokeWidth="1" strokeOpacity="0.25" />
+        <path d="M 960 140 V 240 L 985 265 V 360 L 1020 395 H 1070" stroke="#38BDF8" strokeWidth="1" strokeOpacity="0.25" />
+        <circle cx="760" cy="350" r="3" fill="#38BDF8" />
+        <circle cx="1160" cy="350" r="3" fill="#38BDF8" />
+        <circle cx="720" cy="320" r="3" fill="#38BDF8" />
+        <circle cx="1200" cy="320" r="3" fill="#38BDF8" />
+      </svg>
+
+      {/* =========================================================================
+          TOP SCORE HEADERS (top: 72px)
+          Left Header starts at X = 330px
+          Right Header ends at X = 1590px (right: 330px)
+         ========================================================================= */}
+      <div className="pointer-events-none absolute inset-x-0 top-[72px] h-[52px]">
+        {/* Left Team Header: Logo -> Team Name -> Score -> Vertical Tallies */}
+        <div
+          className="pointer-events-auto absolute flex items-center gap-3.5"
+          style={{ left: 330 }}
+        >
+          {leftTeamLogo ? (
+            <img src={leftTeamLogo} alt="" className="size-[42px] object-contain drop-shadow" />
+          ) : (
+            <div className="grid size-[38px] place-items-center rounded-full" style={{ background: leftTeamColor }}>
+              <span className="font-schabo text-[20px] text-black">{(leftTeamName || 'A').slice(0, 1)}</span>
+            </div>
+          )}
+          <span className="font-barlowCond text-[44px] font-black uppercase tracking-wider text-white leading-none">
+            {leftTeamName}
+          </span>
+          <span
+            className="font-barlowCond text-[44px] font-bold leading-none tabular-nums ml-1"
+            style={{ color: leftWon ? '#FFFFFF' : '#5A6270' }}
+          >
+            {scoreLeft}
+          </span>
+          {/* 4 Vertical Tally Marks */}
+          <div className="flex flex-col gap-[3px] ml-3 opacity-30">
+            <div className="h-[6px] w-[16px] rounded-[1px] border border-white/60 bg-white/10" />
+            <div className="h-[6px] w-[16px] rounded-[1px] border border-white/60 bg-white/10" />
+            <div className="h-[6px] w-[16px] rounded-[1px] border border-white/60 bg-white/10" />
+            <div className="h-[6px] w-[16px] rounded-[1px] border border-white/60 bg-white/10" />
+          </div>
+        </div>
+
+        {/* Right Team Header: Vertical Tallies -> Score -> Team Name -> Logo */}
+        <div
+          className="pointer-events-auto absolute flex items-center gap-3.5"
+          style={{ right: 330 }}
+        >
+          {/* 4 Vertical Tally Marks */}
+          <div className="flex flex-col gap-[3px] mr-3 opacity-30">
+            <div className="h-[6px] w-[16px] rounded-[1px] border border-white/60 bg-white/10" />
+            <div className="h-[6px] w-[16px] rounded-[1px] border border-white/60 bg-white/10" />
+            <div className="h-[6px] w-[16px] rounded-[1px] border border-white/60 bg-white/10" />
+            <div className="h-[6px] w-[16px] rounded-[1px] border border-white/60 bg-white/10" />
+          </div>
+          <span
+            className="font-barlowCond text-[44px] font-bold leading-none tabular-nums mr-1"
+            style={{ color: rightWon ? '#FFFFFF' : '#5A6270' }}
+          >
+            {scoreRight}
+          </span>
+          <span className="font-barlowCond text-[44px] font-black uppercase tracking-wider text-white leading-none">
+            {rightTeamName}
+          </span>
+          {rightTeamLogo ? (
+            <img src={rightTeamLogo} alt="" className="size-[42px] object-contain drop-shadow" />
+          ) : (
+            <div className="grid size-[38px] place-items-center rounded-full" style={{ background: rightTeamColor }}>
+              <span className="font-schabo text-[20px] text-black">{(rightTeamName || 'B').slice(0, 1)}</span>
+            </div>
+          )}
+        </div>
       </div>
-      {/* Stats toward the center */}
-      <div className={`w-[140px] shrink-0 ${isRight ? 'text-left' : 'text-right'}`}>
-        <p className="font-barlowCond text-[19px] font-extrabold italic leading-tight tabular-nums text-white">
-          {k} / {d} / {a}
-        </p>
-        <p className="font-barlowCond text-[15px] font-extrabold italic leading-tight tabular-nums text-white/45">
-          {player.acs ?? '–'}
-        </p>
+
+      {/* =========================================================================
+          ROWS 1 TO 4: REGULAR PLAYERS (top: 200px, 295px, 390px, 485px)
+          Left Block:  X = 330px to 780px (width 450px)
+          Center:      X = 880px to 1040px (width 160px, center = 960px)
+          Right Block: X = 1140px to 1590px (width 450px)
+         ========================================================================= */}
+      {Array.from({ length: 4 }).map((_, i) => {
+        const lp = leftRows[i]
+        const rp = rightRows[i]
+        const rowTop = 200 + i * 95
+
+        const lAgentName = (resolveAgent(lp)?.name || lp?.agentName || lp?.agent || 'NEON').toUpperCase()
+        const lPlayerName = (lp?.alias || lp?.name || lp?.riotId || 'ZEKKEN').toUpperCase()
+
+        const rAgentName = (resolveAgent(rp)?.name || rp?.agentName || rp?.agent || 'NEON').toUpperCase()
+        const rPlayerName = (rp?.alias || rp?.name || rp?.riotId || 'ZEKKEN').toUpperCase()
+
+        return (
+          <div
+            key={i}
+            className="pointer-events-none absolute inset-x-0 h-[62px]"
+            style={{ top: rowTop }}
+          >
+            {/* Left Block (330px to 780px, width 450px) */}
+            <div
+              className="pointer-events-auto absolute flex h-full items-center justify-between"
+              style={{ left: 330, width: 450 }}
+            >
+              {/* Player Card: Portrait + Agent/Player Names */}
+              <div className="flex items-center gap-3.5">
+                <div className="relative h-[52px] w-[86px] shrink-0 overflow-hidden rounded-[2px] border border-white/15 bg-[#121620]">
+                  <img
+                    src={lp?.photoUrl || (lp as any)?.avatarUrl || agentIcon(lp)}
+                    alt=""
+                    className="size-full object-cover object-top"
+                    onError={e => {
+                      ;(e.currentTarget as HTMLImageElement).src = agentIcon(lp)
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col items-start leading-none">
+                  <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.2em] text-[#717A8C]">
+                    {lAgentName}
+                  </span>
+                  <span className="mt-1 font-barlowCond text-[20px] font-bold uppercase tracking-wider text-white">
+                    {lPlayerName}
+                  </span>
+                </div>
+              </div>
+
+              {/* Left Stats: Right-aligned at the end of left block */}
+              <div className="flex flex-col items-end leading-none">
+                <span className="font-barlowCond text-[22px] font-bold text-white tabular-nums">
+                  {lp?.kills ?? 18} / {lp?.deaths ?? 14}
+                </span>
+                <span className="mt-1 font-barlowCond text-[22px] font-bold text-white tabular-nums">
+                  {lp?.acs ?? 246}
+                </span>
+              </div>
+            </div>
+
+            {/* Center Column: KD / ACS (880px to 1040px, width 160px) */}
+            <div
+              className="pointer-events-auto absolute flex h-full flex-col items-center justify-center text-center leading-none"
+              style={{ left: 880, width: 160 }}
+            >
+              <span className="font-baijam text-[11px] font-bold tracking-widest text-[#6E7687] uppercase">
+                KD
+              </span>
+              <span className="mt-2.5 font-baijam text-[11px] font-bold tracking-widest text-[#6E7687] uppercase">
+                ACS
+              </span>
+            </div>
+
+            {/* Right Block (1140px to 1590px, width 450px) */}
+            <div
+              className="pointer-events-auto absolute flex h-full items-center justify-between"
+              style={{ left: 1140, width: 450 }}
+            >
+              {/* Right Stats: Left-aligned at the start of right block */}
+              <div className="flex flex-col items-start leading-none">
+                <span className="font-barlowCond text-[22px] font-bold text-white tabular-nums">
+                  {rp?.kills ?? 18} / {rp?.deaths ?? 14}
+                </span>
+                <span className="mt-1 font-barlowCond text-[22px] font-bold text-white tabular-nums">
+                  {rp?.acs ?? 246}
+                </span>
+              </div>
+
+              {/* Player Card: Agent/Player Names + Portrait (flipped order) */}
+              <div className="flex items-center gap-3.5">
+                <div className="flex flex-col items-end leading-none">
+                  <span className="font-baijam text-[10px] font-bold uppercase tracking-[0.2em] text-[#717A8C] text-right">
+                    {rAgentName}
+                  </span>
+                  <span className="mt-1 font-barlowCond text-[20px] font-bold uppercase tracking-wider text-white text-right">
+                    {rPlayerName}
+                  </span>
+                </div>
+                <div className="relative h-[52px] w-[86px] shrink-0 overflow-hidden rounded-[2px] border border-white/15 bg-[#121620]">
+                  <img
+                    src={rp?.photoUrl || (rp as any)?.avatarUrl || agentIcon(rp)}
+                    alt=""
+                    className="size-full object-cover object-top"
+                    onError={e => {
+                      ;(e.currentTarget as HTMLImageElement).src = agentIcon(rp)
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+
+      {/* =========================================================================
+          ROW 5: BOTTOM MVP HIGHLIGHT (bottom: 75px)
+          Left Block:  X = 330px to 780px (width 450px)
+          Center:      X = 880px to 1040px (width 160px, center = 960px)
+          Right Block: X = 1140px to 1590px (width 450px)
+         ========================================================================= */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-[75px] z-20 h-[100px]">
+        {/* Left MVP Block */}
+        {leftMvp && (
+          <div
+            className="pointer-events-auto absolute flex h-full items-end justify-between"
+            style={{ left: 330, width: 450 }}
+          >
+            {/* MVP Identity */}
+            <div className="flex flex-col items-start leading-none">
+              <span className="font-baijam text-[13px] font-bold uppercase tracking-[0.22em] text-[#8A94A6]">
+                {(resolveAgent(leftMvp)?.name || leftMvp.agentName || leftMvp.agent || 'NEON').toUpperCase()}
+              </span>
+              <span className="mt-1 font-barlowCond text-[46px] font-black uppercase text-white leading-none tracking-wide drop-shadow-[0_4px_12px_rgba(0,0,0,0.95)]">
+                {(leftMvp.alias || leftMvp.name || leftMvp.riotId || 'ZEKKEN').toUpperCase()}
+              </span>
+              {/* Glowing Cyan MVP Badge with Trailing Line */}
+              <div className="mt-2.5 flex items-center gap-2">
+                <span
+                  className="rounded-[2px] px-2.5 py-0.5 font-baijam text-[11px] font-black uppercase tracking-wider text-[#0A0D14]"
+                  style={{ background: '#00E5FF', boxShadow: '0 0 12px rgba(0, 229, 255, 0.7)' }}
+                >
+                  MVP
+                </span>
+                <div
+                  className="h-[2px] w-24"
+                  style={{ background: 'linear-gradient(90deg, #00E5FF, transparent)' }}
+                />
+              </div>
+            </div>
+
+            {/* Left MVP Stats (Right-aligned) */}
+            <div className="flex flex-col items-end leading-none pb-0.5">
+              <span className="font-barlowCond text-[26px] font-bold text-white tabular-nums">
+                {leftMvp.kills ?? 18} / {leftMvp.deaths ?? 14}
+              </span>
+              <span className="mt-2 font-barlowCond text-[26px] font-bold text-white tabular-nums">
+                {leftMvp.acs ?? 246}
+              </span>
+              <span className="mt-2 font-barlowCond text-[26px] font-bold text-white tabular-nums">
+                {(leftMvp as any).firstKills ?? 5}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Center MVP Stat Legend */}
+        <div
+          className="pointer-events-auto absolute flex h-full flex-col items-center justify-end text-center leading-none pb-1"
+          style={{ left: 880, width: 160 }}
+        >
+          <span className="font-baijam text-[11px] font-bold tracking-widest text-[#6E7687] uppercase">
+            KD
+          </span>
+          <span className="mt-3.5 font-baijam text-[11px] font-bold tracking-widest text-[#6E7687] uppercase">
+            ACS
+          </span>
+          <span className="mt-3.5 font-baijam text-[11px] font-bold tracking-widest text-[#6E7687] uppercase whitespace-nowrap">
+            FIRST KILLS
+          </span>
+        </div>
+
+        {/* Right MVP Block */}
+        {rightMvp && (
+          <div
+            className="pointer-events-auto absolute flex h-full items-end justify-between"
+            style={{ left: 1140, width: 450 }}
+          >
+            {/* Right MVP Stats (Left-aligned) */}
+            <div className="flex flex-col items-start leading-none pb-0.5">
+              <span className="font-barlowCond text-[26px] font-bold text-white tabular-nums">
+                {rightMvp.kills ?? 18} / {rightMvp.deaths ?? 14}
+              </span>
+              <span className="mt-2 font-barlowCond text-[26px] font-bold text-white tabular-nums">
+                {rightMvp.acs ?? 246}
+              </span>
+              <span className="mt-2 font-barlowCond text-[26px] font-bold text-white tabular-nums">
+                {(rightMvp as any).firstKills ?? 5}
+              </span>
+            </div>
+
+            {/* MVP Identity (Right-aligned) */}
+            <div className="flex flex-col items-end leading-none">
+              <span className="font-baijam text-[13px] font-bold uppercase tracking-[0.22em] text-[#8A94A6] text-right">
+                {(resolveAgent(rightMvp)?.name || rightMvp.agentName || rightMvp.agent || 'NEON').toUpperCase()}
+              </span>
+              <span className="mt-1 font-barlowCond text-[44px] font-black uppercase text-white leading-none tracking-wide text-right drop-shadow-[0_4px_12px_rgba(0,0,0,0.95)]">
+                {(rightMvp.alias || rightMvp.name || rightMvp.riotId || 'WALKEMDOWNBUFORD').toUpperCase()}
+              </span>
+              {/* Glowing Red MVP Badge with Trailing Line */}
+              <div className="mt-2.5 flex items-center justify-end gap-2">
+                <div
+                  className="h-[2px] w-24"
+                  style={{ background: 'linear-gradient(270deg, #FF3549, transparent)' }}
+                />
+                <span
+                  className="rounded-[2px] px-2.5 py-0.5 font-baijam text-[11px] font-black uppercase tracking-wider text-white"
+                  style={{ background: '#FF3549', boxShadow: '0 0 12px rgba(255, 53, 73, 0.7)' }}
+                >
+                  MVP
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* =========================================================================
+          BACKGROUND UPPER-BODY BUST ART IN CORNERS
+         ========================================================================= */}
+      {leftMvp && <MvpBustArt player={leftMvp} side="left" />}
+      {rightMvp && <MvpBustArt player={rightMvp} side="right" />}
     </div>
   )
 }
 
-/** Team MVP block: upper-body agent art confined to the bottom-left / bottom-right corner + name + stats. */
-function MvpBlock({
+/** Background Upper-body agent art confined to bottom corner (post game.png). */
+function MvpBustArt({
   player,
   side,
-  teamColor,
-  showFirstKills,
 }: {
   player: PostgamePlayer
   side: 'left' | 'right'
-  teamColor: string
-  showFirstKills: boolean
 }) {
   const isRight = side === 'right'
-  const name = player.alias || player.name || player.riotId || 'Player'
-  const agentLabel = String(player.agentName || player.agent || player.character || '').toUpperCase()
-  const k = player.kills ?? 0
-  const d = player.deaths ?? 0
-  const a = player.assists ?? 0
-  const fk = (player as any).firstKills ?? null
   const bust = agentBust(player)
   const portrait = agentPortrait(player)
   const artSrc = player.photoUrl || (player as any).avatarUrl || (player as any).avatar || bust || portrait
 
   return (
     <div
-      className="pointer-events-none absolute bottom-0 z-10 flex h-[480px] w-[700px] items-end"
-      style={{ [isRight ? 'right' : 'left']: 0 }}
+      className={`pointer-events-none absolute bottom-0 z-10 h-[560px] w-[540px] overflow-hidden ${
+        isRight ? 'right-0' : 'left-0'
+      }`}
     >
-      {/* Upper-body to head agent art (post game.png): cropped to chest/shoulders to head, no feet */}
-      <div
-        className={`absolute bottom-0 h-[480px] w-[460px] overflow-hidden ${
-          isRight ? 'right-0' : 'left-0'
-        }`}
-      >
-        <img
-          src={artSrc}
-          alt=""
-          className="size-full object-cover object-top"
-          style={{
-            transform: `${isRight ? 'scaleX(-1) ' : ''}scale(1.45) translateY(8%)`,
-            transformOrigin: 'top center',
-            maskImage:
-              'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%), linear-gradient(' +
-              (isRight ? 'to left' : 'to right') +
-              ', rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%)',
-            WebkitMaskImage:
-              'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%), linear-gradient(' +
-              (isRight ? 'to left' : 'to right') +
-              ', rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%)',
-            maskComposite: 'intersect',
-            WebkitMaskComposite: 'destination-in',
-            opacity: 0.94,
-          }}
-          onError={e => {
-            if (artSrc !== portrait) {
-              ;(e.currentTarget as HTMLImageElement).src = portrait
-            } else {
-              ;(e.currentTarget as HTMLImageElement).style.visibility = 'hidden'
-            }
-          }}
-        />
-      </div>
-
-      {/* Name + MVP pill */}
-      <div
-        className={`relative z-10 mb-8 flex flex-col ${
-          isRight ? 'mr-[180px] items-end ml-auto' : 'ml-[180px] items-start mr-auto'
-        }`}
-      >
-        <span className="font-baijam text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">{agentLabel}</span>
-        <span
-          className="font-schabo text-[52px] uppercase italic leading-none text-white"
-          style={{ textShadow: '0 3px 18px rgba(0,0,0,0.8)' }}
-        >
-          {name}
-        </span>
-        <span
-          className="mt-1.5 rounded-[2px] px-2.5 py-[3px] font-baijam text-[10px] font-extrabold uppercase tracking-[0.24em]"
-          style={{ background: teamColor, color: '#08111A' }}
-        >
-          MVP
-        </span>
-      </div>
-
-      {/* Stats toward the center */}
-      <div
-        className={`relative z-10 mb-8 w-[140px] shrink-0 ${
-          isRight ? 'text-left pl-4' : 'text-right pr-4'
-        }`}
-      >
-        <p className="h-[30px] font-barlowCond text-[22px] font-extrabold italic leading-[30px] tabular-nums text-white">
-          {k} / {d} / {a}
-        </p>
-        <p className="h-[26px] font-barlowCond text-[17px] font-extrabold italic leading-[26px] tabular-nums text-white/50">
-          {player.acs ?? '–'}
-        </p>
-        {showFirstKills && (
-          <p className="h-[26px] font-barlowCond text-[17px] font-extrabold italic leading-[26px] tabular-nums text-white/80">
-            {fk ?? 0}
-          </p>
-        )}
-      </div>
+      <img
+        src={artSrc}
+        alt=""
+        className="size-full object-cover object-top"
+        style={{
+          transform: `${isRight ? 'scaleX(-1) ' : ''}scale(1.35) translateY(12%)`,
+          transformOrigin: 'top center',
+          maskImage:
+            'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,1) 85%, rgba(0,0,0,0) 100%), linear-gradient(' +
+            (isRight ? 'to left' : 'to right') +
+            ', rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%)',
+          WebkitMaskImage:
+            'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,1) 85%, rgba(0,0,0,0) 100%), linear-gradient(' +
+            (isRight ? 'to left' : 'to right') +
+            ', rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%)',
+          maskComposite: 'intersect',
+          WebkitMaskComposite: 'destination-in',
+          opacity: 0.95,
+        }}
+        onError={e => {
+          if (artSrc !== portrait) {
+            ;(e.currentTarget as HTMLImageElement).src = portrait
+          } else {
+            ;(e.currentTarget as HTMLImageElement).style.visibility = 'hidden'
+          }
+        }}
+      />
     </div>
   )
 }
 
 export default BroadcastPostgameScene
+

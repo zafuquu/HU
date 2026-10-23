@@ -54,6 +54,14 @@ const KIT_CSS = `
   0%, 100% { transform: scale(1); filter: brightness(1) drop-shadow(0 0 6px rgba(255,255,255,0.7)); }
   50% { transform: scale(1.1); filter: brightness(1.2) drop-shadow(0 0 14px rgba(255,255,255,0.95)); }
 }
+@keyframes ultEnter {
+  0% { transform: scale(0.92); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes ultExit {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.92); opacity: 0; }
+}
 `
 
 const SKULL_SVG = (
@@ -166,6 +174,12 @@ function KitPanel({
   isObserved,
   isUsingUltOverride,
   onToggleUlt,
+  showKills = true,
+  showDeaths = true,
+  showAssists = true,
+  showEco = true,
+  showUlts = true,
+  teamStatsColor,
 }: {
   player: any
   side: 'left' | 'right'
@@ -173,6 +187,12 @@ function KitPanel({
   isObserved: boolean
   isUsingUltOverride?: boolean
   onToggleUlt?: (id: string) => void
+  showKills?: boolean
+  showDeaths?: boolean
+  showAssists?: boolean
+  showEco?: boolean
+  showUlts?: boolean
+  teamStatsColor?: string
 }) {
   const [localUltActive, setLocalUltActive] = React.useState(false)
   const isRight = side === 'right'
@@ -184,6 +204,8 @@ function KitPanel({
   const alias = player.alias || player.name || player.riotId || 'Player'
   const weaponSrc = getWeaponImg(player.weapon || player.weaponName)
   const st = player.abilityState
+
+  const hasSpike = Boolean(player.hasSpike || player.carryingSpike || player.hasBomb || player.isCarrier)
 
   const isUsingUlt = Boolean(
     alive && (
@@ -197,24 +219,42 @@ function KitPanel({
     )
   )
 
+  const [ultStage, setUltStage] = React.useState<'idle' | 'active' | 'exiting'>('idle')
+  const prevUsingUlt = React.useRef(isUsingUlt)
+
+  React.useEffect(() => {
+    if (isUsingUlt) {
+      setUltStage('active')
+    } else if (prevUsingUlt.current && !isUsingUlt) {
+      setUltStage('exiting')
+      const t = setTimeout(() => setUltStage('idle'), 220)
+      return () => clearTimeout(t)
+    }
+    prevUsingUlt.current = isUsingUlt
+  }, [isUsingUlt])
+
   const handleToggleUlt = (e: React.MouseEvent) => {
     e.stopPropagation()
     setLocalUltActive(prev => !prev)
     onToggleUlt?.(player.id || player.name || alias)
   }
 
-  // === "USING ULT" ACTIVE STATE (Matches using ult.jpg) ===
-  if (isUsingUlt) {
+  // === "USING ULT" ACTIVE / EXITING STATE (Matches using ult.jpg with reverse out animation) ===
+  if (ultStage === 'active' || ultStage === 'exiting') {
     const headArt = agentBust(player) || agentPortrait(player) || resolveAgent(player)?.portrait || BLANK_IMG
+    const isExiting = ultStage === 'exiting'
     return (
       <div
         className="relative cursor-pointer select-none"
-        style={{ width: 300 }}
+        style={{
+          width: 300,
+          animation: isExiting ? 'ultExit 220ms ease-in forwards' : 'ultEnter 260ms cubic-bezier(0.16,1,0.3,1) forwards',
+        }}
         onClick={handleToggleUlt}
         title="Using Ult (Click to toggle)"
       >
-        {/* Spike carrier badge */}
-        {player.hasSpike && (
+        {/* Spike carrier badge on ult card */}
+        {hasSpike && (
           <div
             className={`absolute top-[6px] z-30 grid size-[26px] place-items-center rounded-full bg-white shadow-lg ${isRight ? '-right-[10px]' : '-left-[10px]'}`}
           >
@@ -233,7 +273,7 @@ function KitPanel({
         {/* Panel body with glowing golden yellow border (row 2 in using ult.jpg) */}
         <div
           className="relative h-[79px] overflow-hidden rounded-[4px] border-2 border-[#FACC15] bg-[#0A0D12] shadow-[0_0_18px_rgba(250,204,21,0.85),inset_0_0_10px_rgba(250,204,21,0.35)]"
-          style={{ animation: 'ultGlowPulse 1.8s ease-in-out infinite' }}
+          style={{ animation: isExiting ? undefined : 'ultGlowPulse 1.8s ease-in-out infinite' }}
         >
           {/* Team color block: does NOT totally cover the panel (~72% width with angular cut) */}
           <div
@@ -328,7 +368,7 @@ function KitPanel({
   return (
     <div className="relative" style={{ width: alive ? 300 : 200, opacity: alive ? 1 : 0.6 }}>
       {/* Spike carrier badge — small white circle on the panel's outer edge (image 1) */}
-      {player.hasSpike && (
+      {hasSpike && (
         <div
           className={`absolute top-[6px] z-10 grid size-[26px] place-items-center rounded-full bg-white shadow-lg ${isRight ? '-right-[10px]' : '-left-[10px]'}`}
         >
@@ -367,27 +407,38 @@ function KitPanel({
               </div>
             )}
           </div>
-          <h1 className={`w-full truncate font-barlowCond text-[16px] font-semibold leading-tight text-white ${isRight ? 'text-right' : 'text-left'}`}>
+          <h1
+            className={`w-full truncate font-barlowCond text-[16px] font-semibold leading-tight ${isRight ? 'text-right' : 'text-left'}`}
+            style={{ color: teamStatsColor || '#FFFFFF' }}
+          >
             {alias}
           </h1>
-          <span className="font-barlowCond text-[11px] font-semibold leading-none tabular-nums text-white/55">
-            {k}/{d}/{a}
-          </span>
+          {(showKills || showDeaths || showAssists) && (
+            <span className="font-barlowCond text-[11px] font-semibold leading-none tabular-nums text-white/55">
+              {[
+                showKills ? k : null,
+                showDeaths ? d : null,
+                showAssists ? a : null,
+              ].filter(v => v !== null).join('/')}
+            </span>
+          )}
           <div className={`flex shrink-0 items-center gap-1.5 ${isRight ? 'flex-row-reverse' : ''}`}>
-            <div
-              className="grid size-[21px] place-items-center"
-              style={{
-                clipPath: 'polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)',
-                background: armor > 0 ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.14)',
-              }}
-            >
-              <span
-                className="font-barlowCond text-[10px] font-extrabold leading-none"
-                style={{ color: armor > 0 ? '#0A0C11' : 'rgba(255,255,255,0.65)' }}
+            {showEco && (
+              <div
+                className="grid size-[21px] place-items-center"
+                style={{
+                  clipPath: 'polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)',
+                  background: armor > 0 ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.14)',
+                }}
               >
-                {armor}
-              </span>
-            </div>
+                <span
+                  className="font-barlowCond text-[10px] font-extrabold leading-none"
+                  style={{ color: armor > 0 ? '#0A0C11' : 'rgba(255,255,255,0.65)' }}
+                >
+                  {armor}
+                </span>
+              </div>
+            )}
             <span
               className="font-barlowCond text-[17px] font-bold leading-none tabular-nums"
               style={{ color: alive ? '#fff' : '#8a8f98' }}
@@ -405,8 +456,12 @@ function KitPanel({
         </div>
         {/* Row 2 — ult orb, ability charge bars, weapon, credits */}
         <div className={`flex h-[32px] items-center gap-2 bg-[#0A0C11] px-2 ${isRight ? 'flex-row-reverse' : ''}`}>
-          <UltOrb player={player} teamColor={teamColor} onClick={handleToggleUlt} />
-          <span className="h-[18px] w-px bg-white/10" />
+          {showUlts && (
+            <>
+              <UltOrb player={player} teamColor={teamColor} onClick={handleToggleUlt} />
+              <span className="h-[18px] w-px bg-white/10" />
+            </>
+          )}
           <div className={`flex items-center gap-2 ${isRight ? 'flex-row-reverse' : ''}`}>
             <AbilityCharge player={player} slot="C" st={st} />
             <AbilityCharge player={player} slot="Q" st={st} />
@@ -422,14 +477,14 @@ function KitPanel({
               onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
             />
           )}
-          {credits != null && (
+          {showEco && credits != null && (
             <span
               className="flex items-center gap-1 font-barlowCond text-[13px] font-bold tabular-nums"
               style={{ color: alive ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)' }}
             >
-              <svg viewBox="0 0 190 190" fill="none" className="size-[11px] rotate-45">
-                <circle cx="95" cy="95" r="54" stroke="currentColor" strokeWidth="26" />
-                <path d="M95 52v86" stroke="currentColor" strokeWidth="22" />
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="inline size-3 rotate-45">
+                <circle cx="94.566" cy="94.574" r="54.425" stroke="currentColor" strokeWidth="22.41" />
+                <path fill="currentColor" d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z" />
               </svg>
               {credits}
             </span>
@@ -454,6 +509,7 @@ export interface ScorebugProps {
   bestOf?: number
   showSeries?: boolean
   showLogos?: boolean
+  showBombTimer?: boolean
   leftLogo?: string | null
   rightLogo?: string | null
   roundLabel?: string
@@ -465,6 +521,13 @@ export interface ScorebugProps {
   gameSeriesText?: string
   eventTitleText?: string
   roundText?: string
+  scoreLineSmall?: boolean
+  scoreLineSize?: number
+  scoreLineBackgroundImage?: string | null
+  scoreLineLeftColor?: { title?: string; score?: string }
+  scoreLineRightColor?: { title?: string; score?: string }
+  activeComponentId?: string | null
+  onSelectComponent?: (id: string) => void
 }
 
 /** Top-center scorebug: names, seeds, scores, series diamonds, round clock / spike timer. */
@@ -472,12 +535,22 @@ export function Scorebug(props: ScorebugProps) {
   const {
     leftName, rightName, leftSeed, rightSeed, leftColor, rightColor,
     scoreLeft, scoreRight, seriesLeft, seriesRight, bestOf,
-    showSeries,
-    showLogos, leftLogo, rightLogo,
-    roundLabel, timerText, timerColor,
+    showSeries = true,
+    showLogos = true,
+    showBombTimer = true,
+    leftLogo, rightLogo,
+    roundLabel, timerText, timerColor = '#DADBE3',
     spikeActive, spikeBlinkOn,
     seriesTitleText, gameSeriesText, eventTitleText, roundText,
+    scoreLineSmall = false,
+    scoreLineSize = 3,
+    scoreLineBackgroundImage = null,
+    scoreLineLeftColor,
+    scoreLineRightColor,
+    activeComponentId,
+    onSelectComponent,
   } = props
+
   const toWin = Math.max(1, Math.ceil((bestOf || 3) / 2))
   const diamonds = (won: number, color: string, flip: boolean) => (
     <div className={`flex gap-[5px] ${flip ? 'flex-row-reverse' : ''}`}>
@@ -490,6 +563,7 @@ export function Scorebug(props: ScorebugProps) {
       ))}
     </div>
   )
+
   const teamCell = (side: 'left' | 'right') => {
     const isRight = side === 'right'
     const name = isRight ? rightName : leftName
@@ -498,6 +572,8 @@ export function Scorebug(props: ScorebugProps) {
     const score = isRight ? scoreRight : scoreLeft
     const series = isRight ? seriesRight : seriesLeft
     const logo = isRight ? rightLogo : leftLogo
+    const customColors = isRight ? scoreLineRightColor : scoreLineLeftColor
+
     const logoEl = showLogos && logo ? (
       <img
         src={logo}
@@ -510,59 +586,102 @@ export function Scorebug(props: ScorebugProps) {
         <span className="font-schabo text-[15px] leading-none text-black/80">{name.slice(0, 1)}</span>
       </div>
     )
+
     const nameCol = (
       <div className={`flex min-w-0 flex-1 flex-col gap-0.5 ${isRight ? 'items-end' : 'items-start'}`}>
         {seed != null && seed !== '' && (
           <span className="font-baijam text-[9px] font-bold tracking-[0.14em] text-white/50">#{seed}</span>
         )}
-        <span className={`w-full truncate font-schabo text-[25px] uppercase leading-none text-white ${isRight ? 'text-right' : 'text-left'}`}>{name}</span>
+        <span
+          className={`w-full truncate font-schabo text-[25px] uppercase leading-none ${isRight ? 'text-right' : 'text-left'}`}
+          style={{ color: customColors?.title || '#DADBE3' }}
+        >
+          {name}
+        </span>
         {showSeries && diamonds(series, color, isRight)}
       </div>
     )
-    const scoreEl = <span className="shrink-0 font-schabo text-[38px] leading-none tabular-nums text-white">{score}</span>
+
+    const scoreEl = (
+      <span
+        className="shrink-0 font-schabo text-[38px] leading-none tabular-nums"
+        style={{ color: customColors?.score || '#DADBE3' }}
+      >
+        {score}
+      </span>
+    )
+
     return (
       <div
         className={`flex flex-1 items-center gap-1.5 px-2 ${isRight ? 'flex-row-reverse' : ''}`}
         style={{ borderBottom: `3px solid ${color}` }}
       >
-        {isRight ? (
-          <>
-            {logoEl}
-            {nameCol}
-            {scoreEl}
-          </>
-        ) : (
-          <>
-            {logoEl}
-            {nameCol}
-            {scoreEl}
-          </>
-        )}
+        {logoEl}
+        {nameCol}
+        {scoreEl}
       </div>
     )
   }
+
+  const bottomBarHeight = Math.max(18, Math.round(18 * (scoreLineSize > 1 ? 1 + scoreLineSize * 0.08 : 1)))
+
   return (
-    <div className="absolute top-0 z-20" style={{ left: '50%', width: 812, transform: 'translateX(-50%)' }}>
-      <div className="flex h-[64px] items-stretch overflow-hidden rounded-b-[6px] border border-t-0 border-white/25 bg-black/90">
+    <div
+      className={`clickable-component absolute top-0 z-20 cursor-pointer ${
+        activeComponentId === 'score-line' ? 'selected ring-2 ring-blue-500/70' : ''
+      }`}
+      style={{ left: '50%', width: scoreLineSmall ? 700 : 812, transform: 'translateX(-50%)' }}
+      data-component-id="score-line"
+      onClick={e => {
+        e.stopPropagation()
+        onSelectComponent?.('score-line')
+      }}
+    >
+      <div
+        className="relative flex h-[64px] items-stretch overflow-hidden rounded-b-[6px] border border-t-0 border-white/25"
+        style={{
+          background: scoreLineBackgroundImage
+            ? `url(${scoreLineBackgroundImage}) center/cover no-repeat, rgba(0,0,0,0.92)`
+            : 'rgba(0,0,0,0.92)',
+        }}
+      >
         {teamCell('left')}
+
+        {/* Center Clock / Spike Timer Slot */}
         <div className="relative flex w-[110px] shrink-0 flex-col items-center justify-center gap-1">
-          <span className="font-baijam text-[9px] font-bold uppercase tracking-[0.22em] text-white/60">{roundLabel}</span>
-          <div className="flex items-center gap-1">
-            {spikeActive && (
-              <img
-                src="/game/val/misc/Spike_Icon.svg"
-                alt=""
-                className="size-[15px]"
-                style={{ filter: 'invert(31%) sepia(89%) saturate(4348%) hue-rotate(336deg) brightness(101%) contrast(96%)', opacity: spikeBlinkOn ? 1 : 0.15 }}
-              />
-            )}
-            <span className="font-schabo text-[34px] leading-none tabular-nums" style={{ color: timerColor }}>{timerText}</span>
-          </div>
+          <span className="font-baijam text-[9px] font-bold uppercase tracking-[0.22em] text-white/60">
+            {roundLabel}
+          </span>
+          {showBombTimer && (
+            <div className="flex min-h-[36px] items-center justify-center">
+              {spikeActive ? (
+                // Spike Planted state: digits disappear, replaced by pulsing red Spike Icon
+                <img
+                  src="/game/val/misc/Spike_Icon.svg"
+                  alt="spike"
+                  className="h-[34px] w-auto object-contain transition-opacity duration-150"
+                  style={{
+                    filter: 'drop-shadow(0 0 10px #FF3549)',
+                    opacity: spikeBlinkOn ? 1 : 0.2,
+                  }}
+                />
+              ) : (
+                <span className="font-schabo text-[34px] leading-none tabular-nums" style={{ color: timerColor }}>
+                  {timerText}
+                </span>
+              )}
+            </div>
+          )}
         </div>
+
         {teamCell('right')}
       </div>
+
       {/* Bottom info bar — series / round / event titles (classic parity) */}
-      <div className="relative flex h-[22px] items-center justify-between rounded-b-[3px] bg-black/65 px-4 font-mussels text-[13px] uppercase">
+      <div
+        className="relative flex items-center justify-between rounded-b-[3px] bg-black/65 px-4 font-mussels uppercase"
+        style={{ height: bottomBarHeight, fontSize: 13 }}
+      >
         <div className="flex min-w-0 max-w-[300px] items-center gap-1.5">
           {[seriesTitleText, gameSeriesText].filter(Boolean).map((t, i) => (
             <React.Fragment key={i}>
@@ -571,7 +690,9 @@ export function Scorebug(props: ScorebugProps) {
             </React.Fragment>
           ))}
         </div>
-        <span className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap font-insatiable text-[15px] text-white/90">{roundText}</span>
+        <span className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap font-insatiable text-[15px] text-white/90">
+          {roundText}
+        </span>
         <div className="flex min-w-0 max-w-[300px] items-center justify-end gap-1.5">
           {eventTitleText ? <span className="truncate text-white/80">{eventTitleText}</span> : null}
         </div>
@@ -708,9 +829,23 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
     spikeState = null,
     spikePlantedAt = null,
     eventsBg,
+    eventsHighlight,
     gameEventsIndividual = false,
     gameEventsUploads,
     ceremonyPersistent = false,
+    showBombTimer = true,
+    scoreLineSmall = false,
+    scoreLineSize = 3,
+    scoreLineBackgroundImage = null,
+    scoreLineLeftColor,
+    scoreLineRightColor,
+    showKills = true,
+    showDeaths = true,
+    showAssists = true,
+    showEco = true,
+    showUlts = true,
+    teamStatsLeftColor,
+    teamStatsRightColor,
   } = props
 
   // Interactive Ult state for testing / operator trigger
@@ -747,13 +882,12 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
   const leftRoster = leftTeamPlayers || []
   const rightRoster = rightTeamPlayers || []
 
-  // Keep bans visible as in the classic Ingame HUD; the label/color renderer below supports them.
-  const activeMapHistory = (mapHistoryItems || []).filter(i => i.kind !== 'pool')
+  // Bans should not appear in Ingame HUD map history; only picks and deciders
+  const activeMapHistory = (mapHistoryItems || []).filter(i => i.kind !== 'pool' && i.kind !== 'ban')
   const labeledMapHistory = (() => {
     let n = 0
     return activeMapHistory.map(item => {
       if (item.kind === 'decider') return { ...item, label: 'DECIDER:' }
-      if (item.kind === 'ban') return { ...item, label: 'BAN:' }
       n += 1
       return { ...item, label: `MAP ${n}:` }
     })
@@ -891,7 +1025,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
 
   return (
     <div
-      className="scene-root relative size-full select-none overflow-hidden bg-transparent font-schabo text-[#DADBE3] animate-[fadeIn_300ms_ease-out]"
+      className="scene-root relative size-full select-none overflow-hidden bg-transparent font-schabo text-[#DADBE3] animate-[kitGeIn_300ms_ease-out]"
       style={
         {
           width: 1920,
@@ -904,12 +1038,15 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
       <style>{KIT_CSS}</style>
 
       {/* Round ceremony (game events) — Version 1 official VCT banner design (new gameevent.png) */}
-      {showTeamStats && (
+      {(showTeamStats || activeComponentId === 'game-events') && (
         <Version1RoundCeremony
-          trigger={ceremonyTrigger || (roundEnd?.winner ? 'rd:' + (roundNumber ?? 0) + ':' + roundEnd.winner : null)}
-          reasonText={ceremonyText || roundEndReasonText}
-          roundNumber={roundNumber}
-          winSide={winSide}
+          trigger={
+            ceremonyTrigger ||
+            (roundEnd?.winner ? 'rd:' + (roundNumber ?? 0) + ':' + roundEnd.winner : (ceremonyPersistent || activeComponentId === 'game-events' ? 'editor-preview' : null))
+          }
+          reasonText={ceremonyText || roundEndReasonText || 'ROUND WIN'}
+          roundNumber={roundNumber ?? 13}
+          winSide={winSide || 'defense'}
           winnerName={(ceremonyWinner || roundEnd?.winner) === 'blue' ? bannerLeftName : bannerRightName}
           winnerLogo={((ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamLogo : rightTeamLogo) ?? null}
           winnerColor={(ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamColor : rightTeamColor}
@@ -918,8 +1055,10 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
           rightColor={rightTeamColor}
           tournamentLogo={tournamentLogo}
           clutchHighlight={roundEnd?.highlightPlayer ?? null}
+          baseColor={eventsBg}
+          accentColor={eventsHighlight}
           eventImage={ceremonyEventImage}
-          persistent={ceremonyPersistent}
+          persistent={ceremonyPersistent || activeComponentId === 'game-events'}
           activeComponentId={activeComponentId}
           onSelectComponent={onSelectComponent}
         />
@@ -971,6 +1110,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
           bestOf={bestOf}
           showSeries={showSeries}
           showLogos={showLogos}
+          showBombTimer={showBombTimer}
           leftLogo={leftTeamLogo}
           rightLogo={rightTeamLogo}
           roundLabel={roundText || ''}
@@ -982,6 +1122,13 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
           gameSeriesText={gameSeriesText}
           eventTitleText={eventTitleText}
           roundText={roundText || ''}
+          scoreLineSmall={scoreLineSmall}
+          scoreLineSize={scoreLineSize}
+          scoreLineBackgroundImage={scoreLineBackgroundImage}
+          scoreLineLeftColor={scoreLineLeftColor}
+          scoreLineRightColor={scoreLineRightColor}
+          activeComponentId={activeComponentId}
+          onSelectComponent={onSelectComponent}
         />
       )}
 
@@ -1015,9 +1162,18 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
 
       {/* ===== Normal mode: side roster columns (outward to inward entrance) ===== */}
       {!duelMode && showTeamStats && (
-        <>
+        <div
+          className={`clickable-component border-0 border-none absolute bottom-0 inset-x-0 z-10 flex justify-between p-[16px] pointer-events-auto ${
+            activeComponentId === 'team-stats' ? 'selected ring-2 ring-blue-500/50' : ''
+          }`}
+          data-component-id="team-stats"
+          onClick={e => {
+            e.stopPropagation()
+            onSelectComponent?.('team-stats')
+          }}
+        >
           <div
-            className="absolute bottom-[14px] left-[16px] z-10 flex flex-col gap-[6px]"
+            className="flex flex-col gap-[6px]"
             style={{ animation: 'v1InwardLeft 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
           >
             {leftRoster.map((player: any, idx: number) => {
@@ -1028,6 +1184,12 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
                   player={player}
                   side="left"
                   teamColor={leftTeamColor}
+                  showKills={showKills}
+                  showDeaths={showDeaths}
+                  showAssists={showAssists}
+                  showEco={showEco}
+                  showUlts={showUlts}
+                  teamStatsColor={teamStatsLeftColor}
                   isObserved={isObservedPlayer(player, 'left', idx)}
                   isUsingUltOverride={Boolean(toggledUlts[pKey])}
                   onToggleUlt={() => handleToggleUlt(pKey)}
@@ -1037,7 +1199,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
           </div>
           {rightRoster.length > 0 && (
             <div
-              className="absolute bottom-[14px] right-[16px] z-10 flex flex-col items-end gap-[6px]"
+              className="flex flex-col items-end gap-[6px]"
               style={{ animation: 'v1InwardRight 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
             >
               {rightRoster.map((player: any, idx: number) => {
@@ -1048,12 +1210,66 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
                     player={player}
                     side="right"
                     teamColor={rightTeamColor}
+                    showKills={showKills}
+                    showDeaths={showDeaths}
+                    showAssists={showAssists}
+                    showEco={showEco}
+                    showUlts={showUlts}
+                    teamStatsColor={teamStatsRightColor}
                     isObserved={isObservedPlayer(player, 'right', idx)}
                     isUsingUltOverride={Boolean(toggledUlts[pKey])}
                     onToggleUlt={() => handleToggleUlt(pKey)}
                   />
                 )
               })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== Duel (1v1) mode: survivor panel + camera per side, death strips at the corners ===== */}
+      {duelMode && showTeamStats && (
+        <>
+          {duelSurvivorLeft && (
+            <div
+              className="absolute bottom-[150px] left-[40px] z-10 flex flex-col items-start gap-2"
+              style={{ animation: 'v1InwardLeft 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+            >
+              <KitPanel
+                player={duelSurvivorLeft}
+                side="left"
+                teamColor={leftTeamColor}
+                showKills={showKills}
+                showDeaths={showDeaths}
+                showAssists={showAssists}
+                showEco={showEco}
+                showUlts={showUlts}
+                teamStatsColor={teamStatsLeftColor}
+                isObserved={isObservedPlayer(duelSurvivorLeft, 'left', 0)}
+                isUsingUltOverride={Boolean(toggledUlts[String(duelSurvivorLeft.id || duelSurvivorLeft.name || duelSurvivorLeft.alias || 'left-0')])}
+                onToggleUlt={() => handleToggleUlt(String(duelSurvivorLeft.id || duelSurvivorLeft.name || duelSurvivorLeft.alias || 'left-0'))}
+              />
+            </div>
+          )}
+          {duelSurvivorRight && (
+            <div
+              className="absolute bottom-[150px] right-[40px] z-10 flex flex-col items-end gap-2"
+              style={{ animation: 'v1InwardRight 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+            >
+              <KitPanel
+                player={duelSurvivorRight}
+                side="right"
+                teamColor={rightTeamColor}
+                showKills={showKills}
+                showDeaths={showDeaths}
+                showAssists={showAssists}
+                showEco={showEco}
+                showUlts={showUlts}
+                teamStatsColor={teamStatsRightColor}
+                isObserved={isObservedPlayer(duelSurvivorRight, 'right', 0)}
+                isUsingUltOverride={Boolean(toggledUlts[String(duelSurvivorRight.id || duelSurvivorRight.name || duelSurvivorRight.alias || 'right-0')])}
+                onToggleUlt={() => handleToggleUlt(String(duelSurvivorRight.id || duelSurvivorRight.name || duelSurvivorRight.alias || 'right-0'))}
+              />
             </div>
           )}
         </>

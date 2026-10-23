@@ -58,7 +58,8 @@ export const chargeBarStyle = (s: ChargeState): CSSProperties =>
 export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => {
   if (slot === 'X') return 1
   const k = (agentCodename(player) || '').toLowerCase()
-  if ((k === 'sarge' || k === 'brimstone') && slot === 'E') return 3
+  const name = String(player?.agentName || player?.agent || '').toLowerCase()
+  if ((k === 'sarge' || k === 'brimstone' || name === 'brimstone') && slot === 'E') return 3
 
   const twoCharges: Record<string, AbilitySlot[]> = {
     hunter: ['Q'],
@@ -97,13 +98,17 @@ export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => 
     iso: ['Q'],
     smonk: ['E'],
     clove: ['E'],
-    nox: ['E'],
-    vyse: ['E'],
+    sprinter: ['Q'],
+    neon: ['Q'],
+    nox: ['Q'],
+    vyse: ['Q'],
+    rift: ['E'],
+    astra: ['E'],
     cashew: ['Q'],
     tejo: ['Q'],
   }
 
-  if (twoCharges[k]?.includes(slot)) return 2
+  if (twoCharges[k]?.includes(slot) || twoCharges[name]?.includes(slot)) return 2
   return 1
 }
 

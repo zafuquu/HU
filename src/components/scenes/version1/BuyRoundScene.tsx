@@ -55,6 +55,10 @@ interface BroadcastBuyRoundProps {
   bestOf?: number
   showSeries?: boolean
   showLogos?: boolean
+  showSponsors?: boolean
+  smallVariant?: boolean
+  activeComponentId?: string | null
+  onSelectComponent?: (id: string) => void
 }
 
 const KIT_BUY_CSS = `
@@ -86,6 +90,9 @@ function MatchHistoryGrid({
   leftTeamColor: string
   rightTeamColor: string
 }) {
+  const maxRound = Math.max(0, ...(roundHistory || []).map((h: any) => Number(h?.round) || 0))
+  const isSecondHalf = maxRound >= 12
+
   const otMax = Math.max(24, ...(roundHistory || []).map((h: any) => Number(h?.round) || 0))
   const otGroups: number[][] = []
   for (let s = 25; s <= otMax; s += 24) {
@@ -103,22 +110,53 @@ function MatchHistoryGrid({
 
   return (
     <div className="flex w-[1065px] flex-col mx-auto">
+      {/* Overtime section stacked ABOVE the original grid when maxRound >= 25 */}
+      {otGroups.length > 0 && (
+        <div className="mb-1 flex w-full flex-col gap-1">
+          {otGroups.map((g: number[], gi: number) => (
+            <div key={'ot' + gi} className="flex h-[28px] w-full items-center gap-1 rounded-sm border border-white/20 bg-[#151515] p-1 shadow-md">
+              <div className="w-[119px] shrink-0 text-center font-baijam text-[11px] font-bold uppercase text-[#FFD166]">
+                OT {gi + 1}
+              </div>
+              <div className="flex h-full flex-1 flex-row gap-1 overflow-x-auto">
+                {g.map((n: number) => {
+                  const rec = (roundHistory || []).find((h: any) => h.round === n)
+                  const wonLeft = !!rec && rec.winner === 'blue'
+                  const wonRight = !!rec && rec.winner === 'red'
+                  const icon = rec ? REASON_ICON[rec.reason] || 'kills' : null
+                  return (
+                    <div key={n} className="flex h-full w-[34.6px] shrink-0 flex-col items-center justify-center gap-[2px]">
+                      <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
+                        {wonLeft && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                      </div>
+                      <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
+                        {wonRight && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* 1st Half / 2nd Half header */}
       <div className="font-semibold flex h-[27px] w-full items-center gap-1 rounded-[3.37px] bg-[#0000007A] p-1 font-mussels text-[12px] tracking-wider uppercase">
-        <div className="w-[119px] text-center">
-          <h1>1st Half</h1>
+        <div className={`w-[119px] text-center ${!isSecondHalf ? 'text-white' : 'text-[#737373]'}`}>
+          <h1>{!isSecondHalf ? '1st Half' : '2nd Half'}</h1>
         </div>
         <div className="flex h-full flex-1 justify-between">
-          <div className="mr-3 flex h-full flex-row justify-end gap-1 overflow-hidden">
+          <div className={`mr-3 flex h-full flex-row justify-end gap-1 overflow-hidden transition-opacity duration-300 ${isSecondHalf ? 'opacity-40' : 'opacity-100'}`}>
             {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map(n => (
-              <div key={n} className="w-[34.6px] text-center font-baijam text-[12px] text-[#D2D2D2]">
+              <div key={n} className={`w-[34.6px] text-center font-baijam text-[12px] ${!isSecondHalf ? 'text-[#D2D2D2]' : 'text-[#737373]'}`}>
                 <h1>{n}</h1>
               </div>
             ))}
           </div>
-          <div className="flex h-full flex-row justify-end gap-1 overflow-hidden">
+          <div className={`flex h-full flex-row justify-end gap-1 overflow-hidden transition-opacity duration-300 ${isSecondHalf ? 'opacity-100' : 'opacity-40'}`}>
             {['13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24'].map(n => (
-              <div key={n} className="w-[34.6px] text-center font-baijam text-[12px] text-[#737373]">
+              <div key={n} className={`w-[34.6px] text-center font-baijam text-[12px] ${isSecondHalf ? 'text-[#D2D2D2]' : 'text-[#737373]'}`}>
                 <h1>{n}</h1>
               </div>
             ))}
@@ -143,7 +181,7 @@ function MatchHistoryGrid({
         {/* Round boxes */}
         <div className="flex h-[50px] flex-1 justify-between">
           {/* Half 1 */}
-          <div className="flex h-full flex-row justify-end gap-1 overflow-hidden">
+          <div className={`flex h-full flex-row justify-end gap-1 overflow-hidden transition-opacity duration-300 ${isSecondHalf ? 'opacity-40' : 'opacity-100'}`}>
             {Array.from({ length: 12 }, (_, i) => {
               const n = i + 1
               const rec = (roundHistory || []).find((h: any) => h.round === n)
@@ -164,7 +202,7 @@ function MatchHistoryGrid({
           </div>
 
           {/* Half 2 */}
-          <div className="flex h-full flex-row justify-end gap-1 overflow-hidden">
+          <div className={`flex h-full flex-row justify-end gap-1 overflow-hidden transition-opacity duration-300 ${isSecondHalf ? 'opacity-100' : 'opacity-40'}`}>
             {Array.from({ length: 12 }, (_, i) => {
               const n = 12 + i + 1
               const rec = (roundHistory || []).find((h: any) => h.round === n)
@@ -183,37 +221,6 @@ function MatchHistoryGrid({
               )
             })}
           </div>
-
-          {/* Overtime continuation */}
-          {otGroups.length > 0 && (
-            <div className="flex w-full flex-col gap-1">
-              {otGroups.map((g: number[], gi: number) => (
-                <div key={'ot' + gi} className="flex h-[34.6px] flex-row justify-start gap-1 overflow-hidden">
-                  <div className="flex h-full w-[119px] items-center text-center font-baijam text-[12px] text-[#D2D2D2]">
-                    <h1>OT{gi + 1}</h1>
-                  </div>
-                  <div className="flex h-full flex-1 flex-row gap-1 overflow-hidden">
-                    {g.map((n: number) => {
-                      const rec = (roundHistory || []).find((h: any) => h.round === n)
-                      const wonLeft = !!rec && rec.winner === 'blue'
-                      const wonRight = !!rec && rec.winner === 'red'
-                      const icon = rec ? REASON_ICON[rec.reason] || 'kills' : null
-                      return (
-                        <div key={n} className="flex h-full w-[34.6px] flex-col items-center justify-center gap-1">
-                          <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
-                            {wonLeft && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
-                          </div>
-                          <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
-                            {wonRight && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -287,49 +294,36 @@ function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
   )
 }
 
-function EconCell({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="flex flex-col items-center leading-none">
-      <span className="font-baijam text-[8px] font-bold uppercase tracking-[0.14em] text-white/40">{label}</span>
-      <span className="mt-[3px] font-barlowCond text-[15px] font-extrabold tabular-nums" style={{ color }}>
-        {value}
-      </span>
-    </div>
-  )
-}
-
 /** One buy-round player card: portrait, name, KDA, abilities, gun+shield, econ. */
 function KitBuyCard({
   player,
   teamColor,
-  income,
 }: {
   player: any
   teamColor: string
-  income: number
+  income?: number
 }) {
   const alias = player.alias || player.name || player.riotId || 'Player'
   const { k, d, a } = kdaOf(player)
   const credits = creditsOf(player) ?? 0
   const spent = spentOf(player) ?? 0
-  const next = Math.max(0, credits + income)
   const st = player.abilityState
   const iconFallback = agentCodename(player) ? `/game/val/agents/${agentCodename(player)}/icon.png` : BLANK_IMG
   return (
-    <div className="relative flex-1 min-w-0 overflow-hidden rounded-[3px] bg-[#0B0E13]/95 flex flex-col items-center">
+    <div className="relative flex-1 min-h-[238px] min-w-0 overflow-hidden rounded-[3px] bg-[#0B0E13]/95 flex flex-col items-center py-1">
       {/* top accent */}
       <div className="h-[3px] w-full" style={{ background: teamColor }} />
       {/* Agent icon - centered horizontally */}
-      <div className="relative mx-auto mt-2 flex h-[48px] w-full items-center justify-center">
+      <div className="relative mx-auto mt-2 flex h-[52px] w-full items-center justify-center">
         <img
           src={agentIcon(player) || iconFallback}
           alt=""
-          className="size-[48px] object-contain mx-auto"
+          className="size-[52px] object-contain mx-auto"
           onError={e => { (e.currentTarget as HTMLImageElement).src = iconFallback }}
         />
       </div>
       <p
-        className="mt-1 w-full truncate px-2 text-center font-schabo text-[21px] uppercase leading-none"
+        className="mt-1 w-full truncate px-2 text-center font-schabo text-[22px] uppercase leading-none"
         style={{ color: teamColor }}
       >
         {alias}
@@ -338,27 +332,39 @@ function KitBuyCard({
         {k}/{d}/{a}
       </p>
       {/* Abilities + charge bars */}
-      <div className="mt-2 flex items-start justify-center gap-2.5">
+      <div className="mt-2.5 flex items-start justify-center gap-2.5">
         <BuyAbility player={player} slot="C" st={st} />
         <BuyAbility player={player} slot="Q" st={st} />
         <BuyAbility player={player} slot="E" st={st} />
         <BuyUlt player={player} teamColor={teamColor} />
       </div>
       {/* Weapon + shield */}
-      <div className="mt-2 flex h-[26px] items-center justify-center gap-2">
+      <div className="mt-2.5 flex h-[26px] items-center justify-center gap-2">
         <img
           src={getWeaponImg(player.weapon || player.weaponName)}
           alt=""
-          className="max-h-[22px] max-w-[92px] object-contain"
+          className="max-h-[24px] max-w-[100px] object-contain"
           onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
         />
-        <img src={getShieldImg(player)} alt="" className="h-[20px] object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
+        <img src={getShieldImg(player)} alt="" className="h-[21px] object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
       </div>
-      {/* Econ */}
-      <div className="mt-2 grid w-full grid-cols-3 gap-0.5 px-1 pb-2">
-        <EconCell label="SPENT" value={`-${spent}`} color="#FF4D4D" />
-        <EconCell label="REM" value={String(credits)} color="#FFD166" />
-        <EconCell label="NEXT" value={String(next)} color="rgba(255,255,255,0.62)" />
+      {/* Classic creds display (matching classic BuyRoundScene) */}
+      <div className="mt-2.5 flex w-full flex-col items-center justify-center gap-1 pb-1.5">
+        <p className="relative w-fit text-center leading-none whitespace-nowrap opacity-95">
+          <span className="mr-0.5 text-[#F9E4AB] font-bold text-[14px]">-</span>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="relative mr-1 inline size-3.5 -translate-y-0.5 rotate-45">
+            <circle cx="94.566" cy="94.574" r="54.425" stroke="#F9E4AB" strokeWidth="22.41" />
+            <path fill="#F9E4AB" d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z" />
+          </svg>
+          <span className="font-barlowCond text-[17px] font-extrabold text-[#F9E4AB] tabular-nums">{credits}</span>
+        </p>
+        <p className="relative w-fit text-center leading-none whitespace-nowrap opacity-85 mt-0.5">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="relative mr-1 inline size-3 -translate-y-0.5 rotate-45 text-[#EFF1FF]">
+            <circle cx="94.566" cy="94.574" r="54.425" stroke="currentColor" strokeWidth="22.41" />
+            <path fill="currentColor" d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z" />
+          </svg>
+          <span className="font-barlowCond text-[14px] font-bold text-white tabular-nums">{spent}</span>
+        </p>
       </div>
     </div>
   )
@@ -388,11 +394,12 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
     seriesTitleText = '',
     gameSeriesText = '',
     eventTitleText = '',
-    timerText = 'BUY ROUND',
+    timerText = '',
     timerColor = '#DADBE3',
     bestOf = 3,
     showSeries = true,
     showLogos = true,
+    showSponsors = true,
     isToggled = () => true,
   } = props
   if (!isToggled('buy-round')) return null
@@ -413,13 +420,12 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
     right: calcEco(rightTeamPlayers),
   }
 
-  // Match IngameHUD Main: retain map picks and decider; omit pool entries.
-  const activeMapHistory = (mapHistoryItems || []).filter((i: any) => i.kind !== 'pool')
+  // Match IngameHUD Main: retain map picks and decider; omit pool entries and bans.
+  const activeMapHistory = (mapHistoryItems || []).filter((i: any) => i.kind !== 'pool' && i.kind !== 'ban')
   const labeledMapHistory = (() => {
     let n = 0
     return activeMapHistory.map((item: any) => {
       if (item.kind === 'decider') return { ...item, label: 'DECIDER:' }
-      if (item.kind === 'ban') return { ...item, label: 'BAN:' }
       n += 1
       return { ...item, label: `MAP ${n}:` }
     })
@@ -497,14 +503,44 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
         className="absolute inset-x-0 bottom-2 z-20 flex flex-col items-center gap-1.5 px-0"
         style={{ animation: 'kitBuyIn 360ms ease-out' }}
       >
-        {/* Match history grid in the middle above player panels */}
-        <MatchHistoryGrid
-          roundHistory={roundHistory}
-          leftTeamName={leftTeamName}
-          rightTeamName={rightTeamName}
-          leftTeamColor={leftTeamColor}
-          rightTeamColor={rightTeamColor}
-        />
+        {/* Row 1: Left Sponsor Card  |  Match History Grid  |  Right Sponsor Card */}
+        <div className="flex w-full items-center justify-between px-2 gap-3">
+          <div
+            className="h-[84px] w-[385px] rounded-[4px] bg-[#1A1A1AE0] overflow-hidden"
+            style={!showSponsors ? { visibility: 'hidden' } : undefined}
+          >
+            <div className="sponsors-card relative overflow-hidden p-1 size-full rounded-sm">
+              <div className="absolute top-0 left-0 size-full bg-[#292929] opacity-[0.5]" />
+              <img
+                alt="sponsor"
+                className="absolute inset-0 z-1 size-full object-contain p-2"
+                src={sponsorImageUrl || '/sponsor/Sponsor-1.png'}
+              />
+            </div>
+          </div>
+
+          <MatchHistoryGrid
+            roundHistory={roundHistory}
+            leftTeamName={leftTeamName}
+            rightTeamName={rightTeamName}
+            leftTeamColor={leftTeamColor}
+            rightTeamColor={rightTeamColor}
+          />
+
+          <div
+            className="h-[84px] w-[385px] rounded-[4px] bg-[#1A1A1AE0] overflow-hidden"
+            style={!showSponsors ? { visibility: 'hidden' } : undefined}
+          >
+            <div className="sponsors-card relative overflow-hidden p-1 size-full rounded-sm">
+              <div className="absolute top-0 left-0 size-full bg-[#292929] opacity-[0.5]" />
+              <img
+                alt="sponsor"
+                className="absolute inset-0 z-1 size-full object-contain p-2"
+                src={sponsorImageUrl || '/sponsor/Sponsor-1.png'}
+              />
+            </div>
+          </div>
+        </div>
 
         {/* Economy tracker replacing old SPENT/REM/NEXT(MIN) cells */}
         <div className="w-full flex justify-center py-1">

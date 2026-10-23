@@ -102,6 +102,8 @@ export function Version1RoundCeremony({
   winnerLogo,
   winnerColor = '#28D091',
   tournamentLogo,
+  baseColor,
+  accentColor,
   eventImage,
   persistent = false,
   activeComponentId,
@@ -197,6 +199,8 @@ export function Version1RoundCeremony({
               className="absolute inset-0 border-t border-x border-white/20 bg-gradient-to-b from-[#444A40] to-[#252822] shadow-[0_-2px_10px_rgba(0,0,0,0.5)]"
               style={{
                 clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
+                background: baseColor ? `linear-gradient(to bottom, ${baseColor}, rgba(0,0,0,0.85))` : undefined,
+                borderColor: accentColor || undefined,
               }}
             />
             {/* Left shoulder accent arrow */}
@@ -211,21 +215,25 @@ export function Version1RoundCeremony({
             className="relative w-full overflow-hidden border border-white/20 bg-[#1A1F18] shadow-[0_16px_40px_rgba(0,0,0,0.75)] backdrop-blur-md"
             style={{
               clipPath: 'polygon(0% 16%, 3.5% 0%, 96.5% 0%, 100% 16%, 100% 84%, 96.5% 100%, 3.5% 100%, 0% 84%)',
+              backgroundColor: baseColor || '#1A1F18',
+              borderColor: accentColor || 'rgba(255,255,255,0.2)',
             }}
           >
-            {/* Stage 3: Color layer (military olive gradient + ambient team color wash) */}
+            {/* Stage 3: Color layer (military olive gradient or custom baseColor + ambient highlight) */}
             <div
               className="pointer-events-none absolute inset-0"
               style={{
                 animation: !isExiting ? 'v1ColorIn 400ms ease-out 360ms both' : undefined,
-                background: 'linear-gradient(180deg, rgba(52,59,49,0.95) 0%, rgba(35,40,33,0.98) 50%, rgba(24,28,22,0.98) 100%)',
+                background: baseColor
+                  ? `linear-gradient(180deg, ${baseColor}F0 0%, ${baseColor}C0 50%, #0A0D12 100%)`
+                  : 'linear-gradient(180deg, rgba(52,59,49,0.95) 0%, rgba(35,40,33,0.98) 50%, rgba(24,28,22,0.98) 100%)',
               }}
             >
-              {/* Team color subtle ambient glow */}
+              {/* Team color / accent color subtle ambient glow */}
               <div
-                className="absolute inset-0 opacity-25"
+                className="absolute inset-0 opacity-30"
                 style={{
-                  background: `radial-gradient(circle at 50% 35%, ${winnerColor} 0%, transparent 68%)`,
+                  background: `radial-gradient(circle at 50% 35%, ${accentColor || winnerColor} 0%, transparent 68%)`,
                 }}
               />
               {/* Optional custom uploaded game event banner */}
@@ -233,7 +241,7 @@ export function Version1RoundCeremony({
                 <img
                   src={eventImage}
                   alt=""
-                  className="absolute inset-0 size-full object-cover mix-blend-overlay opacity-30"
+                  className="absolute inset-0 size-full object-cover mix-blend-overlay opacity-60"
                 />
               )}
             </div>
@@ -261,7 +269,8 @@ export function Version1RoundCeremony({
                 <h1
                   className="font-schabo text-[48px] uppercase tracking-[0.14em] leading-none text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]"
                   style={{
-                    textShadow: `0 0 28px ${winnerColor}55, 0 4px 12px rgba(0,0,0,0.9)`,
+                    color: accentColor || '#FFFFFF',
+                    textShadow: `0 0 28px ${(accentColor || winnerColor)}55, 0 4px 12px rgba(0,0,0,0.9)`,
                   }}
                 >
                   {cleanTitle}
