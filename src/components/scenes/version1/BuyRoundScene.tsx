@@ -7,9 +7,9 @@ import {
   abilityImg,
   agentCodename,
   agentIcon,
-  chargeBarStyle,
-  chargeState,
   creditsOf,
+  getMaxAbilityCharges,
+  getAbilityCurrentCharges,
   incomeEstimate,
   kdaOf,
   spentOf,
@@ -60,6 +60,14 @@ interface BroadcastBuyRoundProps {
 const KIT_BUY_CSS = `
 @keyframes kitBuyIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 @keyframes kitBuyScoreIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes v1InwardLeft {
+  0% { transform: translateX(-80px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes v1InwardRight {
+  0% { transform: translateX(80px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
 `
 
 const TEAM_INCOME_SIDE = { left: 'blue', right: 'red' } as const
@@ -212,19 +220,44 @@ function MatchHistoryGrid({
   )
 }
 
-/** Buy-card ability cell: icon + charge bar (X = ult progress bar). */
+/** Buy-card ability cell: icon + charge stack rectangle boxes (1, 2, or 3 stacks that light up if bought). */
 function BuyAbility({ player, slot, st }: { player: any; slot: 'C' | 'Q' | 'E'; st: any }) {
-  const state = chargeState(st, slot)
+  const maxCharges = getMaxAbilityCharges(player, slot)
+  const currentCharges = getAbilityCurrentCharges(player, slot, st, maxCharges)
+  const isAvailable = currentCharges > 0
+
   return (
     <div className="flex flex-col items-center">
       <img
         src={abilityImg(player, slot)}
         alt=""
         className="size-[19px] object-contain"
-        style={{ opacity: state === 'ready' ? 1 : state === 'spent' ? 0.4 : 0.55 }}
+        style={{ opacity: isAvailable ? 1 : 0.38 }}
         onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
       />
-      <span className="mt-1 block h-[3px] w-[18px] rounded-full" style={chargeBarStyle(state)} />
+      {/* Rectangle charge box(es) below the ability icon */}
+      <div className="mt-1 flex h-[3.5px] w-[20px] items-center gap-[2px]">
+        {Array.from({ length: maxCharges }, (_, i) => {
+          const isLit = i < currentCharges
+          return (
+            <span
+              key={i}
+              className="h-full flex-1 rounded-[1px] transition-all duration-200"
+              style={
+                isLit
+                  ? {
+                      background: '#FFFFFF',
+                      boxShadow: '0 0 5px rgba(255,255,255,0.9)',
+                    }
+                  : {
+                      background: 'rgba(255,255,255,0.14)',
+                      border: '1px solid rgba(255,255,255,0.22)',
+                    }
+              }
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -484,14 +517,20 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
           />
         </div>
 
-        {/* Player cards: flush on both sides without outer gaps (px-0), centered agent icons */}
+        {/* Player cards: outward to inward entrance, flush on both sides without outer gaps (px-0), centered agent icons */}
         <div className="flex w-full items-stretch justify-between px-0 gap-3">
-          <div className="flex min-w-0 flex-1 justify-between gap-1.5">
+          <div
+            className="flex min-w-0 flex-1 justify-between gap-1.5"
+            style={{ animation: 'v1InwardLeft 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+          >
             {leftTeamPlayers.slice(0, 5).map((p: any, i: number) => (
               <KitBuyCard key={p.id || i} player={p} teamColor={leftTeamColor} income={incomeLeft} />
             ))}
           </div>
-          <div className="flex min-w-0 flex-1 flex-row-reverse justify-between gap-1.5">
+          <div
+            className="flex min-w-0 flex-1 flex-row-reverse justify-between gap-1.5"
+            style={{ animation: 'v1InwardRight 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+          >
             {rightTeamPlayers.slice(0, 5).map((p: any, i: number) => (
               <KitBuyCard key={p.id || i} player={p} teamColor={rightTeamColor} income={incomeRight} />
             ))}

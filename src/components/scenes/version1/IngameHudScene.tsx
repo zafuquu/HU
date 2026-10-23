@@ -1,20 +1,21 @@
 import React from 'react'
 import {
-  RoundCeremony,
   getWeaponImg,
   useSpikeBlink,
   type IngameHudSceneProps,
 } from '../classic/IngameHudScene'
+import { Version1RoundCeremony } from './GameEventsScene'
 import {
   BLANK_IMG,
   abilityImg,
+  agentBust,
   agentIcon,
   agentPortrait,
   aliveOf,
   armorOf,
-  chargeBarStyle,
-  chargeState,
   creditsOf,
+  getMaxAbilityCharges,
+  getAbilityCurrentCharges,
   hexRgba,
   hpOf,
   kdaOf,
@@ -31,6 +32,28 @@ const KIT_CSS = `
 }
 @keyframes kitBlink { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
 @keyframes kitGeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes v1InwardLeft {
+  0% { transform: translateX(-80px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes v1InwardRight {
+  0% { transform: translateX(80px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+@keyframes ultGlowPulse {
+  0%, 100% {
+    box-shadow: 0 0 14px 2px rgba(250, 204, 21, 0.75), inset 0 0 8px rgba(250, 204, 21, 0.3);
+    border-color: #FACC15;
+  }
+  50% {
+    box-shadow: 0 0 24px 6px rgba(250, 204, 21, 0.95), inset 0 0 14px rgba(250, 204, 21, 0.5);
+    border-color: #FEF08A;
+  }
+}
+@keyframes ultIconPulse {
+  0%, 100% { transform: scale(1); filter: brightness(1) drop-shadow(0 0 6px rgba(255,255,255,0.7)); }
+  50% { transform: scale(1.1); filter: brightness(1.2) drop-shadow(0 0 14px rgba(255,255,255,0.95)); }
+}
 `
 
 const SKULL_SVG = (
@@ -49,10 +72,22 @@ const EYE_SVG = (
 )
 
 /** Ultimate orb — static ring + team-color glow when fully charged. */
-function UltOrb({ player, teamColor }: { player: any; teamColor: string }) {
+function UltOrb({
+  player,
+  teamColor,
+  onClick,
+}: {
+  player: any
+  teamColor: string
+  onClick?: (e: React.MouseEvent) => void
+}) {
   const ready = ultReadyOf(player)
   return (
-    <div className="relative grid size-[27px] shrink-0 place-items-center">
+    <div
+      className="relative grid size-[27px] shrink-0 place-items-center cursor-pointer transition-transform hover:scale-110 active:scale-95"
+      onClick={onClick}
+      title="Toggle Using Ult"
+    >
       {ready && (
         <span
           className="absolute -inset-[3px] rounded-full border-2 border-dashed"
@@ -74,35 +109,72 @@ function UltOrb({ player, teamColor }: { player: any; teamColor: string }) {
   )
 }
 
-/** Ability icon + charge bar under it (lit / spent-dim / hollow-unknown). */
+/** Ability icon + charge stack rectangle boxes under it (1, 2, or 3 stacks that light up if bought). */
 function AbilityCharge({ player, slot, st }: { player: any; slot: 'C' | 'Q' | 'E'; st: any }) {
-  const state = chargeState(st, slot)
+  const maxCharges = getMaxAbilityCharges(player, slot)
+  const currentCharges = getAbilityCurrentCharges(player, slot, st, maxCharges)
+  const isAvailable = currentCharges > 0
+
   return (
     <div className="flex flex-col items-center">
       <img
         src={abilityImg(player, slot)}
         alt=""
         className="size-[17px] object-contain"
-        style={{ opacity: state === 'ready' ? 1 : state === 'spent' ? 0.4 : 0.55 }}
+        style={{ opacity: isAvailable ? 1 : 0.38 }}
         onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
       />
-      <span className="mt-[3px] block h-[3px] w-[17px] rounded-full" style={chargeBarStyle(state)} />
+      {/* Rectangle charge box(es) below the ability icon */}
+      <div className="mt-[3px] flex h-[3px] w-[18px] items-center gap-[2px]">
+        {Array.from({ length: maxCharges }, (_, i) => {
+          const isLit = i < currentCharges
+          return (
+            <span
+              key={i}
+              className="h-full flex-1 rounded-[1px] transition-all duration-200"
+              style={
+                isLit
+                  ? {
+                      background: '#FFFFFF',
+                      boxShadow: '0 0 5px rgba(255,255,255,0.9)',
+                    }
+                  : {
+                      background: 'rgba(255,255,255,0.14)',
+                      border: '1px solid rgba(255,255,255,0.22)',
+                    }
+              }
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-/** One player panel: portrait, name/KDA, HP strip, ult orb, ability bars, weapon, credits/shield. */
+/** One player panel: portrait, name/KDA, HP strip, ult orb, ability bars, weapon, credits/shield.
+ * Supports special "Using Ult" active state based on using ult.jpg:
+ * - Glowing golden border with breathing pulse
+ * - Team color covers ~70% with diagonal slant (not totally covering the panel)
+ * - Large white pulsing ultimate ability icon in the team-colored area
+ * - Agent head/bust portrait prominent on the outer section
+ * - Interactive trigger via clicking UltOrb or panel
+ */
 function KitPanel({
   player,
   side,
   teamColor,
   isObserved,
+  isUsingUltOverride,
+  onToggleUlt,
 }: {
   player: any
   side: 'left' | 'right'
   teamColor: string
   isObserved: boolean
+  isUsingUltOverride?: boolean
+  onToggleUlt?: (id: string) => void
 }) {
+  const [localUltActive, setLocalUltActive] = React.useState(false)
   const isRight = side === 'right'
   const alive = aliveOf(player)
   const hp = hpOf(player)
@@ -112,6 +184,147 @@ function KitPanel({
   const alias = player.alias || player.name || player.riotId || 'Player'
   const weaponSrc = getWeaponImg(player.weapon || player.weaponName)
   const st = player.abilityState
+
+  const isUsingUlt = Boolean(
+    alive && (
+      isUsingUltOverride ||
+      localUltActive ||
+      player.isUsingUlt ||
+      player.usingUlt ||
+      player.ultActive ||
+      st?.X === 'active' ||
+      st?.X === 2
+    )
+  )
+
+  const handleToggleUlt = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setLocalUltActive(prev => !prev)
+    onToggleUlt?.(player.id || player.name || alias)
+  }
+
+  // === "USING ULT" ACTIVE STATE (Matches using ult.jpg) ===
+  if (isUsingUlt) {
+    const headArt = agentBust(player) || agentPortrait(player) || resolveAgent(player)?.portrait || BLANK_IMG
+    return (
+      <div
+        className="relative cursor-pointer select-none"
+        style={{ width: 300 }}
+        onClick={handleToggleUlt}
+        title="Using Ult (Click to toggle)"
+      >
+        {/* Spike carrier badge */}
+        {player.hasSpike && (
+          <div
+            className={`absolute top-[6px] z-30 grid size-[26px] place-items-center rounded-full bg-white shadow-lg ${isRight ? '-right-[10px]' : '-left-[10px]'}`}
+          >
+            <img src="/game/val/misc/Spike_Icon.svg" alt="spike" className="size-[13px] object-contain" />
+          </div>
+        )}
+        {/* Spectated-row eye badge */}
+        {isObserved && (
+          <div
+            className={`absolute bottom-[36px] z-30 grid size-[22px] place-items-center rounded-full border border-white/40 bg-black/85 ${isRight ? '-right-[8px]' : '-left-[8px]'}`}
+          >
+            {EYE_SVG}
+          </div>
+        )}
+
+        {/* Panel body with glowing golden yellow border (row 2 in using ult.jpg) */}
+        <div
+          className="relative h-[79px] overflow-hidden rounded-[4px] border-2 border-[#FACC15] bg-[#0A0D12] shadow-[0_0_18px_rgba(250,204,21,0.85),inset_0_0_10px_rgba(250,204,21,0.35)]"
+          style={{ animation: 'ultGlowPulse 1.8s ease-in-out infinite' }}
+        >
+          {/* Team color block: does NOT totally cover the panel (~72% width with angular cut) */}
+          <div
+            className="absolute inset-y-0 z-10 flex items-center justify-center overflow-hidden"
+            style={
+              isRight
+                ? {
+                    left: 0,
+                    width: '72%',
+                    background: teamColor,
+                    clipPath: 'polygon(0% 0%, 100% 0%, 82% 100%, 0% 100%)',
+                  }
+                : {
+                    right: 0,
+                    width: '72%',
+                    background: teamColor,
+                    clipPath: 'polygon(18% 0%, 100% 0%, 100% 100%, 0% 100%)',
+                  }
+            }
+          >
+            {/* Subtle inner metallic sheen */}
+            <div
+              className="absolute inset-0 opacity-20"
+              style={{
+                background: 'linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(0,0,0,0.5) 100%)',
+              }}
+            />
+
+            {/* Large White Ult Icon (centered in team color block, pulsing with energy) */}
+            <div className="relative z-10 flex items-center justify-center">
+              <img
+                src={abilityImg(player, 'X')}
+                alt="ult"
+                className="size-[38px] object-contain brightness-0 invert drop-shadow-[0_2px_10px_rgba(0,0,0,0.7)]"
+                style={{ animation: 'ultIconPulse 1.8s ease-in-out infinite' }}
+                onError={e => {
+                  ;(e.currentTarget as HTMLImageElement).style.visibility = 'hidden'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Outer edge (~40% of panel, where team color does NOT cover): Agent Head/Bust portrait */}
+          <div
+            className="absolute inset-y-0 z-0 overflow-hidden"
+            style={
+              isRight
+                ? {
+                    right: 0,
+                    width: '42%',
+                    background: 'linear-gradient(90deg, transparent 0%, rgba(10,14,20,0.8) 40%, rgba(10,14,20,0.98) 100%)',
+                  }
+                : {
+                    left: 0,
+                    width: '42%',
+                    background: 'linear-gradient(270deg, transparent 0%, rgba(10,14,20,0.8) 40%, rgba(10,14,20,0.98) 100%)',
+                  }
+            }
+          >
+            <img
+              src={headArt}
+              alt=""
+              className="size-full object-cover object-top"
+              style={{
+                transform: isRight ? 'scaleX(-1)' : undefined,
+                opacity: 0.96,
+              }}
+              onError={e => {
+                ;(e.currentTarget as HTMLImageElement).src = agentIcon(player)
+              }}
+            />
+          </div>
+
+          {/* Bottom info strip: Alias + HP */}
+          <div
+            className={`absolute bottom-1 z-20 flex items-center gap-2 px-2 text-white font-barlowCond ${
+              isRight ? 'left-2 flex-row' : 'right-2 flex-row-reverse'
+            }`}
+          >
+            <span className="text-[13px] font-extrabold uppercase tracking-wider drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
+              {alias}
+            </span>
+            <span className="text-[11px] font-bold text-white/85 tabular-nums drop-shadow">
+              {hp} HP
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="relative" style={{ width: alive ? 300 : 200, opacity: alive ? 1 : 0.6 }}>
       {/* Spike carrier badge — small white circle on the panel's outer edge (image 1) */}
@@ -192,7 +405,7 @@ function KitPanel({
         </div>
         {/* Row 2 — ult orb, ability charge bars, weapon, credits */}
         <div className={`flex h-[32px] items-center gap-2 bg-[#0A0C11] px-2 ${isRight ? 'flex-row-reverse' : ''}`}>
-          <UltOrb player={player} teamColor={teamColor} />
+          <UltOrb player={player} teamColor={teamColor} onClick={handleToggleUlt} />
           <span className="h-[18px] w-px bg-white/10" />
           <div className={`flex items-center gap-2 ${isRight ? 'flex-row-reverse' : ''}`}>
             <AbilityCharge player={player} slot="C" st={st} />
@@ -500,6 +713,12 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
     ceremonyPersistent = false,
   } = props
 
+  // Interactive Ult state for testing / operator trigger
+  const [toggledUlts, setToggledUlts] = React.useState<Record<string, boolean>>({})
+  const handleToggleUlt = (pKey: string) => {
+    setToggledUlts(prev => ({ ...prev, [pKey]: !prev[pKey] }))
+  }
+
   // Game-events / ceremony wiring (classic parity — copied)
   const bannerLeftName = (leftTeamName || '').toUpperCase()
   const bannerRightName = (rightTeamName || '').toUpperCase()
@@ -684,9 +903,9 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
     >
       <style>{KIT_CSS}</style>
 
-      {/* Round ceremony (game events) — classic RoundCeremony, copied wiring */}
+      {/* Round ceremony (game events) — Version 1 official VCT banner design (new gameevent.png) */}
       {showTeamStats && (
-        <RoundCeremony
+        <Version1RoundCeremony
           trigger={ceremonyTrigger || (roundEnd?.winner ? 'rd:' + (roundNumber ?? 0) + ':' + roundEnd.winner : null)}
           reasonText={ceremonyText || roundEndReasonText}
           roundNumber={roundNumber}
@@ -697,11 +916,8 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
           winnerFromLeft={(ceremonyWinner || roundEnd?.winner) === 'blue'}
           leftColor={leftTeamColor}
           rightColor={rightTeamColor}
-          gameEventLogo={tournamentLogo}
           tournamentLogo={tournamentLogo}
           clutchHighlight={roundEnd?.highlightPlayer ?? null}
-          baseColor={eventsBg}
-          accentColor={undefined}
           eventImage={ceremonyEventImage}
           persistent={ceremonyPersistent}
           activeComponentId={activeComponentId}
@@ -797,31 +1013,47 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
         </div>
       )}
 
-      {/* ===== Normal mode: side roster columns ===== */}
+      {/* ===== Normal mode: side roster columns (outward to inward entrance) ===== */}
       {!duelMode && showTeamStats && (
         <>
-          <div className="absolute bottom-[14px] left-[16px] z-10 flex flex-col gap-[6px]">
-            {leftRoster.map((player: any, idx: number) => (
-              <KitPanel
-                key={player.id || idx}
-                player={player}
-                side="left"
-                teamColor={leftTeamColor}
-                isObserved={isObservedPlayer(player, 'left', idx)}
-              />
-            ))}
+          <div
+            className="absolute bottom-[14px] left-[16px] z-10 flex flex-col gap-[6px]"
+            style={{ animation: 'v1InwardLeft 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+          >
+            {leftRoster.map((player: any, idx: number) => {
+              const pKey = String(player.id || player.name || player.alias || `left-${idx}`)
+              return (
+                <KitPanel
+                  key={pKey}
+                  player={player}
+                  side="left"
+                  teamColor={leftTeamColor}
+                  isObserved={isObservedPlayer(player, 'left', idx)}
+                  isUsingUltOverride={Boolean(toggledUlts[pKey])}
+                  onToggleUlt={() => handleToggleUlt(pKey)}
+                />
+              )
+            })}
           </div>
           {rightRoster.length > 0 && (
-            <div className="absolute bottom-[14px] right-[16px] z-10 flex flex-col items-end gap-[6px]">
-              {rightRoster.map((player: any, idx: number) => (
-                <KitPanel
-                  key={player.id || idx}
-                  player={player}
-                  side="right"
-                  teamColor={rightTeamColor}
-                  isObserved={isObservedPlayer(player, 'right', idx)}
-                />
-              ))}
+            <div
+              className="absolute bottom-[14px] right-[16px] z-10 flex flex-col items-end gap-[6px]"
+              style={{ animation: 'v1InwardRight 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+            >
+              {rightRoster.map((player: any, idx: number) => {
+                const pKey = String(player.id || player.name || player.alias || `right-${idx}`)
+                return (
+                  <KitPanel
+                    key={pKey}
+                    player={player}
+                    side="right"
+                    teamColor={rightTeamColor}
+                    isObserved={isObservedPlayer(player, 'right', idx)}
+                    isUsingUltOverride={Boolean(toggledUlts[pKey])}
+                    onToggleUlt={() => handleToggleUlt(pKey)}
+                  />
+                )
+              })}
             </div>
           )}
         </>
@@ -831,12 +1063,17 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
       {duelMode && showTeamStats && (
         <>
           {duelSurvivorLeft && (
-            <div className="absolute bottom-[150px] left-[40px] z-10 flex flex-col items-start gap-2">
+            <div
+              className="absolute bottom-[150px] left-[40px] z-10 flex flex-col items-start gap-2"
+              style={{ animation: 'v1InwardLeft 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+            >
               <KitPanel
                 player={duelSurvivorLeft}
                 side="left"
                 teamColor={leftTeamColor}
                 isObserved={isObservedPlayer(duelSurvivorLeft, 'left', 0)}
+                isUsingUltOverride={Boolean(toggledUlts[String(duelSurvivorLeft.id || duelSurvivorLeft.name || duelSurvivorLeft.alias || 'left-0')])}
+                onToggleUlt={() => handleToggleUlt(String(duelSurvivorLeft.id || duelSurvivorLeft.name || duelSurvivorLeft.alias || 'left-0'))}
               />
               <DuelCamCard
                 survivor={duelSurvivorLeft}
@@ -850,12 +1087,17 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
             </div>
           )}
           {duelSurvivorRight && (
-            <div className="absolute bottom-[150px] right-[40px] z-10 flex flex-col items-end gap-2">
+            <div
+              className="absolute bottom-[150px] right-[40px] z-10 flex flex-col items-end gap-2"
+              style={{ animation: 'v1InwardRight 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+            >
               <KitPanel
                 player={duelSurvivorRight}
                 side="right"
                 teamColor={rightTeamColor}
                 isObserved={isObservedPlayer(duelSurvivorRight, 'right', 0)}
+                isUsingUltOverride={Boolean(toggledUlts[String(duelSurvivorRight.id || duelSurvivorRight.name || duelSurvivorRight.alias || 'right-0')])}
+                onToggleUlt={() => handleToggleUlt(String(duelSurvivorRight.id || duelSurvivorRight.name || duelSurvivorRight.alias || 'right-0'))}
               />
               <DuelCamCard
                 survivor={duelSurvivorRight}

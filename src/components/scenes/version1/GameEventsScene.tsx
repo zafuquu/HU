@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * GameEventsScene — VCT-style animated round-win ceremony.
- *
- * Plays a center-screen round outcome sequence (ROUND WON / ROUND LOST /
- * ACE / CLUTCH / FLAWLESS / TEAM ACE / THRIFTY) with entrance scale +
- * glow, holds, then exits with a fade-out. Designed to be composited over
- * the ingame HUD during the round-end ceremony (≈6.6s).
+ * GameEventsScene — Version 1 VCT-style animated game event & round-win ceremony.
+ * Implements the exact tournament banner design from new gameevent.png:
+ * - Top trapezoid crown tab with VCT Spark / tournament logo and shoulder arrow accents (◀ ▶)
+ * - Chamfered-corner metallic banner body with bold event text (ROUND WIN, ACE, CLUTCH, etc.)
+ * - Bottom sub-bar with side role (DEF/ATK), team icon, and winner name.
  */
 
 export type GameEventResult =
@@ -19,52 +18,286 @@ export type GameEventResult =
   | 'thrifty'
   | null
 
-const RESULT_CONFIG: Record<
-  NonNullable<GameEventResult>,
-  { label: string; sublabel?: string; glowColor: string; textClass: string }
-> = {
-  round_won: {
-    label: 'ROUND WON',
-    glowColor: 'rgba(40, 208, 145, 0.6)',
-    textClass: 'text-emerald-400',
-  },
-  round_lost: {
-    label: 'ROUND LOST',
-    glowColor: 'rgba(255, 53, 73, 0.6)',
-    textClass: 'text-red-400',
-  },
-  ace: {
-    label: 'ACE',
-    sublabel: 'PENTAKILL',
-    glowColor: 'rgba(255, 215, 0, 0.7)',
-    textClass: 'text-yellow-400',
-  },
-  team_ace: {
-    label: 'TEAM ACE',
-    sublabel: 'EVERY PLAYER GOT A KILL',
-    glowColor: 'rgba(40, 208, 145, 0.6)',
-    textClass: 'text-emerald-400',
-  },
-  clutch: {
-    label: 'CLUTCH',
-    sublabel: 'AGAINST ALL ODDS',
-    glowColor: 'rgba(160, 120, 255, 0.7)',
-    textClass: 'text-purple-400',
-  },
-  flawless: {
-    label: 'FLAWLESS',
-    sublabel: 'NO DEATHS',
-    glowColor: 'rgba(40, 208, 145, 0.7)',
-    textClass: 'text-emerald-300',
-  },
-  thrifty: {
-    label: 'THRIFTY',
-    sublabel: 'WON ON ECO',
-    glowColor: 'rgba(76, 175, 80, 0.6)',
-    textClass: 'text-green-400',
-  },
+const VCT_SPARK_SVG = (
+  <svg viewBox="0 0 100 100" fill="currentColor" className="size-[32px]">
+    {/* VCT Spark Upper Chevron */}
+    <path d="M18 16 L50 48 L82 16 L68 16 L50 34 L32 16 Z" />
+    {/* VCT Spark Lower Inverted Chevron */}
+    <path d="M18 84 L50 52 L82 84 L68 84 L50 66 L32 84 Z" />
+  </svg>
+)
+
+const OMEGA_SVG = (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5">
+    <path d="M12 2C6.48 2 2 6.48 2 12c0 4.14 2.53 7.69 6.13 9.17l1.1-2.01C6.44 18.06 4.5 15.28 4.5 12c0-4.14 3.36-7.5 7.5-7.5s7.5 3.36 7.5 7.5c0 3.28-1.94 6.06-4.73 7.16l1.1 2.01C19.47 19.69 22 16.14 22 12c0-5.52-4.48-10-10-10zm-1 15h2v3h-2v-3z" />
+  </svg>
+)
+
+const CEREMONY_CSS = `
+/* Staged animation sequence:
+   1. Tournament Logo 1st (0ms)
+   2. Box / Container 2nd (180ms)
+   3. Color fill 3rd (360ms)
+   4. Round #, Round Win & DEF team name 4th (520ms) */
+@keyframes v1LogoIn {
+  0% { transform: translateY(-20px) scale(0.65); opacity: 0; }
+  60% { transform: translateY(2px) scale(1.12); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
+@keyframes v1BoxIn {
+  0% { transform: scaleX(0.25) scaleY(0.7); opacity: 0; }
+  60% { transform: scaleX(1.03) scaleY(1.02); opacity: 1; }
+  100% { transform: scaleX(1) scaleY(1); opacity: 1; }
+}
+
+@keyframes v1ColorIn {
+  0% { opacity: 0; filter: brightness(1.7); }
+  100% { opacity: 1; filter: brightness(1); }
+}
+
+@keyframes v1ContentIn {
+  0% { opacity: 0; transform: translateY(10px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes v1CeremonyExit {
+  0% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -24px) scale(0.92); opacity: 0; }
+}
+`
+
+export interface Version1RoundCeremonyProps {
+  trigger?: string | null
+  reasonText?: string | null
+  roundNumber?: number | null
+  winSide?: 'attack' | 'defense' | string | null
+  winnerName?: string
+  winnerLogo?: string | null
+  winnerColor?: string
+  winnerFromLeft?: boolean
+  leftColor?: string
+  rightColor?: string
+  gameEventLogo?: string | null
+  tournamentLogo?: string | null
+  clutchHighlight?: any
+  baseColor?: string | null
+  accentColor?: string | null
+  eventImage?: string | null
+  persistent?: boolean
+  activeComponentId?: string | null
+  onSelectComponent?: (id: string) => void
+  onComplete?: () => void
+}
+
+/**
+ * Dedicated Version 1 Round Ceremony component matching new gameevent.png.
+ */
+export function Version1RoundCeremony({
+  trigger,
+  reasonText = 'ROUND WIN',
+  roundNumber,
+  winSide,
+  winnerName = 'HAVOC UNLEASH',
+  winnerLogo,
+  winnerColor = '#28D091',
+  tournamentLogo,
+  eventImage,
+  persistent = false,
+  activeComponentId,
+  onSelectComponent,
+  onComplete,
+}: Version1RoundCeremonyProps) {
+  const [stage, setStage] = useState<'hidden' | 'active' | 'out'>('hidden')
+  const seenTrigger = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!trigger) {
+      if (persistent) {
+        setStage('active')
+      } else {
+        setStage('hidden')
+      }
+      return
+    }
+    if (trigger === seenTrigger.current && !persistent) return
+    seenTrigger.current = trigger
+    setStage('active')
+
+    if (persistent) return
+
+    const t1 = setTimeout(() => setStage('out'), 4400)
+    const t2 = setTimeout(() => {
+      setStage('hidden')
+      onComplete?.()
+    }, 4850)
+
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+    }
+  }, [trigger, persistent, onComplete])
+
+  if (stage === 'hidden') return null
+
+  // Determine Side: DEF or ATK
+  const sideRaw = String(winSide || '').toLowerCase()
+  const sideLabel = sideRaw.includes('def') ? 'DEF' : sideRaw.includes('atk') || sideRaw.includes('att') ? 'ATK' : 'DEF'
+
+  // Clean event title text
+  const cleanTitle = (reasonText || 'ROUND WIN').trim().toUpperCase()
+
+  const isExiting = stage === 'out'
+
+  return (
+    <div className="pointer-events-none absolute inset-0 z-50 select-none font-schabo">
+      <style>{CEREMONY_CSS}</style>
+      <div
+        className={`clickable-component pointer-events-auto absolute left-1/2 flex flex-col items-center cursor-pointer ${
+          isExiting ? 'animate-[v1CeremonyExit_420ms_cubic-bezier(0.4,0,0.2,1)_forwards]' : ''
+        } ${activeComponentId === 'game-events' ? 'ring-2 ring-white/60 rounded-md' : ''}`}
+        style={{
+          top: 170,
+          width: 660,
+          transform: 'translateX(-50%)',
+        }}
+        data-component-id="game-events"
+        onClick={e => {
+          e.stopPropagation()
+          onSelectComponent?.('game-events')
+        }}
+      >
+        {/* Stage 1: Tournament Logo protruding above the game event container (new gameevent.png) */}
+        <div
+          className="relative z-20 -mb-4 flex flex-col items-center"
+          style={{
+            animation: !isExiting ? 'v1LogoIn 420ms cubic-bezier(0.16, 1, 0.3, 1) 0ms both' : undefined,
+          }}
+        >
+          {/* Logo element positioned above */}
+          <div className="flex size-[44px] items-center justify-center text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]">
+            {tournamentLogo ? (
+              <img src={tournamentLogo} alt="" className="size-[38px] object-contain" />
+            ) : (
+              VCT_SPARK_SVG
+            )}
+          </div>
+        </div>
+
+        {/* Stage 2: Box / Container structure (Top tab + Chamfered Body) */}
+        <div
+          className="relative w-full flex flex-col items-center"
+          style={{
+            animation: !isExiting ? 'v1BoxIn 450ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both' : undefined,
+          }}
+        >
+          {/* Top Trapezoid Tab / Crown underneath the logo */}
+          <div className="relative mx-auto flex h-[28px] w-[210px] items-center justify-between px-4">
+            <div
+              className="absolute inset-0 border-t border-x border-white/20 bg-gradient-to-b from-[#444A40] to-[#252822] shadow-[0_-2px_10px_rgba(0,0,0,0.5)]"
+              style={{
+                clipPath: 'polygon(15% 0%, 85% 0%, 100% 100%, 0% 100%)',
+              }}
+            />
+            {/* Left shoulder accent arrow */}
+            <span className="relative z-10 text-[9px] text-[#A6AAA0] select-none">◀</span>
+            <div className="relative z-10 w-8" />
+            {/* Right shoulder accent arrow */}
+            <span className="relative z-10 text-[9px] text-[#A6AAA0] select-none">▶</span>
+          </div>
+
+          {/* Main Chamfered Metallic Banner Body */}
+          <div
+            className="relative w-full overflow-hidden border border-white/20 bg-[#1A1F18] shadow-[0_16px_40px_rgba(0,0,0,0.75)] backdrop-blur-md"
+            style={{
+              clipPath: 'polygon(0% 16%, 3.5% 0%, 96.5% 0%, 100% 16%, 100% 84%, 96.5% 100%, 3.5% 100%, 0% 84%)',
+            }}
+          >
+            {/* Stage 3: Color layer (military olive gradient + ambient team color wash) */}
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                animation: !isExiting ? 'v1ColorIn 400ms ease-out 360ms both' : undefined,
+                background: 'linear-gradient(180deg, rgba(52,59,49,0.95) 0%, rgba(35,40,33,0.98) 50%, rgba(24,28,22,0.98) 100%)',
+              }}
+            >
+              {/* Team color subtle ambient glow */}
+              <div
+                className="absolute inset-0 opacity-25"
+                style={{
+                  background: `radial-gradient(circle at 50% 35%, ${winnerColor} 0%, transparent 68%)`,
+                }}
+              />
+              {/* Optional custom uploaded game event banner */}
+              {eventImage && (
+                <img
+                  src={eventImage}
+                  alt=""
+                  className="absolute inset-0 size-full object-cover mix-blend-overlay opacity-30"
+                />
+              )}
+            </div>
+
+            {/* Corner brackets */}
+            <div className="pointer-events-none absolute inset-x-4 top-2 flex justify-between text-[11px] text-white/25 font-mono">
+              <span>◤</span>
+              <span>◥</span>
+            </div>
+
+            {/* Stage 4: Content layer (Round #, Round Win title, and DEF / team name sub-bar) */}
+            <div
+              className="relative w-full"
+              style={{
+                animation: !isExiting ? 'v1ContentIn 420ms cubic-bezier(0.16, 1, 0.3, 1) 520ms both' : undefined,
+              }}
+            >
+              {/* Main Title: ROUND WIN, CLUTCH, ACE, etc. */}
+              <div className="relative flex flex-col items-center justify-center py-4 px-8 text-center">
+                {roundNumber != null && (
+                  <span className="mb-1 font-baijam text-[10px] font-extrabold uppercase tracking-[0.24em] text-white/50">
+                    ROUND {roundNumber}
+                  </span>
+                )}
+                <h1
+                  className="font-schabo text-[48px] uppercase tracking-[0.14em] leading-none text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]"
+                  style={{
+                    textShadow: `0 0 28px ${winnerColor}55, 0 4px 12px rgba(0,0,0,0.9)`,
+                  }}
+                >
+                  {cleanTitle}
+                </h1>
+              </div>
+
+              {/* Bottom Sub-Bar: DEF / ATK  |  Team Icon/Badge  |  Team Name */}
+              <div className="relative flex h-[32px] items-center justify-center gap-3 border-t border-white/10 bg-[#121511]/95 px-6 font-barlowCond">
+                <span className="font-baijam text-[12px] font-extrabold uppercase tracking-[0.18em] text-white/80">
+                  {sideLabel}
+                </span>
+
+                {/* Team icon / Omega-style badge */}
+                {winnerLogo ? (
+                  <img src={winnerLogo} alt="" className="size-[17px] object-contain drop-shadow" />
+                ) : (
+                  <div className="text-yellow-400 drop-shadow">
+                    {OMEGA_SVG}
+                  </div>
+                )}
+
+                <span className="font-schabo text-[17px] uppercase tracking-[0.12em] text-white">
+                  {winnerName}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * GameEventsScene top-level adapter for standalone overlay usage.
+ */
 interface GameEventsSceneProps {
   result: GameEventResult
   teamColor?: string
@@ -82,143 +315,45 @@ interface GameEventsSceneProps {
   ceremonyWinner?: 'blue' | 'red' | null
 }
 
-export function GameEventsScene({
-  result,
-  teamColor,
-  teamName,
-  playerName,
-  agent,
-  roundNumber,
-  displayMs = 3000,
-  onComplete,
-  tournamentLogo,
-  leftTeamLogo,
-  rightTeamLogo,
-  leftTeamColor,
-  rightTeamColor,
-  ceremonyWinner,
-}: GameEventsSceneProps) {
-  const [phase, setPhase] = useState<'stage1' | 'stage2' | 'stage3' | 'hold' | 'exit' | 'hidden'>('hidden')
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const config = result ? RESULT_CONFIG[result] : null
-  const glowColor = teamColor ? `${teamColor}99` : config?.glowColor ?? 'rgba(255,255,255,0.4)'
-  const isRoundWin = result === 'round_won' || result === 'round_lost'
+const RESULT_TITLES: Record<NonNullable<GameEventResult>, string> = {
+  round_won: 'ROUND WIN',
+  round_lost: 'ROUND LOST',
+  ace: 'ACE',
+  team_ace: 'TEAM ACE',
+  clutch: 'CLUTCH',
+  flawless: 'FLAWLESS',
+  thrifty: 'THRIFTY',
+}
 
-  useEffect(() => {
-    if (!result) {
-      setPhase('hidden')
-      return
-    }
-    setPhase('stage1')
-    timerRef.current = setTimeout(() => setPhase('stage2'), 400)
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
-  }, [result])
+export function GameEventsScene(props: GameEventsSceneProps) {
+  const {
+    result,
+    teamColor = '#28D091',
+    teamName = 'TEAM',
+    roundNumber,
+    onComplete,
+    tournamentLogo,
+    ceremonyWinner,
+    leftTeamLogo,
+    rightTeamLogo,
+  } = props
 
-  useEffect(() => {
-    if (phase === 'stage2') {
-      timerRef.current = setTimeout(() => setPhase('stage3'), 400)
-    } else if (phase === 'stage3') {
-      timerRef.current = setTimeout(() => setPhase('hold'), 400)
-    } else if (phase === 'hold') {
-      timerRef.current = setTimeout(() => setPhase('exit'), displayMs)
-    }
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
-  }, [phase, displayMs])
+  if (!result) return null
 
-  useEffect(() => {
-    if (phase === 'exit') {
-      timerRef.current = setTimeout(() => {
-        setPhase('hidden')
-        onComplete?.()
-      }, 500)
-    }
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
-  }, [phase, onComplete])
-
-  if (phase === 'hidden' || !result || !config) return null
-
-  const showTeamInfo = phase === 'stage3' || phase === 'hold'
-  const stageOpacity = phase === 'stage1' ? 0 : 1
-  const stageTranslateY = phase === 'stage1' ? -40 : 0
-  const stageTransition = 'opacity 400ms ease-out, transform 400ms ease-out'
+  const title = RESULT_TITLES[result] || 'ROUND WIN'
+  const logo = (ceremonyWinner === 'blue' ? leftTeamLogo : rightTeamLogo) || tournamentLogo
 
   return (
-    <div className="absolute inset-0 z-50 pointer-events-none">
-      {(phase === "stage1" || phase === "stage2" || phase === "stage3" || phase === "hold") && (
-        <div className="absolute inset-0 z-0"
-          style={{
-            background: `linear-gradient(180deg, ${glowColor} 0%, transparent 100%)`,
-            opacity: stageOpacity,
-            transition: stageTransition,
-            transform: `translateY(${stageTranslateY}px)`,
-          } as React.CSSProperties}
-        />
-      )}
-      {tournamentLogo && (phase === "stage2" || phase === "stage3" || phase === "hold") && (
-        <div className="absolute top-[40px] left-1/2 -translate-x-1/2 z-10 flex items-center"
-          style={{
-            opacity: stageOpacity,
-            transition: stageTransition,
-            transform: `translateY(${stageTranslateY}px)`,
-          }}>
-          <img src={tournamentLogo} alt="tournament" className="size-[80px] object-contain drop-shadow-lg"
-            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden" }} />
-        </div>
-      )}
-      {showTeamInfo && (
-        <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center z-20"
-          style={{
-            opacity: stageOpacity,
-            transition: stageTransition,
-            transform: `translateY(${stageTranslateY}px)`,
-          }}>
-        <div className="flex flex-col items-center gap-3">
-          {roundNumber != null && (
-            <span className="font-baijam text-[12px] font-bold uppercase tracking-[0.3em] text-white/50 px-3 py-1 rounded"
-              style={{ background: "rgba(255,255,255,0.1)", border: `1px solid ${glowColor}` }}>
-            ROUND {roundNumber}</span>
-          )}
-          <h1 className="font-insatiable text-8xl font-black uppercase tracking-wider drop-shadow-2xl"
-            style={{ color: "#ffffff", textShadow: `0 0 40px ${glowColor}, 0 4px 24px rgba(0,0,0,0.8)`,
-              letterSpacing: "0.14em", lineHeight: 1 } as React.CSSProperties}>
-            {config.label}</h1>
-          {config.sublabel && (<span className="font-barlowCond text-[18px] font-semibold uppercase tracking-[0.2em] text-white/70"
-            style={{ textShadow: "0 2px 10px rgba(0,0,0,0.6)" }}>{config.sublabel}</span>)}
-          {isRoundWin && teamName && (<span className="font-schabo text-[24px] font-bold tracking-wider text-white/90 mt-1"
-            style={{ textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}>{teamName.toUpperCase()}</span>)}
-          {playerName && (result === "ace" || result === "clutch") && (
-            <div className="flex flex-col items-center gap-1">
-              <span className="font-schabo text-[20px] font-bold text-white">{playerName.toUpperCase()}</span>
-              {agent && (<span className="font-baijam text-[13px] font-bold uppercase tracking-wider text-white/60">
-                {agent.toUpperCase()}</span>)}
-            </div>
-          )}
-          {isRoundWin && leftTeamLogo && rightTeamLogo && (
-            <div className="mt-6 flex items-center gap-8">
-              <div className="flex flex-col items-center gap-2">
-                <img src={leftTeamLogo} alt="left" className="size-[48px] object-contain drop-shadow-lg"
-                  style={{ filter: ceremonyWinner === "blue" ? "drop-shadow(0 0 12px rgba(40,208,145,0.8))" : "opacity:0.6" }}
-                  onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden" }} />
-                <span className="font-baijam text-[12px] font-bold uppercase text-white/90" style={{ color: leftTeamColor }}>LEFT</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <img src={rightTeamLogo} alt="right" className="size-[48px] object-contain drop-shadow-lg"
-                  style={{ filter: ceremonyWinner === "red" ? "drop-shadow(0 0 12px rgba(255,56,73,0.8))" : "opacity:0.6" }}
-                  onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = "hidden" }} />
-                <span className="font-baijam text-[12px] font-bold uppercase text-white/90" style={{ color: rightTeamColor }}>RIGHT</span>
-              </div>
-            </div>
-          )}
-        </div>
-        </div>
-      )}
-    </div>
+    <Version1RoundCeremony
+      trigger={result ? `${result}-${Date.now()}` : null}
+      reasonText={title}
+      roundNumber={roundNumber}
+      winnerName={teamName}
+      winnerColor={teamColor}
+      winnerLogo={logo}
+      tournamentLogo={tournamentLogo}
+      onComplete={onComplete}
+    />
   )
 }
 

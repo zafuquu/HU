@@ -112,10 +112,18 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
         </div>
       </div>
 
-      {/* ===== Team MVP rows with full agent art ===== */}
+      {/* ===== Team MVP rows with upper-body agent art ===== */}
       {leftMvp && (
         <MvpBlock player={leftMvp} side="left" teamColor={leftTeamColor} showFirstKills={showFirstKills} />
       )}
+      {/* Center MVP stat legend matching post game.png */}
+      <div className="pointer-events-none absolute bottom-[32px] left-1/2 z-10 -translate-x-1/2 text-center italic font-barlowCond">
+        <p className="h-[30px] text-[15px] font-extrabold uppercase tracking-[0.14em] text-white/45 leading-[30px]">KD</p>
+        <p className="h-[26px] text-[15px] font-extrabold uppercase tracking-[0.14em] text-white/45 leading-[26px]">ACS</p>
+        {showFirstKills && (
+          <p className="h-[26px] text-[15px] font-extrabold uppercase tracking-[0.14em] text-white/45 leading-[26px]">FIRST KILLS</p>
+        )}
+      </div>
       {rightMvp && (
         <MvpBlock player={rightMvp} side="right" teamColor={rightTeamColor} showFirstKills={showFirstKills} />
       )}
@@ -201,32 +209,33 @@ function MvpBlock({
 
   return (
     <div
-      className="pointer-events-none absolute bottom-0 z-10 flex h-[360px] w-[580px] items-end"
+      className="pointer-events-none absolute bottom-0 z-10 flex h-[480px] w-[700px] items-end"
       style={{ [isRight ? 'right' : 'left']: 0 }}
     >
-      {/* Upper-body agent art confined to the corner box (max 320px wide, 360px high) */}
+      {/* Upper-body to head agent art (post game.png): cropped to chest/shoulders to head, no feet */}
       <div
-        className={`absolute bottom-0 h-[360px] w-[320px] overflow-hidden ${
+        className={`absolute bottom-0 h-[480px] w-[460px] overflow-hidden ${
           isRight ? 'right-0' : 'left-0'
         }`}
       >
         <img
           src={artSrc}
           alt=""
-          className={`size-full object-cover ${bust ? 'object-center' : 'object-top'}`}
+          className="size-full object-cover object-top"
           style={{
-            transform: isRight ? 'scaleX(-1)' : undefined,
+            transform: `${isRight ? 'scaleX(-1) ' : ''}scale(1.45) translateY(8%)`,
+            transformOrigin: 'top center',
             maskImage:
-              'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 20%, rgba(0,0,0,1) 75%, rgba(0,0,0,0) 100%), linear-gradient(' +
+              'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%), linear-gradient(' +
               (isRight ? 'to left' : 'to right') +
-              ', rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%)',
+              ', rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%)',
             WebkitMaskImage:
-              'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 20%, rgba(0,0,0,1) 75%, rgba(0,0,0,0) 100%), linear-gradient(' +
+              'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%), linear-gradient(' +
               (isRight ? 'to left' : 'to right') +
-              ', rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%)',
+              ', rgba(0,0,0,1) 50%, rgba(0,0,0,0) 100%)',
             maskComposite: 'intersect',
             WebkitMaskComposite: 'destination-in',
-            opacity: 0.85,
+            opacity: 0.94,
           }}
           onError={e => {
             if (artSrc !== portrait) {
@@ -241,7 +250,7 @@ function MvpBlock({
       {/* Name + MVP pill */}
       <div
         className={`relative z-10 mb-8 flex flex-col ${
-          isRight ? 'mr-[120px] items-end ml-auto' : 'ml-[120px] items-start mr-auto'
+          isRight ? 'mr-[180px] items-end ml-auto' : 'ml-[180px] items-start mr-auto'
         }`}
       >
         <span className="font-baijam text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">{agentLabel}</span>

@@ -54,6 +54,79 @@ export const chargeBarStyle = (s: ChargeState): CSSProperties =>
       ? { background: 'rgba(255,255,255,0.18)' }
       : { background: 'transparent', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.30)' }
 
+/** Max ability charges / stacks per agent slot in Valorant (1, 2, or 3). */
+export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => {
+  if (slot === 'X') return 1
+  const k = (agentCodename(player) || '').toLowerCase()
+  if ((k === 'sarge' || k === 'brimstone') && slot === 'E') return 3
+
+  const twoCharges: Record<string, AbilitySlot[]> = {
+    hunter: ['Q'],
+    sova: ['Q'],
+    gumshoe: ['C', 'Q'],
+    cypher: ['C', 'Q'],
+    killjoy: ['C'],
+    pandemic: ['C'],
+    viper: ['C'],
+    phoenix: ['Q'],
+    wushu: ['C', 'Q'],
+    jett: ['C', 'Q'],
+    breach: ['Q'],
+    wraith: ['C', 'E'],
+    omen: ['C', 'E'],
+    clay: ['Q'],
+    raze: ['Q'],
+    vampire: ['C', 'Q', 'E'],
+    reyna: ['C', 'Q', 'E'],
+    thorne: ['Q'],
+    sage: ['Q'],
+    guide: ['E'],
+    skye: ['E'],
+    stealth: ['Q'],
+    yoru: ['Q'],
+    grenadier: ['Q'],
+    kayo: ['Q'],
+    'kay/o': ['Q'],
+    bountyhunter: ['C'],
+    fade: ['C'],
+    mage: ['C'],
+    harbor: ['C'],
+    cable: ['Q'],
+    deadlock: ['Q'],
+    sequoia: ['Q'],
+    iso: ['Q'],
+    smonk: ['E'],
+    clove: ['E'],
+    nox: ['E'],
+    vyse: ['E'],
+    cashew: ['Q'],
+    tejo: ['Q'],
+  }
+
+  if (twoCharges[k]?.includes(slot)) return 2
+  return 1
+}
+
+/** Get number of bought / available charges for an ability slot. */
+export const getAbilityCurrentCharges = (
+  player: any,
+  slot: AbilitySlot,
+  st: any,
+  max: number,
+): number => {
+  const val = st?.[slot] ?? player?.abilities?.[slot]?.charges ?? player?.abilities?.[slot]?.count
+  if (typeof val === 'number') {
+    return Math.min(max, Math.max(0, val))
+  }
+  if (val === 'spent' || val === 0 || val === '0' || val === false || val === 'disabled') {
+    return 0
+  }
+  if (val === 'ready' || val === 'active' || val === true || val === 1 || val === '1') {
+    return max
+  }
+  return aliveOf(player) ? max : 0
+}
+
 export const hexRgba = (hex: string | undefined, a: number): string => {
   let h = String(hex || '#28D091').replace('#', '')
   if (h.length === 3) h = h.split('').map(c => c + c).join('')
