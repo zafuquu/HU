@@ -342,7 +342,8 @@ const PrimaryAgentSelect = kit === 'version1' ? Version1AgentSelectScene : Agent
   }
 
   const copyOverlayUrl = () => {
-    const url = `${window.location.origin}/overlay/${state.serverCode}/${selectedSceneKey}`
+    const kitParam = kit === 'version1' ? '?kit=version1' : ''
+    const url = `${window.location.origin}/overlay/${state.serverCode}/${selectedSceneKey}${kitParam}`
     navigator.clipboard.writeText(url).catch(() => {})
     setCopiedUrl(true)
     showToast('Overlay URL copied!')

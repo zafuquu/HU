@@ -92,10 +92,11 @@ export default function OverlayPopout() {
   // workspace setting (state.broadcastKit, synced to localStorage + Supabase
   // from the HUD editor / live game page) wins; defaults to classic unless
   // overridden.
-  const kit: KitKind = resolveKitKind(kitParam, screenParam, overlayIdRaw ?? null, state.broadcastKit ?? null)
-  const pickedMap = VAL_MAPS.find(m => m.mapId === (state.mapPicks?.[0]?.mapId || state.vetoSelectedMapIds?.[0]))
   const { live: desktopLive } = useDesktopPresence(roomCode)
   const [liveScores, setLiveScores] = useState<{ scores?: any; snapshot?: any; event?: any; updatedAt?: number; timeout?: any; killBanner?: any; economy?: any; mvpPlayer?: any; casterCards?: any; forceScene?: string | null; overlayHidden?: boolean; toast?: any; audioCuesEnabled?: boolean; currentlyObserving?: any; spike?: any } | null>(null)
+  const liveKit = (liveScores as any)?.broadcastKit ?? (liveScores?.snapshot?.state as any)?.broadcastKit ?? null
+  const kit: KitKind = resolveKitKind(kitParam, screenParam, overlayIdRaw ?? null, liveKit ?? state.broadcastKit ?? null)
+  const pickedMap = VAL_MAPS.find(m => m.mapId === (state.mapPicks?.[0]?.mapId || state.vetoSelectedMapIds?.[0]))
   const [isLocalTransport, setIsLocalTransport] = useState(false)
   // Stale-data detection (#1): if no update in 10s, show reconnecting badge
   const [isStale, setIsStale] = useState(false)
@@ -156,21 +157,26 @@ export default function OverlayPopout() {
     }
     if (liveScene && ['agent-select', 'buy-round', 'ingame-hud', 'post-game', 'map-interstitial'].includes(String(liveScene))) return String(liveScene)
     if (phaseDerivedScene) return phaseDerivedScene
-    return urlSceneKey
+    const norm = urlSceneKey === 'default' ? 'ingame-hud' : urlSceneKey
+    return norm
   })()
   const [scale, setScale] = useState(1)
-  // Professional scene cross-fade transitions
-  const [prevSceneKey, setPrevSceneKey] = useState<string | null>(null)
+  // Professional scene cross-fade transitions — guard against initial mount flicker
+  const prevSceneKeyRef = useRef<string | null>(null)
   const [sceneTransitioning, setSceneTransitioning] = useState(false)
   const sceneTransitionRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    if (sceneKey !== prevSceneKey) {
-      setPrevSceneKey(sceneKey)
+    if (prevSceneKeyRef.current === null) {
+      prevSceneKeyRef.current = sceneKey
+      return
+    }
+    if (sceneKey !== prevSceneKeyRef.current) {
+      prevSceneKeyRef.current = sceneKey
       setSceneTransitioning(true)
       if (sceneTransitionRef.current) clearTimeout(sceneTransitionRef.current)
-      sceneTransitionRef.current = setTimeout(() => setSceneTransitioning(false), 400)
+      sceneTransitionRef.current = setTimeout(() => setSceneTransitioning(false), 300)
     }
-  }, [sceneKey, prevSceneKey])
+  }, [sceneKey])
   // Sponsor cycler: rotate through the tournament's sponsors every 8s
   // (ValoSpectra sponsor-cycle parity). Logos are 1:1 square; backdrops 875x200.
   const sponsorList = (state.sponsors || []).map((s: any) => s?.imageUrl).filter((u: any): u is string => !!u)
@@ -192,7 +198,7 @@ export default function OverlayPopout() {
     'mapResults',
     'scoreA','scoreB','seriesScoreA','seriesScoreB','roundTitle','eventTitle','seriesTitle',
     'derivedScoreA','derivedScoreB','scoreOverrideA','scoreOverrideB',
-    'gameSeries','matchFormat','bestOf'] as const
+    'gameSeries','matchFormat','bestOf','broadcastKit'] as const
   const applyHavoc = (saved: any) => {
     if (!saved) return
     // Stale-write guard (G2): never apply an older revision than shown
@@ -928,7 +934,13 @@ export default function OverlayPopout() {
   // 'detonated' | null) — never an object; consume both shapes safely.
   const spikeRaw = (liveScores as any)?.spike ?? (snapState as any)?.spike ?? null
   const spikeSite = ((spikeRaw && typeof spikeRaw === 'object' && spikeRaw.site) || (snapState as any)?.plantSite || null) as string | null
-  const spikeState = (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null) || ((snapState as any)?.bombPlanted ? 'planted' : null) || ((snapState as any)?.plantSite ? 'planted' : null)) as 'none' | 'planted' | 'defusing' | null
+  const spikeState = (
+    (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null)) ||
+    ((snapState as any)?.bombPlanted ? 'planted' : null) ||
+    ((snapState as any)?.spike === 'planted' ? 'planted' : null) ||
+    ((snapState as any)?.plantSite ? 'planted' : null)
+  ) as 'none' | 'planted' | 'defusing' | null
+  const spikePlantedAt = (snapState as any)?.round?.spikePlantedAt ?? (snapState as any)?.spikePlantedAt ?? (liveScores as any)?.spikePlantedAt ?? null
 
   const PrimaryHud = kit === 'version1' ? Version1IngameHudScene : ClassicIngameHudScene
   const PrimaryBuy = kit === 'version1' ? Version1BuyRoundScene : BuyRoundScene
@@ -1047,7 +1059,7 @@ export default function OverlayPopout() {
             spectating={spectating}
             spikeSite={spikeSite}
             spikeState={spikeState}
-            spikePlantedAt={(snapState as any)?.round?.spikePlantedAt ?? null}
+            spikePlantedAt={spikePlantedAt}
             leftTeamPlayers={hudLeftPlayers}
             rightTeamPlayers={hudRightPlayers}
           />
