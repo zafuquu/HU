@@ -137,7 +137,7 @@ export interface IngameHudSceneProps {
   localPlayerName?: string | null
   spectating?: boolean
   spikeSite?: string | null
-  spikeState?: 'none' | 'planted' | 'defusing' | null
+  spikeState?: 'none' | 'planted' | 'defusing' | 'detonated' | 'defused' | null
   spikePlantedAt?: number | null
 }
 
@@ -989,7 +989,7 @@ function IngamePlayerCard({
 
           {/* Spike carrier slot - small spike glyph on the row carrying the
               spike (GEP hasSpike), next to the spectator eye slot. */}
-          {player.hasSpike && (
+          {Boolean(player.hasSpike || (player as any).carryingSpike || (player as any).hasBomb || (player as any).isCarrier || (player as any).spike) && (
             <div
               className={`h-full overflow-hidden ${isRight ? 'rounded-l-md' : 'rounded-r-md'}`}
               style={{ width: 18 }}
@@ -1103,7 +1103,8 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   const roundEndReasonText =
     roundEnd?.reason === 'detonation' ? 'SPIKE DETONATED'
     : roundEnd?.reason === 'defusion' ? 'SPIKE DEFUSED'
-    : 'ROUND WIN'
+    : roundEnd?.winner || roundEnd?.reason ? 'ROUND WIN'
+    : null
 
   // Game-events popover: resolve the uploaded image for the ceremony reason
   // (Individual Uploads → per-reason slot; otherwise the Round Win upload).
@@ -1117,7 +1118,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     'THRIFTY': 'game-events-bg-thrifty',
   }
   const ceremonyEventImage =
-    (gameEventsIndividual && GE_REASON_FIELDS[ceremonyReasonText]
+    (gameEventsIndividual && ceremonyReasonText && GE_REASON_FIELDS[ceremonyReasonText]
       ? (gameEventsUploads?.[GE_REASON_FIELDS[ceremonyReasonText]] ?? null)
       : null)
     || gameEventsUploads?.['game-events-bg-round-winner']
@@ -1155,31 +1156,52 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     return Boolean(obs === pName || (pRiot && obs === pRiot) || (pName && obs.includes(pName)) || (pName && pName.includes(obs)))
   }
 
-  const isSpikeActive = spikeState === 'planted' || spikeState === 'defusing'
-  const spikeBlinkOn = useSpikeBlink(spikeState === 'planted')
+  const isRoundOver = Boolean(
+    roundEnd != null ||
+    (roundEndReasonText && roundEndReasonText.length > 0)
+  )
+  const isSpikeDetonatedOrDefused = Boolean(
+    spikeState === 'detonated' ||
+    spikeState === 'defused' ||
+    roundEnd?.reason === 'detonation' ||
+    roundEnd?.reason === 'defusion' ||
+    (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('detonat') || spikeState.toLowerCase().includes('explod') || spikeState.toLowerCase().includes('defus')))
+  )
+  const isSpikeActive = Boolean(
+    !isRoundOver &&
+    !isSpikeDetonatedOrDefused &&
+    (spikeState === 'planted' ||
+      spikeState === 'defusing' ||
+      (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('plant') || spikeState.toLowerCase().includes('defus'))))
+  )
+  const spikeBlinkOn = useSpikeBlink(spikeState === 'planted' && isSpikeActive)
   // Spike 45s detonation countdown (VS spike-planted parity): while planted,
   // the timer slot shows the ticking spike clock instead of the round clock.
   const [spikeNow, setSpikeNow] = React.useState(Date.now())
   React.useEffect(() => {
-    if (spikeState !== 'planted' || !spikePlantedAt) return
+    if (!isSpikeActive || spikeState !== 'planted' || !spikePlantedAt) return
     setSpikeNow(Date.now())
     const t = setInterval(() => setSpikeNow(Date.now()), 200)
     return () => clearInterval(t)
-  }, [spikeState, spikePlantedAt])
+  }, [isSpikeActive, spikeState, spikePlantedAt])
   const spikeRemainingSec = (() => {
-    if (spikeState !== 'planted' || !spikePlantedAt) return null
+    if (!isSpikeActive || spikeState !== 'planted' || !spikePlantedAt) return null
     return Math.max(0, 45 - Math.floor((spikeNow - Number(spikePlantedAt)) / 1000))
   })()
   // Endround: keep the plain clock in the timer slot (the banner tells the
   // story — no ELIMINATED/SPIKE DETONATED words crowding the scoreline).
-  const displayTimerText = isSpikeActive
-    ? (spikeState === 'defusing'
-        ? 'DEFUSING'
-        : spikeRemainingSec != null
-          ? `${Math.floor(spikeRemainingSec / 60)}:${String(spikeRemainingSec % 60).padStart(2, '0')}`
-          : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
-    : timerText
-  const displayTimerColor = isSpikeActive ? '#FF3549' : timerColor
+  const displayTimerText = isRoundOver
+    ? (roundEndReasonText || '0:00')
+    : isSpikeDetonatedOrDefused
+      ? (spikeState === 'defused' ? 'DEFUSED' : 'DETONATED')
+      : isSpikeActive
+        ? (spikeState === 'defusing'
+            ? 'DEFUSING'
+            : spikeRemainingSec != null
+              ? `${Math.floor(spikeRemainingSec / 60)}:${String(spikeRemainingSec % 60).padStart(2, '0')}`
+              : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
+        : timerText
+  const displayTimerColor = isSpikeActive || isSpikeDetonatedOrDefused ? '#FF3549' : timerColor
 
   const showScoreLine = isToggled('score-line')
   const showTeamStats = isToggled('team-stats') || isToggled('alive')
@@ -1378,7 +1400,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
                     {showBombTimer && (
                       <div className={scoreLineSmall ? 'flex h-full w-[100px] shrink-0 items-center justify-center tabular-nums' : ''}>
                       <h1 className="translate-y-1 flex items-center gap-2 text-[40px]" style={{ color: displayTimerColor }}>
-                        {spikeState === 'planted' ? (
+                        {isSpikeActive && spikeState === 'planted' ? (
                           // Planted: pulsing red spike icon ONLY — no 45s countdown
                           // (operator request, live 2026-10-18). Blink rate still
                           // accelerates as detonation approaches.

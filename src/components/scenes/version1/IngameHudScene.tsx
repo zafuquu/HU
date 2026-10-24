@@ -10,6 +10,7 @@ import {
   abilityImg,
   agentBust,
   agentIcon,
+  agentMasteryPortrait,
   agentPortrait,
   aliveOf,
   armorOf,
@@ -18,6 +19,7 @@ import {
   getAbilityCurrentCharges,
   hexRgba,
   hpOf,
+  isDurationUltAgent,
   kdaOf,
   ultMaxOf,
   ultPointsOf,
@@ -122,55 +124,87 @@ function UltOrb({
 }) {
   const ready = ultReadyOf(player)
   const ultPts = ultPointsOf(player)
-  const ultMax = ultMaxOf(player)
+  const ultMax = Math.max(1, ultMaxOf(player))
+
+  // Circular segmented progress around the orb (matching player panel ingame hud.png)
+  const size = 28
+  const center = size / 2
+  const radius = 11.5
+  const step = 360 / ultMax
+  const gap = ultMax > 7 ? 5 : 6
+
+  const describeArc = (startAngle: number, endAngle: number) => {
+    const rad = (deg: number) => ((deg - 90) * Math.PI) / 180.0
+    const x1 = center + radius * Math.cos(rad(startAngle))
+    const y1 = center + radius * Math.sin(rad(startAngle))
+    const x2 = center + radius * Math.cos(rad(endAngle))
+    const y2 = center + radius * Math.sin(rad(endAngle))
+    const largeArc = endAngle - startAngle > 180 ? 1 : 0
+    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${radius} ${radius} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`
+  }
 
   return (
     <div
-      className="flex flex-col items-center cursor-pointer group"
+      className="relative flex size-[28px] shrink-0 items-center justify-center cursor-pointer select-none group"
       onClick={onClick}
       title={`Ult: ${ultPts}/${ultMax} (Click to toggle)`}
     >
-      <div className="relative grid size-[23px] shrink-0 place-items-center transition-transform group-hover:scale-105 active:scale-95">
-        {ready && (
-          <span
-            className="absolute -inset-[2.5px] rounded-full border-2 border-dashed"
-            style={{ borderColor: teamColor }}
+      <svg width={size} height={size} className="absolute inset-0 pointer-events-none">
+        {ready ? (
+          // Ult Ready: Full glowing solid ring matching team color
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke={teamColor}
+            strokeWidth={2.4}
+            className="transition-all duration-300"
+            style={{
+              filter: `drop-shadow(0 0 5px ${teamColor}) drop-shadow(0 0 2px #FFFFFF)`,
+            }}
           />
+        ) : (
+          // Segmented progress arcs around the circle (one arc per required point)
+          Array.from({ length: ultMax }, (_, i) => {
+            const isLit = i < ultPts
+            const startAngle = i * step + gap / 2
+            const endAngle = (i + 1) * step - gap / 2
+            return (
+              <path
+                key={i}
+                d={describeArc(startAngle, endAngle)}
+                fill="none"
+                stroke={isLit ? '#FFFFFF' : 'rgba(255,255,255,0.22)'}
+                strokeWidth={isLit ? 2.2 : 1.4}
+                strokeLinecap="round"
+                style={
+                  isLit
+                    ? {
+                        filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.9))',
+                      }
+                    : undefined
+                }
+              />
+            )
+          })
         )}
-        <span
-          className="absolute inset-0 rounded-full border border-white/35 bg-black/80"
-          style={ready ? { boxShadow: `0 0 12px 3px ${hexRgba(teamColor, 0.9)}` } : undefined}
-        />
+      </svg>
+
+      {/* Inner circular backdrop and ability icon */}
+      <div
+        className="relative grid size-[21px] place-items-center rounded-full bg-black/85 transition-transform group-hover:scale-105 active:scale-95"
+        style={{
+          boxShadow: ready ? `0 0 10px 2px ${hexRgba(teamColor, 0.75)}` : undefined,
+        }}
+      >
         <img
           src={abilityImg(player, 'X')}
           alt=""
-          className="relative size-[15px] object-contain"
+          className="size-[14px] object-contain"
           style={{ opacity: ready ? 1 : 0.72 }}
           onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
         />
-      </div>
-      {/* Ultimate point boxes / diamonds matching agent ult requirement (6, 7, 8, or 9) */}
-      <div className="mt-[2px] flex h-[3px] items-center gap-[1px]" style={{ width: Math.max(22, ultMax * 3) }}>
-        {Array.from({ length: ultMax }, (_, i) => {
-          const isLit = i < ultPts
-          return (
-            <span
-              key={i}
-              className="h-full flex-1 rounded-[0.5px] transition-all duration-200"
-              style={
-                isLit
-                  ? {
-                      background: ready ? teamColor : '#FFFFFF',
-                      boxShadow: ready ? `0 0 4px ${teamColor}` : '0 0 3px rgba(255,255,255,0.8)',
-                    }
-                  : {
-                      background: 'rgba(255,255,255,0.14)',
-                      border: '0.5px solid rgba(255,255,255,0.22)',
-                    }
-              }
-            />
-          )
-        })}
       </div>
     </div>
   )
@@ -264,7 +298,7 @@ function KitPanel({
   const weaponSrc = getWeaponImg(player.weapon || player.weaponName)
   const st = player.abilityState
 
-  const hasSpike = Boolean(player.hasSpike || player.carryingSpike || player.hasBomb || player.isCarrier)
+  const hasSpike = Boolean(player.hasSpike || player.carryingSpike || player.hasBomb || player.isCarrier || player.spike)
 
   // Persistent timeout ref so snapshot re-renders (every 250ms) NEVER cancel the active timer
   const ultTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -309,13 +343,14 @@ function KitPanel({
     }
   }, [currentWeapon, alive, triggerUltAnimation])
 
-  // Trigger 3: Local player abilityState.X drops (Viper Pit, Reyna Empress, Phoenix Run It Back, Yoru Drift)
-  const abilityX = Boolean(player.abilityState?.X)
+  // Trigger 3: Local player abilityState.X turns ACTIVE (Viper Pit, Reyna Empress, Phoenix Run It Back, Yoru Drift, etc.)
+  const abilityX = Boolean(player.abilityState?.X ?? player.abilityState?.x ?? player.abilityState?.ultimate)
   const prevAbilityX = React.useRef<boolean | null>(null)
   React.useEffect(() => {
     const prev = prevAbilityX.current
     prevAbilityX.current = abilityX
-    if (prev === true && abilityX === false && alive) {
+    // FIXED: Trigger when ult is ACTIVATED (transitions from false/falsy to true)!
+    if (prev === false && abilityX === true && alive) {
       triggerUltAnimation()
     }
   }, [abilityX, alive, triggerUltAnimation])
@@ -339,11 +374,15 @@ function KitPanel({
     }
   }, [isUltActiveFlag, alive, triggerUltAnimation])
 
+  // For duration ult agents, isUsingUlt stays true while abilityX is active!
+  const isDurationActive = Boolean(abilityX && isDurationUltAgent(player))
+
   const isUsingUlt = Boolean(
     alive && (
       isUsingUltOverride ||
       localUltActive ||
-      isUltActiveFlag
+      isUltActiveFlag ||
+      isDurationActive
     )
   )
 
@@ -369,7 +408,8 @@ function KitPanel({
 
   // === "USING ULT" ACTIVE / EXITING STATE (Matches using ult1.jpg: large 54px icon, shoulder-to-head bust) ===
   if (ultStage === 'active' || ultStage === 'exiting') {
-    const headArt = agentBust(player) || agentPortrait(player) || resolveAgent(player)?.portrait || BLANK_IMG
+    const headArt = agentMasteryPortrait(player) || agentIcon(player) || agentBust(player) || agentPortrait(player) || BLANK_IMG
+    const iconArt = agentIcon(player)
     const isExiting = ultStage === 'exiting'
     return (
       <div
@@ -403,7 +443,7 @@ function KitPanel({
           className="relative h-[79px] overflow-hidden rounded-[4px] border-2 border-[#FACC15] bg-[#0A0D12] shadow-[0_0_18px_rgba(250,204,21,0.85),inset_0_0_10px_rgba(250,204,21,0.35)]"
           style={{ animation: isExiting ? undefined : 'ultGlowPulse 1.8s ease-in-out infinite' }}
         >
-          {/* Stage 1: Team color block covers ~75% top slanting to ~48% bottom (using ult1.jpg parity) */}
+          {/* Stage 1: Team color block covers ~72% top slanting to ~46% bottom */}
           <div
             className="absolute inset-y-0 z-10 flex items-center overflow-hidden"
             style={{
@@ -411,8 +451,8 @@ function KitPanel({
               width: '100%',
               background: teamColor,
               clipPath: isRight
-                ? 'polygon(25% 0%, 100% 0%, 100% 100%, 52% 100%)'
-                : 'polygon(0% 0%, 75% 0%, 48% 100%, 0% 100%)',
+                ? 'polygon(28% 0%, 100% 0%, 100% 100%, 54% 100%)'
+                : 'polygon(0% 0%, 72% 0%, 46% 100%, 0% 100%)',
               animation: isExiting
                 ? (isRight ? 'v1UltSlideOutRight 200ms ease-in forwards' : 'v1UltSlideOutLeft 200ms ease-in forwards')
                 : (isRight ? 'v1UltSlideInRight 280ms cubic-bezier(0.16,1,0.3,1) forwards' : 'v1UltSlideInLeft 280ms cubic-bezier(0.16,1,0.3,1) forwards'),
@@ -450,12 +490,12 @@ function KitPanel({
             </div>
           </div>
 
-          {/* Stage 3: Agent Head/Bust portrait on remaining space (head-to-shoulder crop matching using ult1.jpg) */}
+          {/* Stage 3: Agent Head/Bust portrait on remaining space — Layered at z-20 so NEVER hidden! */}
           <div
-            className="absolute inset-y-0 z-0 overflow-hidden"
+            className="absolute inset-y-0 z-20 overflow-hidden flex items-center justify-center"
             style={{
               [isRight ? 'left' : 'right']: 0,
-              width: '60%',
+              width: '140px',
               animation: isExiting
                 ? undefined
                 : (isRight ? 'v1UltBustRevealRight 300ms ease-out 260ms both' : 'v1UltBustRevealLeft 300ms ease-out 260ms both'),
@@ -464,13 +504,13 @@ function KitPanel({
             <img
               src={headArt}
               alt=""
-              className="absolute top-[-10px] h-[270px] w-auto max-w-none object-contain"
+              className="h-[140px] w-auto max-w-none object-contain"
               style={{
-                [isRight ? 'left' : 'right']: '-15px',
                 transform: isRight ? 'scaleX(-1)' : undefined,
+                marginTop: '-8px',
               }}
               onError={e => {
-                ;(e.currentTarget as HTMLImageElement).src = agentIcon(player)
+                ;(e.currentTarget as HTMLImageElement).src = iconArt
               }}
             />
           </div>
@@ -988,7 +1028,8 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
   const roundEndReasonText =
     roundEnd?.reason === 'detonation' ? 'SPIKE DETONATED'
     : roundEnd?.reason === 'defusion' ? 'SPIKE DEFUSED'
-    : 'ROUND WIN'
+    : roundEnd?.winner || roundEnd?.reason ? 'ROUND WIN'
+    : null
   const ceremonyReasonText = (ceremonyText || roundEndReasonText || '').trim().toUpperCase()
   const GE_REASON_FIELDS: Record<string, string> = {
     'ROUND WIN': 'game-events-bg-round-winner',
@@ -999,7 +1040,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
     THRIFTY: 'game-events-bg-thrifty',
   }
   const ceremonyEventImage =
-    (gameEventsIndividual && GE_REASON_FIELDS[ceremonyReasonText]
+    (gameEventsIndividual && ceremonyReasonText && GE_REASON_FIELDS[ceremonyReasonText]
       ? (gameEventsUploads?.[GE_REASON_FIELDS[ceremonyReasonText]] ?? null)
       : null) ||
     gameEventsUploads?.['game-events-bg-round-winner'] ||
@@ -1031,31 +1072,48 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
   }
 
   // Spike clock (classic parity)
-  const isSpikeActive = Boolean(
-    spikeState === 'planted' ||
-    spikeState === 'defusing' ||
-    (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('plant') || spikeState.toLowerCase().includes('defus')))
+  const isRoundOver = Boolean(
+    roundEnd != null ||
+    (roundEndReasonText && roundEndReasonText.length > 0)
   )
-  const spikeBlinkOn = useSpikeBlink(spikeState === 'planted')
+  const isSpikeDetonatedOrDefused = Boolean(
+    spikeState === 'detonated' ||
+    spikeState === 'defused' ||
+    roundEnd?.reason === 'detonation' ||
+    roundEnd?.reason === 'defusion' ||
+    (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('detonat') || spikeState.toLowerCase().includes('explod') || spikeState.toLowerCase().includes('defus')))
+  )
+  const isSpikeActive = Boolean(
+    !isRoundOver &&
+    !isSpikeDetonatedOrDefused &&
+    (spikeState === 'planted' ||
+      spikeState === 'defusing' ||
+      (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('plant') || spikeState.toLowerCase().includes('defus'))))
+  )
+  const spikeBlinkOn = useSpikeBlink(spikeState === 'planted' && isSpikeActive)
   const [spikeNow, setSpikeNow] = React.useState(Date.now())
   React.useEffect(() => {
-    if (spikeState !== 'planted' || !spikePlantedAt) return
+    if (!isSpikeActive || spikeState !== 'planted' || !spikePlantedAt) return
     setSpikeNow(Date.now())
     const t = setInterval(() => setSpikeNow(Date.now()), 200)
     return () => clearInterval(t)
-  }, [spikeState, spikePlantedAt])
+  }, [isSpikeActive, spikeState, spikePlantedAt])
   const spikeRemainingSec = (() => {
-    if (spikeState !== 'planted' || !spikePlantedAt) return null
+    if (!isSpikeActive || spikeState !== 'planted' || !spikePlantedAt) return null
     return Math.max(0, 45 - Math.floor((spikeNow - Number(spikePlantedAt)) / 1000))
   })()
-  const displayTimerText = isSpikeActive
-    ? (spikeState === 'defusing'
-        ? 'DEFUSING'
-        : spikeRemainingSec != null
-          ? `${Math.floor(spikeRemainingSec / 60)}:${String(spikeRemainingSec % 60).padStart(2, '0')}`
-          : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
-    : timerText
-  const displayTimerColor = isSpikeActive ? '#FF3549' : timerColor
+  const displayTimerText = isRoundOver
+    ? (roundEndReasonText || '0:00')
+    : isSpikeDetonatedOrDefused
+      ? (spikeState === 'defused' ? 'DEFUSED' : 'DETONATED')
+      : isSpikeActive
+        ? (spikeState === 'defusing'
+            ? 'DEFUSING'
+            : spikeRemainingSec != null
+              ? `${Math.floor(spikeRemainingSec / 60)}:${String(spikeRemainingSec % 60).padStart(2, '0')}`
+              : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
+        : timerText
+  const displayTimerColor = isSpikeActive || isSpikeDetonatedOrDefused ? '#FF3549' : timerColor
 
   const showScoreLine = isToggled('score-line')
   const showTeamStats = isToggled('team-stats') || isToggled('alive')

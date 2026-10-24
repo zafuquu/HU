@@ -73,8 +73,6 @@ export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => 
     gumshoe: ['C', 'Q'],
     cypher: ['C', 'Q'],
     killjoy: ['C'],
-    pandemic: ['C'],
-    viper: ['C'],
     phoenix: ['Q'],
     wushu: ['C'],
     jett: ['C'],
@@ -87,8 +85,6 @@ export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => 
     reyna: ['C', 'Q', 'E'],
     thorne: ['Q'],
     sage: ['Q'],
-    guide: ['E'],
-    skye: ['E'],
     stealth: ['Q'],
     yoru: ['Q'],
     grenadier: ['Q'],
@@ -106,16 +102,31 @@ export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => 
     clove: ['E'],
     sprinter: ['Q'],
     neon: ['Q'],
-    nox: ['C'],
-    vyse: ['C'],
-    rift: ['E'],
-    astra: ['E'],
+    nox: ['Q'],
+    vyse: ['Q'],
     cashew: ['E'],
     tejo: ['E'],
   }
 
   if (twoCharges[k]?.includes(slot) || twoCharges[name]?.includes(slot)) return 2
   return 1
+}
+
+/** Agents whose ultimate has an active channel / duration / transformed state. */
+export const isDurationUltAgent = (player: any): boolean => {
+  const k = (agentCodename(player) || '').toLowerCase()
+  const name = String(player?.agentName || player?.agent || '').toLowerCase()
+  const match = (n: string) => k === n || name === n || k.includes(n) || name.includes(n)
+  return (
+    match('viper') || match('pandemic') ||
+    match('reyna') || match('vampire') ||
+    match('phoenix') ||
+    match('iso') || match('sequoia') ||
+    match('yoru') || match('stealth') ||
+    match('neon') || match('sprinter') ||
+    match('chamber') || match('deadeye') ||
+    match('jett') || match('wushu')
+  )
 }
 
 /** Get number of bought / available charges for an ability slot. */
@@ -125,24 +136,27 @@ export const getAbilityCurrentCharges = (
   st: any,
   max: number,
 ): number => {
+  const altKey = slot.toLowerCase()
+  const legacyName = slot === 'C' ? 'grenade' : slot === 'Q' ? 'ability1' : slot === 'E' ? 'ability2' : 'ultimate'
+
   // 1. Direct abilityState from local player GEP telemetry
-  if (st && slot in st) {
-    const val = st[slot]
+  if (st && typeof st === 'object') {
+    const val = st[slot] ?? st[altKey] ?? st[legacyName]
     if (typeof val === 'number') return Math.min(max, Math.max(0, val))
-    if (val === true || val === 'ready' || val === 'active' || val === 1 || val === '1') return max
+    if (val === true || val === 'ready' || val === 'active' || val === '1') return max
     if (val === false || val === 'spent' || val === 0 || val === '0' || val === 'disabled') return 0
   }
 
   // 2. Bought ability list array from engine (e.g. ['E'] or ['C', 'E'])
   if (Array.isArray(player?.abilities)) {
     if (player.abilities.length > 0) {
-      const bought = player.abilities.includes(slot)
+      const bought = player.abilities.includes(slot) || player.abilities.includes(altKey) || player.abilities.includes(legacyName)
       return bought ? max : 0
     }
   }
 
   // 3. Object-structured ability record
-  const objVal = player?.abilities?.[slot]?.charges ?? player?.abilities?.[slot]?.count ?? player?.abilities?.[slot]
+  const objVal = player?.abilities?.[slot]?.charges ?? player?.abilities?.[slot]?.count ?? player?.abilities?.[slot] ?? player?.abilities?.[altKey]
   if (typeof objVal === 'number') return Math.min(max, Math.max(0, objVal))
   if (objVal === false || objVal === 0 || objVal === 'spent') return 0
   if (objVal === true || objVal === 'ready') return max

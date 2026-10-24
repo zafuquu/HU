@@ -74,10 +74,29 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
     onSelectComponent,
   } = props
 
+  const totalRounds = Math.max(1, (scoreLeft ?? 0) + (scoreRight ?? 0))
+
+  const getPlayerAcs = (p: any): number => {
+    if (!p) return 0
+    if (typeof p.acs === 'number' && p.acs > 0) return p.acs
+    if (typeof p.score === 'number' && p.score > 0) return Math.round(p.score / totalRounds)
+    const k = Number(p.kills ?? 0)
+    const fb = Number(p.firstBloods ?? p.firstKills ?? 0)
+    const a = Number(p.assists ?? 0)
+    if (k === 0 && fb === 0 && a === 0) return 0
+    return Math.round((k * 140 + fb * 70 + a * 25) / totalRounds)
+  }
+
+  const getPlayerFirstKills = (p: any): number => {
+    if (!p) return 0
+    return Number(p.firstKills ?? p.firstBloods ?? p.first_blood ?? 0)
+  }
+
   const pickMvp = (arr: PostgamePlayer[]): PostgamePlayer | null => {
     if (arr.length === 0) return null
     const sorted = [...arr].sort(
       (a, b) =>
+        getPlayerAcs(b) - getPlayerAcs(a) ||
         (b.kills ?? 0) - (a.kills ?? 0) ||
         (a.deaths ?? 0) - (b.deaths ?? 0) ||
         (b.assists ?? 0) - (a.assists ?? 0),
@@ -98,10 +117,10 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
 
   // Pad to 4 if needed
   while (leftRows.length < 4) {
-    leftRows.push({ id: `pad-l-${leftRows.length}`, alias: `PLAYER ${leftRows.length + 1}`, agentName: 'Neon', kills: 18, deaths: 14, acs: 246 })
+    leftRows.push({ id: `pad-l-${leftRows.length}`, alias: `PLAYER ${leftRows.length + 1}`, agentName: 'Neon', kills: 0, deaths: 0, acs: 0 })
   }
   while (rightRows.length < 4) {
-    rightRows.push({ id: `pad-r-${rightRows.length}`, alias: `PLAYER ${rightRows.length + 1}`, agentName: 'Neon', kills: 18, deaths: 14, acs: 246 })
+    rightRows.push({ id: `pad-r-${rightRows.length}`, alias: `PLAYER ${rightRows.length + 1}`, agentName: 'Neon', kills: 0, deaths: 0, acs: 0 })
   }
 
   const leftWon = scoreLeft > scoreRight
@@ -342,10 +361,10 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
               {/* Left Stats: Right-aligned at the end of left block */}
               <div className="flex flex-col items-end leading-none">
                 <span className="font-barlowCond text-[22px] font-bold text-white tabular-nums">
-                  {lp?.kills ?? 18} / {lp?.deaths ?? 14}
+                  {lp?.kills ?? 0} / {lp?.deaths ?? 0}
                 </span>
                 <span className="mt-1 font-barlowCond text-[22px] font-bold text-white tabular-nums">
-                  {lp?.acs ?? 246}
+                  {getPlayerAcs(lp)}
                 </span>
               </div>
             </div>
@@ -381,10 +400,10 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
               {/* Right Stats: Left-aligned at the start of right block */}
               <div className="flex flex-col items-start leading-none">
                 <span className="font-barlowCond text-[22px] font-bold text-white tabular-nums">
-                  {rp?.kills ?? 18} / {rp?.deaths ?? 14}
+                  {rp?.kills ?? 0} / {rp?.deaths ?? 0}
                 </span>
                 <span className="mt-1 font-barlowCond text-[22px] font-bold text-white tabular-nums">
-                  {rp?.acs ?? 246}
+                  {getPlayerAcs(rp)}
                 </span>
               </div>
 
@@ -466,13 +485,13 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
             {/* Left MVP Stats (Right-aligned) */}
             <div className="flex flex-col items-end leading-none pb-0.5">
               <span className="font-barlowCond text-[26px] font-bold text-white tabular-nums">
-                {leftMvp.kills ?? 18} / {leftMvp.deaths ?? 14}
+                {leftMvp.kills ?? 0} / {leftMvp.deaths ?? 0}
               </span>
               <span className="mt-2 font-barlowCond text-[26px] font-bold text-white tabular-nums">
-                {leftMvp.acs ?? 246}
+                {getPlayerAcs(leftMvp)}
               </span>
               <span className="mt-2 font-barlowCond text-[26px] font-bold text-white tabular-nums">
-                {(leftMvp as any).firstKills ?? 5}
+                {getPlayerFirstKills(leftMvp)}
               </span>
             </div>
           </div>
@@ -503,13 +522,13 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
             {/* Right MVP Stats (Left-aligned) */}
             <div className="flex flex-col items-start leading-none pb-0.5">
               <span className="font-barlowCond text-[26px] font-bold text-white tabular-nums">
-                {rightMvp.kills ?? 18} / {rightMvp.deaths ?? 14}
+                {rightMvp.kills ?? 0} / {rightMvp.deaths ?? 0}
               </span>
               <span className="mt-2 font-barlowCond text-[26px] font-bold text-white tabular-nums">
-                {rightMvp.acs ?? 246}
+                {getPlayerAcs(rightMvp)}
               </span>
               <span className="mt-2 font-barlowCond text-[26px] font-bold text-white tabular-nums">
-                {(rightMvp as any).firstKills ?? 5}
+                {getPlayerFirstKills(rightMvp)}
               </span>
             </div>
 

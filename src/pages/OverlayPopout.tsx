@@ -636,6 +636,14 @@ export default function OverlayPopout() {
     kills: p.kills ?? 0,
     deaths: p.deaths ?? 0,
     assists: p.assists ?? 0,
+    firstBloods: p.firstBloods ?? p.firstKills ?? p.first_blood ?? 0,
+    firstKills: p.firstKills ?? p.firstBloods ?? p.first_blood ?? 0,
+    acs: p.acs ?? (
+      ((p.kills ?? 0) * 140 + ((p.firstBloods ?? p.firstKills ?? 0) * 70) + ((p.assists ?? 0) * 25)) > 0
+        ? Math.round(((p.kills ?? 0) * 140 + ((p.firstBloods ?? p.firstKills ?? 0) * 70) + ((p.assists ?? 0) * 25)) / Math.max(1, (snapState?.score?.blue ?? 0) + (snapState?.score?.red ?? 0) || (snapState?.round?.number ?? 1)))
+        : 0
+    ),
+    score: p.score ?? null,
     // No fake weapon fallback — blank until GEP reports the real carried gun.
     weapon: p.weapon ?? p.weaponName ?? null,
     ultimate: p.ultimate ?? p.currUltPoints ?? p.ultPoints ?? 0,
@@ -943,12 +951,28 @@ export default function OverlayPopout() {
   // 'detonated' | null) — never an object; consume both shapes safely.
   const spikeRaw = (liveScores as any)?.spike ?? (snapState as any)?.spike ?? null
   const spikeSite = ((spikeRaw && typeof spikeRaw === 'object' && spikeRaw.site) || (snapState as any)?.plantSite || null) as string | null
+  const isDetonated =
+    spikeRaw === 'detonated' ||
+    (snapState as any)?.spike === 'detonated' ||
+    (snapState as any)?.roundEnd?.reason === 'detonation' ||
+    (typeof spikeRaw === 'string' && (spikeRaw.toLowerCase().includes('detonat') || spikeRaw.toLowerCase().includes('explod')))
+  const isDefused =
+    spikeRaw === 'defused' ||
+    (snapState as any)?.spike === 'defused' ||
+    (snapState as any)?.roundEnd?.reason === 'defusion' ||
+    (typeof spikeRaw === 'string' && spikeRaw.toLowerCase().includes('defus'))
   const spikeState = (
-    (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null)) ||
-    ((snapState as any)?.bombPlanted ? 'planted' : null) ||
-    ((snapState as any)?.spike === 'planted' ? 'planted' : null) ||
-    ((snapState as any)?.plantSite ? 'planted' : null)
-  ) as 'none' | 'planted' | 'defusing' | null
+    isDetonated
+      ? 'detonated'
+      : isDefused
+        ? 'defused'
+        : (
+            (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null)) ||
+            ((snapState as any)?.bombPlanted ? 'planted' : null) ||
+            ((snapState as any)?.spike === 'planted' ? 'planted' : null) ||
+            null
+          )
+  ) as 'none' | 'planted' | 'defusing' | 'detonated' | 'defused' | null
   const spikePlantedAt = (snapState as any)?.round?.spikePlantedAt ?? (snapState as any)?.spikePlantedAt ?? (liveScores as any)?.spikePlantedAt ?? null
 
   const PrimaryHud = kit === 'version1' ? Version1IngameHudScene : ClassicIngameHudScene

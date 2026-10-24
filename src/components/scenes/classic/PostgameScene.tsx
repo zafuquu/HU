@@ -14,6 +14,8 @@ export interface PostgamePlayer {
   assists?: number
   score?: number
   acs?: number
+  firstBloods?: number
+  firstKills?: number
   avatar?: string | null
   photoUrl?: string | null
   avatarUrl?: string | null
