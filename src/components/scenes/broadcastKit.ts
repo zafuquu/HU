@@ -72,15 +72,15 @@ export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => 
     pandemic: ['C'],
     viper: ['C'],
     phoenix: ['Q'],
-    wushu: ['C', 'Q'],
-    jett: ['C', 'Q'],
+    wushu: [],
+    jett: [],
     breach: ['Q'],
     wraith: ['C', 'E'],
     omen: ['C', 'E'],
     clay: ['Q'],
     raze: ['Q'],
-    vampire: ['C', 'Q', 'E'],
-    reyna: ['C', 'Q', 'E'],
+    vampire: ['C'],
+    reyna: ['C'],
     thorne: ['Q'],
     sage: ['Q'],
     guide: ['E'],
@@ -92,8 +92,8 @@ export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => 
     'kay/o': ['Q'],
     bountyhunter: ['C'],
     fade: ['C'],
-    mage: ['C'],
-    harbor: ['C'],
+    mage: [],
+    harbor: [],
     cable: ['Q'],
     deadlock: ['Q'],
     sequoia: ['Q'],
@@ -102,12 +102,12 @@ export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => 
     clove: ['E'],
     sprinter: ['Q'],
     neon: ['Q'],
-    nox: ['Q'],
-    vyse: ['Q'],
+    nox: ['C'],
+    vyse: ['C'],
     rift: ['E'],
     astra: ['E'],
-    cashew: ['Q'],
-    tejo: ['Q'],
+    cashew: [],
+    tejo: [],
   }
 
   if (twoCharges[k]?.includes(slot) || twoCharges[name]?.includes(slot)) return 2
@@ -121,17 +121,35 @@ export const getAbilityCurrentCharges = (
   st: any,
   max: number,
 ): number => {
-  const val = st?.[slot] ?? player?.abilities?.[slot]?.charges ?? player?.abilities?.[slot]?.count
-  if (typeof val === 'number') {
-    return Math.min(max, Math.max(0, val))
+  // 1. Direct abilityState from local player GEP telemetry
+  if (st && slot in st) {
+    const val = st[slot]
+    if (typeof val === 'number') return Math.min(max, Math.max(0, val))
+    if (val === true || val === 'ready' || val === 'active' || val === 1 || val === '1') return max
+    if (val === false || val === 'spent' || val === 0 || val === '0' || val === 'disabled') return 0
   }
-  if (val === 'spent' || val === 0 || val === '0' || val === false || val === 'disabled') {
-    return 0
+
+  // 2. Bought ability list array from engine (e.g. ['E'] or ['C', 'E'])
+  if (Array.isArray(player?.abilities)) {
+    if (player.abilities.length > 0) {
+      const bought = player.abilities.includes(slot)
+      return bought ? max : 0
+    }
   }
-  if (val === 'ready' || val === 'active' || val === true || val === 1 || val === '1') {
+
+  // 3. Object-structured ability record
+  const objVal = player?.abilities?.[slot]?.charges ?? player?.abilities?.[slot]?.count ?? player?.abilities?.[slot]
+  if (typeof objVal === 'number') return Math.min(max, Math.max(0, objVal))
+  if (objVal === false || objVal === 0 || objVal === 'spent') return 0
+  if (objVal === true || objVal === 'ready') return max
+
+  // 4. Default rules:
+  // Signature ability 'E' is free & granted every round at round start in Valorant.
+  // Purchasable abilities ('C' & 'Q') require purchase evidence — never light up when unbought.
+  if (slot === 'E' && aliveOf(player)) {
     return max
   }
-  return aliveOf(player) ? max : 0
+  return 0
 }
 
 export const hexRgba = (hex: string | undefined, a: number): string => {
