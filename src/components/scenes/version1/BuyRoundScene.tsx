@@ -14,6 +14,8 @@ import {
   kdaOf,
   spentOf,
   ultReadyOf,
+  ultPointsOf,
+  ultMaxOf,
   REASON_ICON,
   type RoundRow,
 } from '../broadcastKit'
@@ -271,25 +273,52 @@ function BuyAbility({ player, slot, st }: { player: any; slot: 'C' | 'Q' | 'E'; 
 
 function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
   const ready = ultReadyOf(player)
+  const ultPts = ultPointsOf(player)
+  const ultMax = ultMaxOf(player)
   return (
-    <div className="relative grid size-[20px] shrink-0 place-items-center">
-      {ready && (
+    <div className="flex flex-col items-center" title={`Ult: ${ultPts}/${ultMax}`}>
+      <div className="relative grid size-[20px] shrink-0 place-items-center">
+        {ready && (
+          <span
+            className="absolute -inset-[2px] rounded-full border-2 border-dashed"
+            style={{ borderColor: teamColor }}
+          />
+        )}
         <span
-          className="absolute -inset-[2px] rounded-full border-2 border-dashed"
-          style={{ borderColor: teamColor }}
+          className="absolute inset-0 rounded-full border border-white/35 bg-black/80"
+          style={ready ? { boxShadow: `0 0 10px 3px ${teamColor}` } : undefined}
         />
-      )}
-      <span
-        className="absolute inset-0 rounded-full border border-white/35 bg-black/80"
-        style={ready ? { boxShadow: `0 0 10px 3px ${teamColor}` } : undefined}
-      />
-      <img
-        src={abilityImg(player, 'X')}
-        alt=""
-        className="relative size-[12px] object-contain"
-        style={{ opacity: ready ? 1 : 0.7 }}
-        onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
-      />
+        <img
+          src={abilityImg(player, 'X')}
+          alt=""
+          className="relative size-[12px] object-contain"
+          style={{ opacity: ready ? 1 : 0.7 }}
+          onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
+        />
+      </div>
+      {/* Ultimate point boxes matching agent ult requirement (6, 7, 8, or 9) */}
+      <div className="mt-1 flex h-[3.5px] items-center gap-[1.5px]" style={{ width: Math.max(20, ultMax * 3) }}>
+        {Array.from({ length: ultMax }, (_, i) => {
+          const isLit = i < ultPts
+          return (
+            <span
+              key={i}
+              className="h-full flex-1 rounded-[0.5px] transition-all duration-200"
+              style={
+                isLit
+                  ? {
+                      background: ready ? teamColor : '#FFFFFF',
+                      boxShadow: ready ? `0 0 4px ${teamColor}` : '0 0 3px rgba(255,255,255,0.8)',
+                    }
+                  : {
+                      background: 'rgba(255,255,255,0.14)',
+                      border: '0.5px solid rgba(255,255,255,0.22)',
+                    }
+              }
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }

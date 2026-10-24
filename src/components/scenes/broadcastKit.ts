@@ -174,7 +174,76 @@ export const aliveOf = (p: any): boolean => {
 }
 export const armorOf = (p: any): number => Number(p?.armor ?? p?.shield ?? 0) || 0
 export const ultPointsOf = (p: any): number => Number(p?.currUltPoints ?? p?.ultPoints ?? p?.ultimate ?? 0) || 0
-export const ultMaxOf = (p: any): number => Number(p?.maxUltPoints ?? p?.ultMax ?? p?.ultimateMax ?? 8) || 0
+/** Canonical maximum ultimate points per agent in Valorant (7, 8, or 9). */
+export const AGENT_ULT_MAX: Record<string, number> = {
+  // 7 points
+  sarge: 7,
+  brimstone: 7,
+  smonk: 7,
+  clove: 7,
+  gumshoe: 7,
+  cypher: 7,
+  mage: 7,
+  harbor: 7,
+  wraith: 7,
+  omen: 7,
+  phoenix: 7,
+  vampire: 7,
+  reyna: 7,
+  guide: 7,
+  skye: 7,
+  stealth: 7,
+  yoru: 7,
+
+  // 9 points
+  breach: 9,
+  killjoy: 9,
+  pandemic: 9,
+  viper: 9,
+
+  // 8 points
+  rift: 8,
+  astra: 8,
+  deadeye: 8,
+  chamber: 8,
+  cable: 8,
+  deadlock: 8,
+  bountyhunter: 8,
+  fade: 8,
+  aggrobot: 8,
+  gekko: 8,
+  sequoia: 8,
+  iso: 8,
+  wushu: 8,
+  jett: 8,
+  grenadier: 8,
+  kayo: 8,
+  'kay/o': 8,
+  sprinter: 8,
+  neon: 8,
+  clay: 8,
+  raze: 8,
+  thorne: 8,
+  sage: 8,
+  hunter: 8,
+  sova: 8,
+  cashew: 8,
+  tejo: 8,
+  nox: 8,
+  vyse: 8,
+}
+
+export const getAgentUltMax = (p: any): number => {
+  const k = (agentCodename(p) || '').toLowerCase()
+  const name = String(p?.agentName || p?.agent || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return AGENT_ULT_MAX[k] ?? AGENT_ULT_MAX[name] ?? 8
+}
+
+export const ultMaxOf = (p: any): number => {
+  const v = Number(p?.maxUltPoints ?? p?.ultMax ?? p?.ultimateMax)
+  if (Number.isFinite(v) && v >= 6 && v <= 12) return v
+  return getAgentUltMax(p)
+}
 export const ultReadyOf = (p: any): boolean => {
   const m = ultMaxOf(p)
   return m > 0 && ultPointsOf(p) >= m

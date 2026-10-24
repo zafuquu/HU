@@ -121,29 +121,57 @@ function UltOrb({
   onClick?: (e: React.MouseEvent) => void
 }) {
   const ready = ultReadyOf(player)
+  const ultPts = ultPointsOf(player)
+  const ultMax = ultMaxOf(player)
+
   return (
     <div
-      className="relative grid size-[27px] shrink-0 place-items-center cursor-pointer transition-transform hover:scale-110 active:scale-95"
+      className="flex flex-col items-center cursor-pointer group"
       onClick={onClick}
-      title="Toggle Using Ult"
+      title={`Ult: ${ultPts}/${ultMax} (Click to toggle)`}
     >
-      {ready && (
+      <div className="relative grid size-[23px] shrink-0 place-items-center transition-transform group-hover:scale-105 active:scale-95">
+        {ready && (
+          <span
+            className="absolute -inset-[2.5px] rounded-full border-2 border-dashed"
+            style={{ borderColor: teamColor }}
+          />
+        )}
         <span
-          className="absolute -inset-[3px] rounded-full border-2 border-dashed"
-          style={{ borderColor: teamColor }}
+          className="absolute inset-0 rounded-full border border-white/35 bg-black/80"
+          style={ready ? { boxShadow: `0 0 12px 3px ${hexRgba(teamColor, 0.9)}` } : undefined}
         />
-      )}
-      <span
-        className="absolute inset-0 rounded-full border border-white/35 bg-black/80"
-        style={ready ? { boxShadow: `0 0 14px 4px ${hexRgba(teamColor, 0.9)}` } : undefined}
-      />
-      <img
-        src={abilityImg(player, 'X')}
-        alt=""
-        className="relative size-[17px] object-contain"
-        style={{ opacity: ready ? 1 : 0.72 }}
-        onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
-      />
+        <img
+          src={abilityImg(player, 'X')}
+          alt=""
+          className="relative size-[15px] object-contain"
+          style={{ opacity: ready ? 1 : 0.72 }}
+          onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
+        />
+      </div>
+      {/* Ultimate point boxes / diamonds matching agent ult requirement (6, 7, 8, or 9) */}
+      <div className="mt-[2px] flex h-[3px] items-center gap-[1px]" style={{ width: Math.max(22, ultMax * 3) }}>
+        {Array.from({ length: ultMax }, (_, i) => {
+          const isLit = i < ultPts
+          return (
+            <span
+              key={i}
+              className="h-full flex-1 rounded-[0.5px] transition-all duration-200"
+              style={
+                isLit
+                  ? {
+                      background: ready ? teamColor : '#FFFFFF',
+                      boxShadow: ready ? `0 0 4px ${teamColor}` : '0 0 3px rgba(255,255,255,0.8)',
+                    }
+                  : {
+                      background: 'rgba(255,255,255,0.14)',
+                      border: '0.5px solid rgba(255,255,255,0.22)',
+                    }
+              }
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -238,47 +266,84 @@ function KitPanel({
 
   const hasSpike = Boolean(player.hasSpike || player.carryingSpike || player.hasBomb || player.isCarrier)
 
-  // --- ultPoints transition detection (works for ALL players, player & observer) ---
-  // When ultPoints drops from ready/max, the player activated their ult.
+  // Persistent timeout ref so snapshot re-renders (every 250ms) NEVER cancel the active timer
+  const ultTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const triggerUltAnimation = React.useCallback(() => {
+    if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
+    setLocalUltActive(true)
+    ultTimerRef.current = setTimeout(() => {
+      setLocalUltActive(false)
+      ultTimerRef.current = null
+    }, 6000)
+  }, [])
+
+  // Cleanup strictly on unmount
+  React.useEffect(() => {
+    return () => {
+      if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
+    }
+  }, [])
+
+  // Trigger 1: Ult points drop from max/ready (e.g. Sova, Breach, Killjoy, Fade, Gekko)
   const ultPts = ultPointsOf(player)
   const ultMax = ultMaxOf(player)
   const prevUltPts = React.useRef<number | null>(null)
   React.useEffect(() => {
     const prev = prevUltPts.current
     prevUltPts.current = ultPts
-    if (prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && aliveOf(player)) {
-      setLocalUltActive(true)
-      const t = setTimeout(() => setLocalUltActive(false), 6500)
-      return () => clearTimeout(t)
+    if (prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive) {
+      triggerUltAnimation()
     }
-  }, [ultPts, ultMax, player])
+  }, [ultPts, ultMax, alive, triggerUltAnimation])
 
-  // --- Local player abilityState.X transition detection ---
-  // For channeled ults (Viper Pit, Reyna Empress, Phoenix Run It Back, Yoru Drift, etc.),
-  // abilityState.X drops from true -> false immediately on cast!
+  // Trigger 2: Channeled / summoned ultimate weapons (Chamber Tour De Force, Jett Blade Storm, Neon Overdrive, Raze Showstopper)
+  const currentWeapon = String(player.weapon || player.weaponName || '')
+  const prevWeaponRef = React.useRef<string>(currentWeapon)
+  React.useEffect(() => {
+    const prevW = prevWeaponRef.current
+    prevWeaponRef.current = currentWeapon
+    const isUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher/i.test(currentWeapon)
+    const wasUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher/i.test(prevW)
+    if (isUltW && !wasUltW && alive) {
+      triggerUltAnimation()
+    }
+  }, [currentWeapon, alive, triggerUltAnimation])
+
+  // Trigger 3: Local player abilityState.X drops (Viper Pit, Reyna Empress, Phoenix Run It Back, Yoru Drift)
   const abilityX = Boolean(player.abilityState?.X)
   const prevAbilityX = React.useRef<boolean | null>(null)
   React.useEffect(() => {
     const prev = prevAbilityX.current
     prevAbilityX.current = abilityX
-    if (prev === true && abilityX === false && aliveOf(player)) {
-      setLocalUltActive(true)
-      const t = setTimeout(() => setLocalUltActive(false), 6500)
-      return () => clearTimeout(t)
+    if (prev === true && abilityX === false && alive) {
+      triggerUltAnimation()
     }
-  }, [abilityX, player])
+  }, [abilityX, alive, triggerUltAnimation])
+
+  // Trigger 4: Explicit active ult flag from telemetry
+  const isUltActiveFlag = Boolean(
+    player.isUsingUlt ||
+    player.usingUlt ||
+    player.ultActive ||
+    player.ultimate === 'active' ||
+    player.abilityState?.ultimate === 'active' ||
+    st?.X === 'active' ||
+    st?.X === 2
+  )
+  const prevUltActiveFlag = React.useRef(isUltActiveFlag)
+  React.useEffect(() => {
+    const prev = prevUltActiveFlag.current
+    prevUltActiveFlag.current = isUltActiveFlag
+    if (isUltActiveFlag && !prev && alive) {
+      triggerUltAnimation()
+    }
+  }, [isUltActiveFlag, alive, triggerUltAnimation])
 
   const isUsingUlt = Boolean(
     alive && (
       isUsingUltOverride ||
       localUltActive ||
-      player.isUsingUlt ||
-      player.usingUlt ||
-      player.ultActive ||
-      player.ultimate === 'active' ||
-      player.abilityState?.ultimate === 'active' ||
-      st?.X === 'active' ||
-      st?.X === 2
+      isUltActiveFlag
     )
   )
 
@@ -302,7 +367,7 @@ function KitPanel({
     onToggleUlt?.(player.id || player.name || alias)
   }
 
-  // === "USING ULT" ACTIVE / EXITING STATE (Matches using ult.jpg with sequenced in/out animations) ===
+  // === "USING ULT" ACTIVE / EXITING STATE (Matches using ult1.jpg: large 54px icon, shoulder-to-head bust) ===
   if (ultStage === 'active' || ultStage === 'exiting') {
     const headArt = agentBust(player) || agentPortrait(player) || resolveAgent(player)?.portrait || BLANK_IMG
     const isExiting = ultStage === 'exiting'
@@ -333,38 +398,46 @@ function KitPanel({
           </div>
         )}
 
-        {/* Panel body with glowing golden yellow border (row 2 in using ult.jpg) */}
+        {/* Panel body with glowing golden yellow border */}
         <div
           className="relative h-[79px] overflow-hidden rounded-[4px] border-2 border-[#FACC15] bg-[#0A0D12] shadow-[0_0_18px_rgba(250,204,21,0.85),inset_0_0_10px_rgba(250,204,21,0.35)]"
           style={{ animation: isExiting ? undefined : 'ultGlowPulse 1.8s ease-in-out infinite' }}
         >
-          {/* Stage 1: Team color block covers ~72% width with diagonal slant */}
+          {/* Stage 1: Team color block covers ~75% top slanting to ~48% bottom (using ult1.jpg parity) */}
           <div
-            className="absolute inset-y-0 z-10 flex items-center justify-center overflow-hidden"
+            className="absolute inset-y-0 z-10 flex items-center overflow-hidden"
             style={{
-              left: 0,
-              width: '72%',
+              [isRight ? 'right' : 'left']: 0,
+              width: '100%',
               background: teamColor,
-              clipPath: 'polygon(0% 0%, 100% 0%, 82% 100%, 0% 100%)',
+              clipPath: isRight
+                ? 'polygon(25% 0%, 100% 0%, 100% 100%, 52% 100%)'
+                : 'polygon(0% 0%, 75% 0%, 48% 100%, 0% 100%)',
               animation: isExiting
                 ? (isRight ? 'v1UltSlideOutRight 200ms ease-in forwards' : 'v1UltSlideOutLeft 200ms ease-in forwards')
                 : (isRight ? 'v1UltSlideInRight 280ms cubic-bezier(0.16,1,0.3,1) forwards' : 'v1UltSlideInLeft 280ms cubic-bezier(0.16,1,0.3,1) forwards'),
             }}
           >
-            {/* Subtle inner metallic sheen */}
+            {/* Metallic gradient overlay */}
             <div
               className="absolute inset-0 opacity-20"
               style={{
-                background: 'linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(0,0,0,0.5) 100%)',
+                background: 'linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(0,0,0,0.6) 100%)',
               }}
             />
 
-            {/* Stage 2: Large White Ult Icon (centered in team color block, popping & pulsing) */}
-            <div className="relative z-10 flex items-center justify-center">
+            {/* Stage 2: Large White Ult Icon (matching using ult1.jpg: size ~54px) */}
+            <div
+              className="relative z-10 flex items-center justify-center"
+              style={{
+                [isRight ? 'marginRight' : 'marginLeft']: '28px',
+                width: '64px',
+              }}
+            >
               <img
                 src={abilityImg(player, 'X')}
                 alt="ult"
-                className="size-[38px] object-contain brightness-0 invert drop-shadow-[0_2px_10px_rgba(0,0,0,0.7)]"
+                className="size-[54px] object-contain brightness-0 invert drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)]"
                 style={{
                   animation: isExiting
                     ? undefined
@@ -377,13 +450,12 @@ function KitPanel({
             </div>
           </div>
 
-          {/* Stage 3: Agent Head/Bust portrait on remaining ~40% of panel */}
+          {/* Stage 3: Agent Head/Bust portrait on remaining space (head-to-shoulder crop matching using ult1.jpg) */}
           <div
             className="absolute inset-y-0 z-0 overflow-hidden"
             style={{
-              right: 0,
-              width: '42%',
-              background: 'linear-gradient(90deg, transparent 0%, rgba(10,14,20,0.8) 40%, rgba(10,14,20,0.98) 100%)',
+              [isRight ? 'left' : 'right']: 0,
+              width: '60%',
               animation: isExiting
                 ? undefined
                 : (isRight ? 'v1UltBustRevealRight 300ms ease-out 260ms both' : 'v1UltBustRevealLeft 300ms ease-out 260ms both'),
@@ -392,29 +464,15 @@ function KitPanel({
             <img
               src={headArt}
               alt=""
-              className="size-full object-cover object-top"
+              className="absolute top-[-10px] h-[270px] w-auto max-w-none object-contain"
               style={{
+                [isRight ? 'left' : 'right']: '-15px',
                 transform: isRight ? 'scaleX(-1)' : undefined,
-                opacity: 0.96,
               }}
               onError={e => {
                 ;(e.currentTarget as HTMLImageElement).src = agentIcon(player)
               }}
             />
-          </div>
-
-          {/* Bottom info strip: Alias + HP */}
-          <div
-            className={`absolute bottom-1 z-20 flex items-center gap-2 px-2 text-white font-barlowCond ${
-              isRight ? 'left-2 flex-row' : 'right-2 flex-row-reverse'
-            }`}
-          >
-            <span className="text-[13px] font-extrabold uppercase tracking-wider drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]">
-              {alias}
-            </span>
-            <span className="text-[11px] font-bold text-white/85 tabular-nums drop-shadow">
-              {hp} HP
-            </span>
           </div>
         </div>
       </div>
@@ -759,9 +817,11 @@ export function Scorebug(props: ScorebugProps) {
             </React.Fragment>
           ))}
         </div>
-        <span className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap font-insatiable text-[15px] text-white/90">
-          {roundText}
-        </span>
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex h-full items-center justify-center">
+          <span className="whitespace-nowrap font-insatiable text-[15px] tracking-wide text-white/90">
+            {(roundText || '').trim()}
+          </span>
+        </div>
         <div className="flex min-w-0 max-w-[300px] items-center justify-end gap-1.5">
           {eventTitleText ? <span className="truncate text-white/80">{eventTitleText}</span> : null}
         </div>
