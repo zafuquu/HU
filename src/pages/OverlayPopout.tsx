@@ -24,7 +24,7 @@ import Version1AgentSelectScene from '../components/scenes/version1/AgentSelectS
 import type { GameEventResult } from '../components/scenes/version1/GameEventsScene'
 import { RoundResult } from '../components/scenes/RoundResult'
 import { buildMapHistoryItems, VAL_MAPS } from './MapVeto'
-import { resolveKitKind } from '../components/scenes/broadcastKit'
+import { resolveKitKind, getAgentUltMax } from '../components/scenes/broadcastKit'
 import type { KitKind } from '../components/scenes/broadcastKit'
 
 /**
@@ -151,17 +151,24 @@ export default function OverlayPopout() {
   // fully releasable).
   const isVetoSource = urlSceneKey === 'map-ban' || urlSceneKey === 'map-veto'
   const sceneKey = (() => {
+    if (urlSceneKey && urlSceneKey !== 'default') return urlSceneKey
     if (forceScene) return String(forceScene)
     if (isVetoSource) {
       return (livePhase === 'game_start' || liveScene === 'agent-select') ? 'agent-select' : 'map-ban'
     }
-    if (liveScene && ['agent-select', 'buy-round', 'ingame-hud', 'post-game', 'map-interstitial'].includes(String(liveScene))) return String(liveScene)
     if (phaseDerivedScene) return phaseDerivedScene
-    const norm = urlSceneKey === 'default' ? 'ingame-hud' : urlSceneKey
-    return norm
+    if (liveScene && ['agent-select', 'buy-round', 'ingame-hud', 'post-game', 'map-interstitial'].includes(String(liveScene))) return String(liveScene)
+    return 'ingame-hud'
   })()
   const [scale, setScale] = useState(1)
   // Professional scene cross-fade transitions — guard against initial mount flicker
+  const hasEverHadDataRef = useRef(false)
+  useEffect(() => {
+    if (liveScores) {
+      hasEverHadDataRef.current = true
+    }
+  }, [liveScores])
+
   const prevSceneKeyRef = useRef<string | null>(null)
   const [sceneTransitioning, setSceneTransitioning] = useState(false)
   const sceneTransitionRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -172,9 +179,12 @@ export default function OverlayPopout() {
     }
     if (sceneKey !== prevSceneKeyRef.current) {
       prevSceneKeyRef.current = sceneKey
-      setSceneTransitioning(true)
-      if (sceneTransitionRef.current) clearTimeout(sceneTransitionRef.current)
-      sceneTransitionRef.current = setTimeout(() => setSceneTransitioning(false), 300)
+      // Only run visual transition if we had prior data (avoid cold-mount flash)
+      if (hasEverHadDataRef.current) {
+        setSceneTransitioning(true)
+        if (sceneTransitionRef.current) clearTimeout(sceneTransitionRef.current)
+        sceneTransitionRef.current = setTimeout(() => setSceneTransitioning(false), 300)
+      }
     }
   }, [sceneKey])
   // Sponsor cycler: rotate through the tournament's sponsors every 8s
@@ -188,8 +198,6 @@ export default function OverlayPopout() {
   }, [sponsorList.length])
   const sponsorCycleUrl = sponsorList.length > 0 ? sponsorList[sponsorIdx % sponsorList.length] : null
   const fullTournamentIdRef = useRef<string | null>(null)
-  // Sticky: once we have shown real data, never blank out mid-stream.
-  const hasEverHadDataRef = useRef(false)
   const lastRevRef = useRef(0)
 
   // Full-field authority: the room workspace havoc wins wholesale on overlay
@@ -623,7 +631,7 @@ export default function OverlayPopout() {
     currUltPoints: p.currUltPoints ?? p.ultPoints ?? p.ultimate ?? 0,
     ultPoints: p.ultPoints ?? p.currUltPoints ?? p.ultimate ?? 0,
     shield: p.shield ?? p.armor ?? 0,
-    maxUltPoints: p.maxUltPoints ?? p.ultMax ?? p.ultimateMax ?? 8,
+    maxUltPoints: Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p),
     hasSpike: Boolean(p.hasSpike),
     kills: p.kills ?? 0,
     deaths: p.deaths ?? 0,
@@ -631,8 +639,8 @@ export default function OverlayPopout() {
     // No fake weapon fallback — blank until GEP reports the real carried gun.
     weapon: p.weapon ?? p.weaponName ?? null,
     ultimate: p.ultimate ?? p.currUltPoints ?? p.ultPoints ?? 0,
-    ultimateMax: p.ultimateMax ?? p.maxUltPoints ?? p.ultMax ?? 8,
-    isUltReady: p.isUltReady ?? ((p.currUltPoints ?? p.ultPoints ?? 0) >= (p.maxUltPoints ?? p.ultMax ?? 8) && (p.maxUltPoints ?? p.ultMax ?? 8) > 0),
+    ultimateMax: Number(p.ultimateMax ?? p.maxUltPoints ?? p.ultMax) || getAgentUltMax(p),
+    isUltReady: p.isUltReady ?? ((p.currUltPoints ?? p.ultPoints ?? 0) >= (Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p)) && (Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p)) > 0),
     abilities: p.abilities ?? [],
   }))
     // Team side: trust explicit startTeam/teamIndex, then the team id string.
@@ -989,36 +997,7 @@ export default function OverlayPopout() {
         }}
       >
         <div key={sceneKey} className={`scene-wrap ${sceneTransitioning ? 'scene-exit' : ''}`}>
-        {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'shopping' && (
-          <PrimaryBuy
-            leftTeamName={hudLeftName}
-            rightTeamName={hudRightName}
-            leftTeamSeed={hudLeftSeed}
-            rightTeamSeed={hudRightSeed}
-            leftTeamColor={hudLeftColor}
-            rightTeamColor={hudRightColor}
-            leftTeamPlayers={hudLeftPlayers}
-            rightTeamPlayers={hudRightPlayers}
-            economy={liveEconomy}
-            sponsorImageUrl={sponsorImageUrl}
-            roundHistory={hudRoundHistory}
-          />
-        )}
-        {(sceneKey === 'default' || sceneKey === 'ingame-hud') && liveScores && gamePhase === 'game_start' && (
-          <PrimaryAgentSelect
-            leftTeamName={hudLeftName}
-            rightTeamName={hudRightName}
-            leftTeamColor={hudLeftColor}
-            rightTeamColor={hudRightColor}
-            mapName={liveMapName}
-            mapImage={liveMapImage}
-            leftTeamPlayers={hudLeftPlayers}
-            rightTeamPlayers={hudRightPlayers}
-            leftTeamLogo={hudLeftLogo}
-            rightTeamLogo={hudRightLogo}
-          />
-        )}
-        {(sceneKey === 'default' || sceneKey === 'ingame-hud') && !(liveScores && (gamePhase === 'shopping' || gamePhase === 'game_start')) && (
+        {(sceneKey === 'default' || sceneKey === 'ingame-hud') && (
           <PrimaryHud
             leftTeamName={hudLeftName}
             rightTeamName={hudRightName}
