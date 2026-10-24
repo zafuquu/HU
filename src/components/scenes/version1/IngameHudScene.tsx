@@ -19,7 +19,6 @@ import {
   getAbilityCurrentCharges,
   hexRgba,
   hpOf,
-  isDurationUltAgent,
   kdaOf,
   ultMaxOf,
   ultPointsOf,
@@ -150,45 +149,32 @@ function UltOrb({
       title={`Ult: ${ultPts}/${ultMax} (Click to toggle)`}
     >
       <svg width={size} height={size} className="absolute inset-0 pointer-events-none">
-        {ready ? (
-          // Ult Ready: Full glowing solid ring matching team color
-          <circle
-            cx={center}
-            cy={center}
-            r={radius}
-            fill="none"
-            stroke={teamColor}
-            strokeWidth={2.4}
-            className="transition-all duration-300"
-            style={{
-              filter: `drop-shadow(0 0 5px ${teamColor}) drop-shadow(0 0 2px #FFFFFF)`,
-            }}
-          />
-        ) : (
-          // Segmented progress arcs around the circle (one arc per required point)
-          Array.from({ length: ultMax }, (_, i) => {
-            const isLit = i < ultPts
-            const startAngle = i * step + gap / 2
-            const endAngle = (i + 1) * step - gap / 2
-            return (
-              <path
-                key={i}
-                d={describeArc(startAngle, endAngle)}
-                fill="none"
-                stroke={isLit ? '#FFFFFF' : 'rgba(255,255,255,0.22)'}
-                strokeWidth={isLit ? 2.2 : 1.4}
-                strokeLinecap="round"
-                style={
-                  isLit
+        {Array.from({ length: ultMax }, (_, i) => {
+          const isLit = ready || i < ultPts
+          const startAngle = i * step + gap / 2
+          const endAngle = (i + 1) * step - gap / 2
+          return (
+            <path
+              key={i}
+              d={describeArc(startAngle, endAngle)}
+              fill="none"
+              stroke={ready ? teamColor : isLit ? '#FFFFFF' : 'rgba(255,255,255,0.22)'}
+              strokeWidth={isLit ? 2.2 : 1.4}
+              strokeLinecap="round"
+              style={
+                ready
+                  ? {
+                      filter: `drop-shadow(0 0 4px ${teamColor}) drop-shadow(0 0 1px #FFFFFF)`,
+                    }
+                  : isLit
                     ? {
                         filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.9))',
                       }
                     : undefined
-                }
-              />
-            )
-          })
-        )}
+              }
+            />
+          )
+        })}
       </svg>
 
       {/* Inner circular backdrop and ability icon */}
@@ -308,7 +294,7 @@ function KitPanel({
     ultTimerRef.current = setTimeout(() => {
       setLocalUltActive(false)
       ultTimerRef.current = null
-    }, 6000)
+    }, 3800)
   }, [])
 
   // Cleanup strictly on unmount
@@ -317,6 +303,17 @@ function KitPanel({
       if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
     }
   }, [])
+
+  // Trigger 0: Ult Ready transitions from true to false (consumed ult)
+  const ready = ultReadyOf(player)
+  const prevReadyRef = React.useRef<boolean | null>(null)
+  React.useEffect(() => {
+    const prevReady = prevReadyRef.current
+    prevReadyRef.current = ready
+    if (prevReady === true && !ready && alive) {
+      triggerUltAnimation()
+    }
+  }, [ready, alive, triggerUltAnimation])
 
   // Trigger 1: Ult points drop from max/ready (e.g. Sova, Breach, Killjoy, Fade, Gekko)
   const ultPts = ultPointsOf(player)
@@ -349,7 +346,6 @@ function KitPanel({
   React.useEffect(() => {
     const prev = prevAbilityX.current
     prevAbilityX.current = abilityX
-    // FIXED: Trigger when ult is ACTIVATED (transitions from false/falsy to true)!
     if (prev === false && abilityX === true && alive) {
       triggerUltAnimation()
     }
@@ -374,15 +370,11 @@ function KitPanel({
     }
   }, [isUltActiveFlag, alive, triggerUltAnimation])
 
-  // For duration ult agents, isUsingUlt stays true while abilityX is active!
-  const isDurationActive = Boolean(abilityX && isDurationUltAgent(player))
-
   const isUsingUlt = Boolean(
     alive && (
       isUsingUltOverride ||
       localUltActive ||
-      isUltActiveFlag ||
-      isDurationActive
+      isUltActiveFlag
     )
   )
 
@@ -406,10 +398,10 @@ function KitPanel({
     onToggleUlt?.(player.id || player.name || alias)
   }
 
-  // === "USING ULT" ACTIVE / EXITING STATE (Matches using ult1.jpg: large 54px icon, shoulder-to-head bust) ===
+  // === "USING ULT" ACTIVE / EXITING STATE (Matches using ult1.jpg: 54px height, team color block, bust portrait) ===
   if (ultStage === 'active' || ultStage === 'exiting') {
-    const headArt = agentMasteryPortrait(player) || agentIcon(player) || agentBust(player) || agentPortrait(player) || BLANK_IMG
-    const iconArt = agentIcon(player)
+    const headArt = agentBust(player) || agentPortrait(player) || agentMasteryPortrait(player) || agentIcon(player) || BLANK_IMG
+    const iconArt = agentIcon(player) || BLANK_IMG
     const isExiting = ultStage === 'exiting'
     return (
       <div
@@ -424,26 +416,25 @@ function KitPanel({
         {/* Spike carrier badge on ult card */}
         {hasSpike && (
           <div
-            className={`absolute top-[6px] z-30 grid size-[26px] place-items-center rounded-full bg-white shadow-lg ${isRight ? '-right-[10px]' : '-left-[10px]'}`}
+            className={`absolute top-[4px] z-30 grid size-[24px] place-items-center rounded-full bg-white shadow-lg ${isRight ? '-right-[8px]' : '-left-[8px]'}`}
           >
-            <img src="/game/val/misc/Spike_Icon.svg" alt="spike" className="size-[13px] object-contain" />
+            <img src="/game/val/misc/Spike_Icon.svg" alt="spike" className="size-[12px] object-contain" />
           </div>
         )}
         {/* Spectated-row eye badge */}
         {isObserved && (
           <div
-            className={`absolute bottom-[36px] z-30 grid size-[22px] place-items-center rounded-full border border-white/40 bg-black/85 ${isRight ? '-right-[8px]' : '-left-[8px]'}`}
+            className={`absolute bottom-[4px] z-30 grid size-[20px] place-items-center rounded-full border border-white/40 bg-black/85 ${isRight ? '-right-[8px]' : '-left-[8px]'}`}
           >
             {EYE_SVG}
           </div>
         )}
 
-        {/* Panel body with glowing golden yellow border */}
+        {/* Panel body matching using ult1.jpg: h-[54px], rounded-[3px], subtle border */}
         <div
-          className="relative h-[79px] overflow-hidden rounded-[4px] border-2 border-[#FACC15] bg-[#0A0D12] shadow-[0_0_18px_rgba(250,204,21,0.85),inset_0_0_10px_rgba(250,204,21,0.35)]"
-          style={{ animation: isExiting ? undefined : 'ultGlowPulse 1.8s ease-in-out infinite' }}
+          className="relative h-[54px] overflow-hidden rounded-[3px] border border-white/20 bg-[#0A0D12] shadow-lg"
         >
-          {/* Stage 1: Team color block covers ~72% top slanting to ~46% bottom */}
+          {/* Stage 1: Team color block covers ~65% top slanting to ~42% bottom */}
           <div
             className="absolute inset-y-0 z-10 flex items-center overflow-hidden"
             style={{
@@ -451,37 +442,29 @@ function KitPanel({
               width: '100%',
               background: teamColor,
               clipPath: isRight
-                ? 'polygon(28% 0%, 100% 0%, 100% 100%, 54% 100%)'
-                : 'polygon(0% 0%, 72% 0%, 46% 100%, 0% 100%)',
+                ? 'polygon(35% 0%, 100% 0%, 100% 100%, 58% 100%)'
+                : 'polygon(0% 0%, 65% 0%, 42% 100%, 0% 100%)',
               animation: isExiting
                 ? (isRight ? 'v1UltSlideOutRight 200ms ease-in forwards' : 'v1UltSlideOutLeft 200ms ease-in forwards')
-                : (isRight ? 'v1UltSlideInRight 280ms cubic-bezier(0.16,1,0.3,1) forwards' : 'v1UltSlideInLeft 280ms cubic-bezier(0.16,1,0.3,1) forwards'),
+                : (isRight ? 'v1UltSlideInRight 260ms cubic-bezier(0.16,1,0.3,1) forwards' : 'v1UltSlideInLeft 260ms cubic-bezier(0.16,1,0.3,1) forwards'),
             }}
           >
-            {/* Metallic gradient overlay */}
-            <div
-              className="absolute inset-0 opacity-20"
-              style={{
-                background: 'linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(0,0,0,0.6) 100%)',
-              }}
-            />
-
-            {/* Stage 2: Large White Ult Icon (matching using ult1.jpg: size ~54px) */}
+            {/* Stage 2: Large White Ult Icon (matching using ult1.jpg: size ~38px) */}
             <div
               className="relative z-10 flex items-center justify-center"
               style={{
-                [isRight ? 'marginRight' : 'marginLeft']: '28px',
-                width: '64px',
+                [isRight ? 'marginRight' : 'marginLeft']: '24px',
+                width: '44px',
               }}
             >
               <img
                 src={abilityImg(player, 'X')}
                 alt="ult"
-                className="size-[54px] object-contain brightness-0 invert drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)]"
+                className="size-[38px] object-contain brightness-0 invert drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
                 style={{
                   animation: isExiting
                     ? undefined
-                    : 'v1UltIconReveal 300ms cubic-bezier(0.16,1,0.3,1) 160ms both, ultIconPulse 1.8s ease-in-out 460ms infinite',
+                    : 'v1UltIconReveal 260ms cubic-bezier(0.16,1,0.3,1) 120ms both',
                 }}
                 onError={e => {
                   ;(e.currentTarget as HTMLImageElement).style.visibility = 'hidden'
@@ -490,27 +473,28 @@ function KitPanel({
             </div>
           </div>
 
-          {/* Stage 3: Agent Head/Bust portrait on remaining space — Layered at z-20 so NEVER hidden! */}
+          {/* Stage 3: Agent Bust portrait overlapping the slant on outer side */}
           <div
-            className="absolute inset-y-0 z-20 overflow-hidden flex items-center justify-center"
+            className="absolute inset-y-0 z-20 overflow-hidden flex items-center justify-center pointer-events-none"
             style={{
               [isRight ? 'left' : 'right']: 0,
               width: '140px',
               animation: isExiting
                 ? undefined
-                : (isRight ? 'v1UltBustRevealRight 300ms ease-out 260ms both' : 'v1UltBustRevealLeft 300ms ease-out 260ms both'),
+                : (isRight ? 'v1UltBustRevealRight 280ms ease-out 180ms both' : 'v1UltBustRevealLeft 280ms ease-out 180ms both'),
             }}
           >
             <img
               src={headArt}
               alt=""
-              className="h-[140px] w-auto max-w-none object-contain"
+              className="h-[88px] w-auto max-w-none object-contain"
               style={{
                 transform: isRight ? 'scaleX(-1)' : undefined,
-                marginTop: '-8px',
+                marginTop: '-2px',
               }}
               onError={e => {
-                ;(e.currentTarget as HTMLImageElement).src = iconArt
+                const el = e.currentTarget as HTMLImageElement
+                if (el.src !== iconArt) el.src = iconArt
               }}
             />
           </div>

@@ -274,50 +274,61 @@ function BuyAbility({ player, slot, st }: { player: any; slot: 'C' | 'Q' | 'E'; 
 function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
   const ready = ultReadyOf(player)
   const ultPts = ultPointsOf(player)
-  const ultMax = ultMaxOf(player)
+  const ultMax = Math.max(1, ultMaxOf(player))
+
+  const size = 26
+  const center = size / 2
+  const radius = 10.5
+  const step = 360 / ultMax
+  const gap = 8
+
+  const describeArc = (startAngle: number, endAngle: number) => {
+    const rad = (deg: number) => ((deg - 90) * Math.PI) / 180.0
+    const x1 = center + radius * Math.cos(rad(startAngle))
+    const y1 = center + radius * Math.sin(rad(startAngle))
+    const x2 = center + radius * Math.cos(rad(endAngle))
+    const y2 = center + radius * Math.sin(rad(endAngle))
+    const largeArc = endAngle - startAngle > 180 ? 1 : 0
+    return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${radius} ${radius} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`
+  }
+
   return (
-    <div className="flex flex-col items-center" title={`Ult: ${ultPts}/${ultMax}`}>
-      <div className="relative grid size-[20px] shrink-0 place-items-center">
-        {ready && (
-          <span
-            className="absolute -inset-[2px] rounded-full border-2 border-dashed"
-            style={{ borderColor: teamColor }}
-          />
-        )}
-        <span
-          className="absolute inset-0 rounded-full border border-white/35 bg-black/80"
-          style={ready ? { boxShadow: `0 0 10px 3px ${teamColor}` } : undefined}
-        />
-        <img
-          src={abilityImg(player, 'X')}
-          alt=""
-          className="relative size-[12px] object-contain"
-          style={{ opacity: ready ? 1 : 0.7 }}
-          onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
-        />
-      </div>
-      {/* Ultimate point boxes matching agent ult requirement (6, 7, 8, or 9) */}
-      <div className="mt-1 flex h-[3.5px] items-center gap-[1.5px]" style={{ width: Math.max(20, ultMax * 3) }}>
+    <div className="relative flex size-[26px] shrink-0 items-center justify-center select-none" title={`Ult: ${ultPts}/${ultMax}`}>
+      <svg width={size} height={size} className="absolute inset-0 pointer-events-none">
         {Array.from({ length: ultMax }, (_, i) => {
-          const isLit = i < ultPts
+          const isLit = ready || i < ultPts
+          const startAngle = i * step + gap / 2
+          const endAngle = (i + 1) * step - gap / 2
           return (
-            <span
+            <path
               key={i}
-              className="h-full flex-1 rounded-[0.5px] transition-all duration-200"
+              d={describeArc(startAngle, endAngle)}
+              fill="none"
+              stroke={ready ? teamColor : isLit ? '#FFFFFF' : 'rgba(255,255,255,0.22)'}
+              strokeWidth={isLit ? 2.2 : 1.4}
+              strokeLinecap="round"
               style={
-                isLit
-                  ? {
-                      background: ready ? teamColor : '#FFFFFF',
-                      boxShadow: ready ? `0 0 4px ${teamColor}` : '0 0 3px rgba(255,255,255,0.8)',
-                    }
-                  : {
-                      background: 'rgba(255,255,255,0.14)',
-                      border: '0.5px solid rgba(255,255,255,0.22)',
-                    }
+                ready
+                  ? { filter: `drop-shadow(0 0 3px ${teamColor})` }
+                  : isLit
+                    ? { filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.8))' }
+                    : undefined
               }
             />
           )
         })}
+      </svg>
+      <div
+        className="relative grid size-[19px] place-items-center rounded-full bg-black/85"
+        style={ready ? { boxShadow: `0 0 8px 1px ${teamColor}` } : undefined}
+      >
+        <img
+          src={abilityImg(player, 'X')}
+          alt=""
+          className="size-[12px] object-contain"
+          style={{ opacity: ready ? 1 : 0.7 }}
+          onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
+        />
       </div>
     </div>
   )
