@@ -22,6 +22,7 @@ import WebcamPublisher from './pages/WebcamPublisher'
 import WebcamInvite from './pages/WebcamInvite'
 import OverlayPopout from './pages/OverlayPopout'
 import ObserverHudEditor from './pages/ObserverHudEditor'
+import CaptainVeto from './pages/CaptainVeto'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -33,6 +34,9 @@ createRoot(document.getElementById('root')!).render(
       <Route path='/auth/desktop-complete' element={<DesktopComplete />} />
       <Route path='/webcams/invite/:roomId/:teamId/:slotId' element={<WebcamPublisher />} />
       <Route path='/webcams/invite/:roomId/:teamId' element={<WebcamInvite />} />
+      {/* Public Captain Veto Lobby (no login required) */}
+      <Route path='/veto/:roomCode' element={<CaptainVeto />} />
+      <Route path='/:roomCode/veto' element={<CaptainVeto />} />
             {/* Tournaments home (login-gated) */}
             <Route
               path='/app'

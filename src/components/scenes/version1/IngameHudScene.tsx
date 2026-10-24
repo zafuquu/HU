@@ -607,12 +607,11 @@ function KitPanel({
               onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }}
             />
           )}
-          {showEco && credits != null && (
+          {showEco && !alive && credits != null && (
             <span
-              className="flex items-center gap-1 font-barlowCond text-[13px] font-bold tabular-nums"
-              style={{ color: alive ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.35)' }}
+              className="flex items-center gap-1 font-barlowCond text-[13px] font-bold tabular-nums text-white/50"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="inline size-3 rotate-45">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="inline size-3 rotate-45 text-[#F9E4AB]/70">
                 <circle cx="94.566" cy="94.574" r="54.425" stroke="currentColor" strokeWidth="22.41" />
                 <path fill="currentColor" d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z" />
               </svg>

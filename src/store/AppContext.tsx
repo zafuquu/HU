@@ -196,6 +196,7 @@ export interface AppState {
   vetoActingTeamOverride: 'TEAM_A' | 'TEAM_B'
   vetoActionTypeOverride: 'Ban' | 'Pick' | 'Side pick' | 'Decider'
   vetoPendingSidePick: { mapId: string; pickedBy: 'TEAM_A' | 'TEAM_B'; choosingSideTeam: 'TEAM_A' | 'TEAM_B'; slot: string } | null
+  vetoMode?: 'standard' | 'grand_finals'
 
   // Live Game
   leftTeamId: string
@@ -434,6 +435,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     vetoActingTeamOverride: 'TEAM_A',
     vetoActionTypeOverride: 'Ban',
     vetoPendingSidePick: null,
+    vetoMode: 'standard',
     leftTeamId: 't1',
     rightTeamId: 't2',
     playerAnchorLeft: '',

@@ -31,6 +31,10 @@ export const agentBust = (p: any) => {
   const k = agentCodename(p)
   return k ? `/game/val/agents/${k}/bust.png` : null
 }
+export const agentMasteryPortrait = (p: any) => {
+  const k = agentCodename(p)
+  return k ? `/game/val/agents/${k}/mastery.png` : null
+}
 
 const ABILITY_FILE = { C: 'grenade', Q: 'ability1', E: 'ability2', X: 'ultimate' } as const
 export type AbilitySlot = keyof typeof ABILITY_FILE
@@ -72,15 +76,15 @@ export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => 
     pandemic: ['C'],
     viper: ['C'],
     phoenix: ['Q'],
-    wushu: [],
-    jett: [],
+    wushu: ['C'],
+    jett: ['C'],
     breach: ['Q'],
     wraith: ['C', 'E'],
     omen: ['C', 'E'],
     clay: ['Q'],
     raze: ['Q'],
-    vampire: ['C'],
-    reyna: ['C'],
+    vampire: ['C', 'Q', 'E'],
+    reyna: ['C', 'Q', 'E'],
     thorne: ['Q'],
     sage: ['Q'],
     guide: ['E'],
@@ -92,8 +96,8 @@ export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => 
     'kay/o': ['Q'],
     bountyhunter: ['C'],
     fade: ['C'],
-    mage: [],
-    harbor: [],
+    mage: ['C'],
+    harbor: ['C'],
     cable: ['Q'],
     deadlock: ['Q'],
     sequoia: ['Q'],
@@ -106,8 +110,8 @@ export const getMaxAbilityCharges = (player: any, slot: AbilitySlot): number => 
     vyse: ['C'],
     rift: ['E'],
     astra: ['E'],
-    cashew: [],
-    tejo: [],
+    cashew: ['E'],
+    tejo: ['E'],
   }
 
   if (twoCharges[k]?.includes(slot) || twoCharges[name]?.includes(slot)) return 2

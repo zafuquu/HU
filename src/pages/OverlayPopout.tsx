@@ -642,6 +642,7 @@ export default function OverlayPopout() {
     ultimateMax: Number(p.ultimateMax ?? p.maxUltPoints ?? p.ultMax) || getAgentUltMax(p),
     isUltReady: p.isUltReady ?? ((p.currUltPoints ?? p.ultPoints ?? 0) >= (Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p)) && (Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p)) > 0),
     abilities: p.abilities ?? [],
+    locked: p.locked ?? p.isLocked ?? (p.selection === 'locked' ? true : p.selection === 'selected' ? false : undefined),
   }))
     // Team side: trust explicit startTeam/teamIndex, then the team id string.
   // Players with NO side evidence go LEFT only — never both sides.

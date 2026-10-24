@@ -18,14 +18,6 @@ export type GameEventResult =
   | 'thrifty'
   | null
 
-const VCT_SPARK_SVG = (
-  <svg viewBox="0 0 100 100" fill="currentColor" className="size-[32px]">
-    {/* VCT Spark Upper Chevron */}
-    <path d="M18 16 L50 48 L82 16 L68 16 L50 34 L32 16 Z" />
-    {/* VCT Spark Lower Inverted Chevron */}
-    <path d="M18 84 L50 52 L82 84 L68 84 L50 66 L32 84 Z" />
-  </svg>
-)
 
 const OMEGA_SVG = (
   <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5">
@@ -176,13 +168,16 @@ export function Version1RoundCeremony({
             animation: !isExiting ? 'v1LogoIn 420ms cubic-bezier(0.16, 1, 0.3, 1) 0ms both' : undefined,
           }}
         >
-          {/* Logo element positioned above */}
+          {/* Logo element positioned above — falls back to Havoc Unleash logo */}
           <div className="flex size-[44px] items-center justify-center text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]">
-            {tournamentLogo ? (
-              <img src={tournamentLogo} alt="" className="size-[38px] object-contain" />
-            ) : (
-              VCT_SPARK_SVG
-            )}
+            <img
+              src={tournamentLogo || '/Logo/HU.png'}
+              alt=""
+              className="size-[38px] object-contain drop-shadow"
+              onError={e => {
+                ;(e.currentTarget as HTMLImageElement).src = '/Logo/HU.png'
+              }}
+            />
           </div>
         </div>
 

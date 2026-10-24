@@ -1,6 +1,61 @@
 import React from 'react'
 import { resolveAgent } from '../../../data/valAgentMeta'
 import { fitScaleFor, contentWidth, refitAfterFonts } from '../../../lib/autoFit'
+import { agentBust, agentPortrait, BLANK_IMG } from '../broadcastKit'
+
+const CLASSIC_ULT_CSS = `
+@keyframes ultGlowPulse {
+  0%, 100% {
+    box-shadow: 0 0 14px 2px rgba(250, 204, 21, 0.75), inset 0 0 8px rgba(250, 204, 21, 0.3);
+    border-color: #FACC15;
+  }
+  50% {
+    box-shadow: 0 0 24px 6px rgba(250, 204, 21, 0.95), inset 0 0 14px rgba(250, 204, 21, 0.5);
+    border-color: #FEF08A;
+  }
+}
+@keyframes ultIconPulse {
+  0%, 100% { transform: scale(1); filter: brightness(1) drop-shadow(0 0 6px rgba(255,255,255,0.7)); }
+  50% { transform: scale(1.1); filter: brightness(1.2) drop-shadow(0 0 14px rgba(255,255,255,0.95)); }
+}
+@keyframes v1UltSlideInLeft {
+  0% { transform: translateX(-105%); }
+  100% { transform: translateX(0); }
+}
+@keyframes v1UltSlideInRight {
+  0% { transform: translateX(105%); }
+  100% { transform: translateX(0); }
+}
+@keyframes v1UltSlideOutLeft {
+  0% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(-105%); opacity: 0; }
+}
+@keyframes v1UltSlideOutRight {
+  0% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(105%); opacity: 0; }
+}
+@keyframes v1UltIconReveal {
+  0% { transform: scale(0.2); opacity: 0; filter: brightness(2.2); }
+  65% { transform: scale(1.15); opacity: 1; filter: brightness(1.25); }
+  100% { transform: scale(1); opacity: 1; filter: brightness(1); }
+}
+@keyframes v1UltBustRevealLeft {
+  0% { transform: translateX(-24px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 0.96; }
+}
+@keyframes v1UltBustRevealRight {
+  0% { transform: translateX(24px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 0.96; }
+}
+@keyframes ultEnter {
+  0% { transform: scale(0.92); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes ultExit {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.92); opacity: 0; }
+}
+`
 
 export interface IngameHudSceneProps {
   leftTeamName?: string
@@ -496,7 +551,7 @@ export function RoundCeremony({ trigger, reasonText, roundNumber, winSide, winne
             ) : null}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-            <img alt="" src={tournamentLogo || '/sponsor/Sponsor-1.png'} style={{ maxHeight: 62, objectFit: 'contain' }} onError={e => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = '/sponsor/Sponsor-1.png' } }} />
+            <img alt="" src={tournamentLogo || '/Logo/HU.png'} style={{ maxHeight: 62, objectFit: 'contain' }} onError={e => { const el = e.currentTarget; if (!el.dataset.fb) { el.dataset.fb = '1'; el.src = '/Logo/HU.png' } }} />
             <p style={{ fontSize: 26, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: 2, margin: 0 }}>ROUND {roundNumber ?? ''}</p>
           </div>
         </div>
@@ -517,6 +572,8 @@ function IngamePlayerCard({
   showDeaths,
   showAssists,
   isObserved,
+  isUsingUltOverride = false,
+  onToggleUlt,
 }: {
   player: any
   side: 'left' | 'right'
@@ -529,6 +586,8 @@ function IngamePlayerCard({
   showDeaths: boolean
   showAssists: boolean
   isObserved: boolean
+  isUsingUltOverride?: boolean
+  onToggleUlt?: () => void
 }) {
   const isRight = side === 'right'
   const meta = resolveAgent(player)
@@ -554,6 +613,182 @@ function IngamePlayerCard({
   const ultPoints = player.currUltPoints ?? player.ultPoints ?? player.ultimate ?? 0
   const ultMax = player.maxUltPoints ?? player.ultMax ?? player.ultimateMax ?? 0
   const ultReady = ultMax > 0 && ultPoints >= ultMax
+
+  // Ult active / trigger logic
+  const [localUltActive, setLocalUltActive] = React.useState(false)
+  const isUltActiveFlag = Boolean(
+    player?.isUsingUlt ||
+    player?.abilityState?.X === 'active' ||
+    player?.abilityState?.X === true ||
+    player?.abilityState?.ultimate === 'active' ||
+    player?.abilityState?.ultimate === true ||
+    player?.activeAbility === 'X' ||
+    player?.activeAbility === 'ultimate'
+  )
+
+  const ultTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const triggerUltAnimation = React.useCallback((durationMs = 6500) => {
+    setLocalUltActive(true)
+    if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
+    ultTimerRef.current = setTimeout(() => {
+      setLocalUltActive(false)
+      ultTimerRef.current = null
+    }, durationMs)
+  }, [])
+
+  const prevUltActiveFlag = React.useRef(false)
+  React.useEffect(() => {
+    if (isUltActiveFlag && !prevUltActiveFlag.current && isAlive) {
+      triggerUltAnimation(6500)
+    }
+    prevUltActiveFlag.current = isUltActiveFlag
+    if (!isAlive && localUltActive) {
+      if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
+      setLocalUltActive(false)
+    }
+  }, [isUltActiveFlag, isAlive, triggerUltAnimation, localUltActive])
+
+  const isUsingUlt = Boolean(
+    isAlive && (
+      isUsingUltOverride ||
+      localUltActive ||
+      isUltActiveFlag
+    )
+  )
+
+  const [ultStage, setUltStage] = React.useState<'idle' | 'active' | 'exiting'>('idle')
+  const prevUsingUlt = React.useRef(isUsingUlt)
+
+  React.useEffect(() => {
+    if (isUsingUlt) {
+      setUltStage('active')
+    } else if (prevUsingUlt.current && !isUsingUlt) {
+      setUltStage('exiting')
+      const t = setTimeout(() => setUltStage('idle'), 220)
+      return () => clearTimeout(t)
+    }
+    prevUsingUlt.current = isUsingUlt
+  }, [isUsingUlt])
+
+  const handleToggleUlt = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setLocalUltActive(prev => !prev)
+    onToggleUlt?.()
+  }
+
+  // === "USING ULT" CARD FOR CLASSIC BROADCAST KIT ===
+  if (ultStage === 'active' || ultStage === 'exiting') {
+    const headArt = agentBust(player) || agentPortrait(player) || resolveAgent(player)?.portrait || BLANK_IMG
+    const isExiting = ultStage === 'exiting'
+    const hasSpike = Boolean(player?.hasSpike)
+    return (
+      <div className={`w-full ${isRight ? 'team-stats-val-classic-flip' : 'team-stats-val-classic'}`}>
+        <div className={`flex w-full transition-all ease-in-out ${isRight ? 'justify-end' : 'justify-start'} max-h-75 opacity-100 mb-2`}>
+          <div
+            className="relative h-15.25 w-full cursor-pointer select-none overflow-hidden rounded-[3px] border-2 border-[#FACC15] bg-[#0A0D12] shadow-[0_0_18px_rgba(250,204,21,0.85),inset_0_0_10px_rgba(250,204,21,0.35)]"
+            style={{
+              animation: isExiting ? 'ultExit 220ms ease-in forwards' : 'ultEnter 260ms cubic-bezier(0.16,1,0.3,1) forwards, ultGlowPulse 1.8s ease-in-out infinite',
+            }}
+            onClick={handleToggleUlt}
+            title="Using Ult (Click to toggle)"
+          >
+            {/* Spike carrier badge */}
+            {hasSpike && (
+              <div
+                className={`absolute top-[4px] z-30 grid size-[22px] place-items-center rounded-full bg-white shadow-lg ${isRight ? 'right-2' : 'left-2'}`}
+              >
+                <img src="/game/val/misc/Spike_Icon.svg" alt="spike" className="size-[12px] object-contain" />
+              </div>
+            )}
+            {/* Spectated eye badge */}
+            {isObserved && (
+              <div
+                className={`absolute bottom-1 z-30 grid size-[18px] place-items-center rounded-full border border-white/40 bg-black/85 ${isRight ? 'right-2' : 'left-2'}`}
+              >
+                <div style={{ transform: 'scale(0.8)' }}>
+                  <svg fill="none" height="9" viewBox="0 0 10 8" width="11">
+                    <path d="M9.97125 3.42679C9.95667 3.39152 9.60375 2.55268 8.81917 1.71205C7.77375 0.591964 6.45333 0 5 0C3.54667 0 2.22625 0.591964 1.18083 1.71205C0.396246 2.55268 0.0416627 3.39286 0.028746 3.42679C0.00979317 3.47246 0 3.52189 0 3.57187C0 3.62186 0.00979317 3.67129 0.028746 3.71696C0.0433294 3.75223 0.396246 4.59063 1.18083 5.43125C2.22625 6.55089 3.54667 7.14286 5 7.14286C6.45333 7.14286 7.77375 6.55089 8.81917 5.43125C9.60375 4.59063 9.95667 3.75223 9.97125 3.71696C9.99021 3.67129 10 3.62186 10 3.57187C10 3.52189 9.99021 3.47246 9.97125 3.42679ZM5 5.35714C4.67036 5.35714 4.34813 5.25241 4.07405 5.0562C3.79997 4.85998 3.58635 4.58109 3.4602 4.25479C3.33405 3.9285 3.30105 3.56945 3.36536 3.22305C3.42967 2.87666 3.5884 2.55847 3.82149 2.30874C4.05458 2.059 4.35155 1.88893 4.67485 1.82003C4.99815 1.75112 5.33326 1.78649 5.63781 1.92164C5.94235 2.0568 6.20265 2.28568 6.38578 2.57934C6.56892 2.873 6.66667 3.21825 6.66667 3.57143C6.66667 4.04503 6.49107 4.49923 6.17851 4.83412C5.86595 5.16901 5.44203 5.35714 5 5.35714Z" fill="white" />
+                  </svg>
+                </div>
+              </div>
+            )}
+
+            {/* Team color block with diagonal slant */}
+            <div
+              className="absolute inset-y-0 z-10 flex items-center overflow-hidden"
+              style={{
+                [isRight ? 'right' : 'left']: 0,
+                width: '100%',
+                background: teamColor,
+                clipPath: isRight
+                  ? 'polygon(25% 0%, 100% 0%, 100% 100%, 52% 100%)'
+                  : 'polygon(0% 0%, 75% 0%, 48% 100%, 0% 100%)',
+                animation: isExiting
+                  ? (isRight ? 'v1UltSlideOutRight 200ms ease-in forwards' : 'v1UltSlideOutLeft 200ms ease-in forwards')
+                  : (isRight ? 'v1UltSlideInRight 280ms cubic-bezier(0.16,1,0.3,1) forwards' : 'v1UltSlideInLeft 280ms cubic-bezier(0.16,1,0.3,1) forwards'),
+              }}
+            >
+              {/* Metallic gradient overlay */}
+              <div
+                className="absolute inset-0 opacity-20"
+                style={{
+                  background: 'linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(0,0,0,0.6) 100%)',
+                }}
+              />
+
+              {/* Large White Ult Icon */}
+              <div
+                className="relative z-10 flex items-center justify-center"
+                style={{
+                  [isRight ? 'marginRight' : 'marginLeft']: '24px',
+                  width: '56px',
+                }}
+              >
+                <img
+                  src={`/game/val/agents/${codename}/abilities/ultimate.png`}
+                  alt="ult"
+                  className="size-[44px] object-contain brightness-0 invert drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)]"
+                  style={{
+                    animation: isExiting
+                      ? undefined
+                      : 'v1UltIconReveal 300ms cubic-bezier(0.16,1,0.3,1) 160ms both, ultIconPulse 1.8s ease-in-out 460ms infinite',
+                  }}
+                  onError={e => {
+                    ;(e.currentTarget as HTMLImageElement).style.visibility = 'hidden'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Agent Bust Portrait Crop */}
+            <div
+              className="absolute inset-y-0 z-0 overflow-hidden"
+              style={{
+                [isRight ? 'left' : 'right']: 0,
+                width: '60%',
+                animation: isExiting
+                  ? undefined
+                  : (isRight ? 'v1UltBustRevealRight 300ms ease-out 260ms both' : 'v1UltBustRevealLeft 300ms ease-out 260ms both'),
+              }}
+            >
+              <img
+                src={headArt}
+                alt=""
+                className="absolute top-[-10px] h-[220px] w-auto max-w-none object-contain"
+                style={{
+                  [isRight ? 'left' : 'right']: '-15px',
+                  transform: isRight ? 'scaleX(-1)' : undefined,
+                }}
+                onError={e => {
+                  ;(e.currentTarget as HTMLImageElement).src = agentIcon
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const hiddenX = !isRight ? 'translateX(-100%)' : 'translateX(100%)'
   const eyeContainerStyle: React.CSSProperties = {
@@ -895,6 +1130,11 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   const leftRoster = leftTeamPlayers && leftTeamPlayers.length > 0 ? leftTeamPlayers : (hasLiveMatch || liveOnly ? [] : DEMO_LEFT)
   const rightRoster = rightTeamPlayers && rightTeamPlayers.length > 0 ? rightTeamPlayers : (hasLiveMatch || liveOnly ? [] : DEMO_RIGHT)
 
+  const [toggledUlts, setToggledUlts] = React.useState<Record<string, boolean>>({})
+  const handleToggleUlt = (pKey: string) => {
+    setToggledUlts(prev => ({ ...prev, [pKey]: !prev[pKey] }))
+  }
+
   const activeMapHistory = (mapHistoryItems || []).filter(i => i.kind !== 'pool' && i.kind !== 'ban')
   const labeledMapHistory = (() => {
     let n = 0
@@ -1037,7 +1277,8 @@ export function IngameHudScene(props: IngameHudSceneProps) {
         '--main-right-color-change': rightTeamColor,
       } as React.CSSProperties}
     >
-            {/* ===== ENDROUND BANNER (ValoSpectra endround-banner parity) ===== */}
+      <style>{CLASSIC_ULT_CSS}</style>
+      {/* ===== ENDROUND BANNER (ValoSpectra endround-banner parity) ===== */}
       {/* ===== ROUND CEREMONY (frame 1 centered → slides to bottom center → frame 2) ===== */}
       <RoundCeremony
         trigger={ceremonyTrigger || (roundEnd?.winner ? 'rd:' + (roundNumber ?? 0) + ':' + roundEnd.winner : null)}
@@ -1279,43 +1520,53 @@ export function IngameHudScene(props: IngameHudSceneProps) {
           <div className="relative flex w-full justify-between duration-500 translate-y-0 opacity-100 items-end">
             {/* Left Team Roster Column */}
             <div className="w-67.5 duration-700 origin-bottom-left flex flex-col justify-end">
-              {leftRoster.map((player, idx) => (
-                <IngamePlayerCard
-                  key={player.id || idx}
-                  player={player}
-                  side="left"
-                  index={idx}
-                  teamColor={leftTeamColor}
-                  textColor={teamStatsLeftColor}
-                  showEco={showEco}
-                  showUlts={showUlts}
-                  showKills={showKills}
-                  showDeaths={showDeaths}
-                  showAssists={showAssists}
-                  isObserved={isObservedPlayer(player, 'left', idx)}
-                />
-              ))}
-            </div>
-
-            {/* Right Team Roster Column (Hidden when empty in solo testing) */}
-            {rightRoster.length > 0 && (
-              <div className="w-67.5 duration-700 origin-bottom-right flex flex-col justify-end">
-                {rightRoster.map((player, idx) => (
+              {leftRoster.map((player, idx) => {
+                const pKey = String(player.id || player.name || player.alias || `left-${idx}`)
+                return (
                   <IngamePlayerCard
-                    key={player.id || idx}
+                    key={pKey}
                     player={player}
-                    side="right"
+                    side="left"
                     index={idx}
-                    teamColor={rightTeamColor}
-                    textColor={teamStatsRightColor}
+                    teamColor={leftTeamColor}
+                    textColor={teamStatsLeftColor}
                     showEco={showEco}
                     showUlts={showUlts}
                     showKills={showKills}
                     showDeaths={showDeaths}
                     showAssists={showAssists}
-                    isObserved={isObservedPlayer(player, 'right', idx)}
+                    isObserved={isObservedPlayer(player, 'left', idx)}
+                    isUsingUltOverride={Boolean(toggledUlts[pKey])}
+                    onToggleUlt={() => handleToggleUlt(pKey)}
                   />
-                ))}
+                )
+              })}
+            </div>
+
+            {/* Right Team Roster Column (Hidden when empty in solo testing) */}
+            {rightRoster.length > 0 && (
+              <div className="w-67.5 duration-700 origin-bottom-right flex flex-col justify-end">
+                {rightRoster.map((player, idx) => {
+                  const pKey = String(player.id || player.name || player.alias || `right-${idx}`)
+                  return (
+                    <IngamePlayerCard
+                      key={pKey}
+                      player={player}
+                      side="right"
+                      index={idx}
+                      teamColor={rightTeamColor}
+                      textColor={teamStatsRightColor}
+                      showEco={showEco}
+                      showUlts={showUlts}
+                      showKills={showKills}
+                      showDeaths={showDeaths}
+                      showAssists={showAssists}
+                      isObserved={isObservedPlayer(player, 'right', idx)}
+                      isUsingUltOverride={Boolean(toggledUlts[pKey])}
+                      onToggleUlt={() => handleToggleUlt(pKey)}
+                    />
+                  )
+                })}
               </div>
             )}
           </div>

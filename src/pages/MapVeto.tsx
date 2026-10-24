@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Check, X, RotateCcw, ChevronDown, ClipboardList, Play, Copy, Undo2 } from 'lucide-react'
+import { Check, X, RotateCcw, ChevronDown, ClipboardList, Play, Copy, Undo2, Coins } from 'lucide-react'
 import { useAppStore } from '../store/AppContext'
+import { CoinTossModal } from '../components/veto/CoinTossModal'
+import { saveRoomBroadcast } from '../lib/dataLayer'
+import { supabase } from '../lib/supabase'
 
 export interface MapItem {
   mapId: string
@@ -107,6 +110,7 @@ export function buildMapHistoryItems(
 }
 
 export type VetoStepType = 'BAN' | 'PICK' | 'SIDE_PICK' | 'DECIDER'
+export type VetoMode = 'standard' | 'grand_finals'
 
 export interface VetoStep {
   sequenceNo: number
@@ -119,21 +123,23 @@ export interface VetoStep {
 }
 
 /** Programmatic ladder: 2 opening bans → alternating (pick, side) starting with
- *  TEAM_A (the *other* team chooses sides, matching handleSidePick) → optional
+ *  first team (the *other* team chooses sides, matching handleSidePick) → optional
  *  closing bans → auto decider (actorless — assigned when the pool has 1 left). */
-function buildLadder(pickCount: number, closingBans: number) {
+function buildLadder(pickCount: number, closingBans: number, firstTeam: 'TEAM_A' | 'TEAM_B' = 'TEAM_A') {
+  const t1 = firstTeam
+  const t2 = firstTeam === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A'
   const raw: { type: VetoStepType; actor: VetoStep['actor']; targetSlot?: string }[] = [
-    { type: 'BAN', actor: 'TEAM_A' },
-    { type: 'BAN', actor: 'TEAM_B' },
+    { type: 'BAN', actor: t1 },
+    { type: 'BAN', actor: t2 },
   ]
   for (let n = 1; n <= pickCount; n++) {
-    const picker = n % 2 === 1 ? 'TEAM_A' : 'TEAM_B'
-    const sider = picker === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A'
+    const picker = n % 2 === 1 ? t1 : t2
+    const sider = picker === t1 ? t2 : t1
     raw.push({ type: 'PICK', actor: picker, targetSlot: `map${n}` })
     raw.push({ type: 'SIDE_PICK', actor: sider, targetSlot: `map${n}` })
   }
   for (let b = 0; b < closingBans; b++) {
-    raw.push({ type: 'BAN', actor: b % 2 === 0 ? 'TEAM_A' : 'TEAM_B' })
+    raw.push({ type: 'BAN', actor: b % 2 === 0 ? t1 : t2 })
   }
   raw.push({ type: 'DECIDER', actor: 'DECIDER', targetSlot: `map${pickCount + 1}` })
   return raw
@@ -163,31 +169,57 @@ function withIds(raw: { type: VetoStepType; actor: VetoStep['actor']; targetSlot
   })
 }
 
-export function getVetoSequence(format: string): VetoStep[] {
+export function getVetoSequence(
+  format: string,
+  firstTeam: 'TEAM_A' | 'TEAM_B' = 'TEAM_A',
+  mode: VetoMode = 'standard',
+): VetoStep[] {
+  const t1 = firstTeam
+  const t2 = firstTeam === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A'
+
+  if (mode === 'grand_finals') {
+    // VCT Grand Finals (Upper Bracket Advantage):
+    // Team A (Upper Bracket) bans 2 maps immediately. Lower Bracket (Team B) gets 0 bans.
+    // 5 maps remain: Pick 1 (A), Pick 2 (B), Pick 3 (A), Pick 4 (B), Decider 5.
+    return withIds([
+      { type: 'BAN', actor: t1 },
+      { type: 'BAN', actor: t1 },
+      { type: 'PICK', actor: t1, targetSlot: 'map1' },
+      { type: 'SIDE_PICK', actor: t2, targetSlot: 'map1' },
+      { type: 'PICK', actor: t2, targetSlot: 'map2' },
+      { type: 'SIDE_PICK', actor: t1, targetSlot: 'map2' },
+      { type: 'PICK', actor: t1, targetSlot: 'map3' },
+      { type: 'SIDE_PICK', actor: t2, targetSlot: 'map3' },
+      { type: 'PICK', actor: t2, targetSlot: 'map4' },
+      { type: 'SIDE_PICK', actor: t1, targetSlot: 'map4' },
+      { type: 'DECIDER', actor: 'DECIDER', targetSlot: 'map5' },
+    ])
+  }
+
   switch (format) {
     case 'BO1':
       // 6 bans + decider (classic single-map ladder)
       return withIds([
-        { type: 'BAN', actor: 'TEAM_A' },
-        { type: 'BAN', actor: 'TEAM_B' },
-        { type: 'BAN', actor: 'TEAM_A' },
-        { type: 'BAN', actor: 'TEAM_B' },
-        { type: 'BAN', actor: 'TEAM_A' },
-        { type: 'BAN', actor: 'TEAM_B' },
-        { type: 'DECIDER', actor: 'DECIDER' },
+        { type: 'BAN', actor: t1 },
+        { type: 'BAN', actor: t2 },
+        { type: 'BAN', actor: t1 },
+        { type: 'BAN', actor: t2 },
+        { type: 'BAN', actor: t1 },
+        { type: 'BAN', actor: t2 },
+        { type: 'DECIDER', actor: 'DECIDER', targetSlot: 'map1' },
       ])
     case 'BO2':
-      return withIds(buildLadder(1, 0))
+      return withIds(buildLadder(1, 0, t1))
     case 'BO5':
-      return withIds(buildLadder(4, 0))
+      return withIds(buildLadder(4, 0, t1))
     case 'BO7':
-      return withIds(buildLadder(6, 0))
+      return withIds(buildLadder(6, 0, t1))
     case 'BO9':
-      return withIds(buildLadder(8, 0))
+      return withIds(buildLadder(8, 0, t1))
     case 'BO3':
     default:
-      // BO3 9 steps: opening bans, pick/side ×2, closing bans, auto decider.
-      return withIds(buildLadder(2, 2))
+      // Official VCT BO3: Ban A, Ban B, Pick A, Pick B, Ban A, Ban B, Decider.
+      return withIds(buildLadder(2, 2, t1))
   }
 }
 
@@ -224,6 +256,8 @@ export default function MapVeto() {
   const { state, setState, showToast } = useAppStore()
 
   const [selectedFormat, setSelectedFormat] = useState<'BO1' | 'BO2' | 'BO3' | 'BO5' | 'BO7' | 'BO9'>((state.vetoFormat as 'BO1' | 'BO2' | 'BO3' | 'BO5' | 'BO7' | 'BO9') || 'BO3')
+  const [vetoMode, setVetoMode] = useState<VetoMode>((state.vetoMode as VetoMode) || 'standard')
+  const [coinTossOpen, setCoinTossOpen] = useState(false)
   const [selectedMapIds, setSelectedMapIds] = useState<string[]>(
     state.vetoSelectedMapIds && state.vetoSelectedMapIds.length
       ? state.vetoSelectedMapIds
@@ -236,12 +270,7 @@ export default function MapVeto() {
   const [isVetoCompleted, setIsVetoCompleted] = useState(state.vetoCompleted ?? false)
   const [currentStepIndex, setCurrentStepIndex] = useState(state.vetoStepIndex ?? 0)
   const [animationSpeed, setAnimationSpeed] = useState('750')
-  // P5 replay (operator ruling): PLAY must NOT open panels or scenes here —
-  // the map-ban scene lives in the HUD editor (and on the OBS overlay URL).
-  // PLAY bumps `vetoReplayRun` in the shared room state; the MapBanScene in
-  // HudEditor/OverlayPopout keys off it, so pressing PLAY re-runs the reveal
-  // animation exactly where the real site plays it — same tab (editor) and
-  // the OBS browser-source URL, which both read this state.
+
   const startReplay = () => {
     setState(prev => ({ ...prev, vetoReplayRun: (prev.vetoReplayRun || 0) + 1 }))
     showToast('Map ban scene playing on the HUD editor & OBS overlay')
@@ -257,19 +286,42 @@ export default function MapVeto() {
     pickedBy: 'TEAM_A' | 'TEAM_B'
     choosingSideTeam: 'TEAM_A' | 'TEAM_B'
     slot: string
-    /** Step id captured when the pick ran (pick-map-N) — stamped into history. */
     stepId?: string
   } | null>(state.vetoPendingSidePick ?? null)
 
   const [deciderSideOpen, setDeciderSideOpen] = useState(false)
-  // Side-pick dialog: hovering a side BUTTON lights the matching gradient
-  // edge on the map preview (shield → left blue, swords → right red).
   const [sideHover, setSideHover] = useState<'defense' | 'attack' | null>(null)
   useEffect(() => {
     if (!pendingSidePick) setSideHover(null)
   }, [pendingSidePick])
 
   const vetoPersistTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const broadcastVetoState = (updates: any) => {
+    if (!state.serverCode) return
+    const payload = {
+      ...state,
+      teams: state.teams,
+      teamAId: state.teamAId,
+      teamBId: state.teamBId,
+      serverCode: state.serverCode,
+      vetoStarted: isVetoStarted,
+      vetoCompleted: isVetoCompleted,
+      vetoStepIndex: currentStepIndex,
+      vetoActingTeamOverride: actingTeamOverride,
+      vetoActionTypeOverride: actionTypeOverride,
+      vetoPendingSidePick: pendingSidePick,
+      vetoMode,
+      vetoFormat: selectedFormat,
+      vetoFirstPickTeam: firstPickTeam,
+      vetoSelectedMapIds: selectedMapIds,
+      mapBans: state.mapBans,
+      mapPicks: state.mapPicks,
+      vetoSteps: state.vetoSteps,
+      ...updates,
+    }
+    void saveRoomBroadcast(state.serverCode, payload).catch(() => {})
+  }
 
   // Persist the veto session across page navigation by mirroring it back to
   // AppContext (which survives route changes).
@@ -287,16 +339,99 @@ export default function MapVeto() {
         vetoActingTeamOverride: actingTeamOverride,
         vetoActionTypeOverride: actionTypeOverride,
         vetoPendingSidePick: pendingSidePick,
+        vetoMode,
       }))
     }, 150)
     return () => { if (vetoPersistTimer.current) clearTimeout(vetoPersistTimer.current) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMapIds, firstPickTeam, isVetoStarted, isVetoCompleted, currentStepIndex, actingTeamOverride, actionTypeOverride, pendingSidePick, setState])
+  }, [selectedMapIds, firstPickTeam, isVetoStarted, isVetoCompleted, currentStepIndex, actingTeamOverride, actionTypeOverride, pendingSidePick, vetoMode, setState])
+
+  // Real-time synchronization with Captain Veto lobby (Multi-Channel: Supabase + BroadcastChannel + LocalStorage)
+  useEffect(() => {
+    if (!state.serverCode) return
+    const channelCode = state.serverCode
+
+    const handleSync = (val: any) => {
+      if (!val || typeof val !== 'object') return
+      if (val.vetoStarted !== undefined) setIsVetoStarted(val.vetoStarted)
+      if (val.vetoCompleted !== undefined) setIsVetoCompleted(val.vetoCompleted)
+      if (val.vetoStepIndex !== undefined) setCurrentStepIndex(val.vetoStepIndex)
+      if (val.vetoActingTeamOverride !== undefined) setActingTeamOverride(val.vetoActingTeamOverride)
+      if (val.vetoActionTypeOverride !== undefined) setActionTypeOverride(val.vetoActionTypeOverride)
+      if (val.vetoPendingSidePick !== undefined) setPendingSidePick(val.vetoPendingSidePick)
+      if (val.vetoMode !== undefined) setVetoMode(val.vetoMode)
+      if (val.vetoFormat !== undefined) setSelectedFormat(val.vetoFormat)
+      if (val.vetoFirstPickTeam !== undefined) setFirstPickTeam(val.vetoFirstPickTeam)
+      setState(prev => ({
+        ...prev,
+        mapBans: val.mapBans ?? prev.mapBans,
+        mapPicks: val.mapPicks ?? prev.mapPicks,
+        vetoSteps: val.vetoSteps ?? prev.vetoSteps,
+        teamAId: val.teamAId ?? prev.teamAId,
+        teamBId: val.teamBId ?? prev.teamBId,
+      }))
+    }
+
+    // 1. Cross-tab BroadcastChannel listener (0ms instant sync)
+    let bc: BroadcastChannel | null = null
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      bc = new BroadcastChannel(`hu_channel_${channelCode}`)
+      bc.onmessage = (e) => {
+        if (e.data?.value) handleSync(e.data.value)
+      }
+    }
+
+    // 2. Same-window custom event listener
+    const onLocalEvent = (e: any) => {
+      if (e.detail?.serverCode === channelCode && e.detail?.value) {
+        handleSync(e.detail.value)
+      }
+    }
+    window.addEventListener('hu_room_update', onLocalEvent)
+
+    // 3. Storage event listener (cross-window storage sync)
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === `hu_room_${channelCode}` && e.newValue) {
+        try { handleSync(JSON.parse(e.newValue)) } catch {}
+      }
+    }
+    window.addEventListener('storage', onStorage)
+
+    // 4. Supabase Realtime channel
+    const channel = supabase
+      .channel(`map-veto-sync-${channelCode}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'site_settings',
+          filter: `id=eq.broadcast-room:${channelCode}`,
+        },
+        (payload) => {
+          handleSync((payload.new as any)?.value)
+        }
+      )
+      .subscribe()
+
+    // Broadcast current setup immediately on mount so open lobbies receive it
+    broadcastVetoState({})
+
+    return () => {
+      if (bc) bc.close()
+      window.removeEventListener('hu_room_update', onLocalEvent)
+      window.removeEventListener('storage', onStorage)
+      supabase.removeChannel(channel).catch(() => {})
+    }
+  }, [state.serverCode, setState])
 
   const teamA = state.teams.find(t => t.id === state.teamAId) || state.teams[0]
   const teamB = state.teams.find(t => t.id === state.teamBId) || state.teams[1]
 
-  const sequence = useMemo(() => getVetoSequence(selectedFormat), [selectedFormat])
+  const sequence = useMemo(
+    () => getVetoSequence(selectedFormat, firstPickTeam, vetoMode),
+    [selectedFormat, firstPickTeam, vetoMode],
+  )
 
   const bannedMaps = state.mapBans || []
   const pickedMaps = state.mapPicks || []
@@ -314,9 +449,26 @@ export default function MapVeto() {
     )
   }
 
-  const swapOrder = () => {
-    setFirstPickTeam(prev => (prev === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A'))
-    showToast('Team order swapped')
+  const handleTeamAChange = (newTeamId: string) => {
+    setState(prev => ({ ...prev, teamAId: newTeamId }))
+    broadcastVetoState({ teamAId: newTeamId })
+    const t = state.teams.find(tm => tm.id === newTeamId)
+    showToast(`Team A: ${t?.name || newTeamId}`)
+  }
+
+  const handleTeamBChange = (newTeamId: string) => {
+    setState(prev => ({ ...prev, teamBId: newTeamId }))
+    broadcastVetoState({ teamBId: newTeamId })
+    const t = state.teams.find(tm => tm.id === newTeamId)
+    showToast(`Team B: ${t?.name || newTeamId}`)
+  }
+
+  const swapTeams = () => {
+    const curA = state.teamAId || teamA?.id || 't1'
+    const curB = state.teamBId || teamB?.id || 't2'
+    setState(prev => ({ ...prev, teamAId: curB, teamBId: curA }))
+    broadcastVetoState({ teamAId: curB, teamBId: curA })
+    showToast('Teams swapped')
   }
 
   const startVeto = () => {
@@ -324,30 +476,87 @@ export default function MapVeto() {
       showToast('Select at least 3 maps to start veto')
       return
     }
+    const seq = getVetoSequence(selectedFormat, firstPickTeam, vetoMode)
+    const firstStep = seq[0]
+    const initialActor = firstStep.actor === 'DECIDER' ? 'TEAM_A' : firstStep.actor
     setIsVetoStarted(true)
     setIsVetoCompleted(false)
     setCurrentStepIndex(0)
-    setState(prev => ({ ...prev, mapBans: [], mapPicks: [], vetoSteps: [] }))
+    setPendingSidePick(null)
+    setActingTeamOverride(initialActor)
+    setActionTypeOverride('Ban')
+    const updates = {
+      mapBans: [],
+      mapPicks: [],
+      vetoSteps: [],
+      vetoStarted: true,
+      vetoCompleted: false,
+      vetoStepIndex: 0,
+      vetoActingTeamOverride: initialActor,
+      vetoActionTypeOverride: 'Ban' as const,
+      vetoPendingSidePick: null,
+      vetoMode,
+      vetoFormat: selectedFormat,
+      vetoFirstPickTeam: firstPickTeam,
+      vetoSelectedMapIds: selectedMapIds,
+    }
+    setState(prev => ({ ...prev, ...updates }))
+    broadcastVetoState(updates)
     showToast('Map Veto started!')
   }
 
   const resetVeto = () => {
+    const seq = getVetoSequence(selectedFormat, firstPickTeam, vetoMode)
+    const firstStep = seq[0]
+    const initialActor = firstStep.actor === 'DECIDER' ? 'TEAM_A' : firstStep.actor
     setIsVetoStarted(false)
     setIsVetoCompleted(false)
     setCurrentStepIndex(0)
     setPendingSidePick(null)
-    setState(prev => ({ ...prev, mapBans: [], mapPicks: [], vetoSteps: [] }))
+    setActingTeamOverride(initialActor)
+    setActionTypeOverride('Ban')
+    const updates = {
+      mapBans: [],
+      mapPicks: [],
+      vetoSteps: [],
+      vetoStarted: false,
+      vetoCompleted: false,
+      vetoStepIndex: 0,
+      vetoActingTeamOverride: initialActor,
+      vetoActionTypeOverride: 'Ban' as const,
+      vetoPendingSidePick: null,
+    }
+    setState(prev => ({ ...prev, ...updates }))
+    broadcastVetoState(updates)
     showToast('Map Veto restarted')
   }
 
   // EXPLICIT series reset — the ONLY action that clears the series map
   // history. Restart Active Session intentionally does NOT touch mapResults.
   const resetSeries = () => {
-    setState(prev => ({ ...prev, mapResults: [], mapBans: [], mapPicks: [], vetoSteps: [] }))
+    const seq = getVetoSequence(selectedFormat, firstPickTeam, vetoMode)
+    const firstStep = seq[0]
+    const initialActor = firstStep.actor === 'DECIDER' ? 'TEAM_A' : firstStep.actor
     setIsVetoStarted(false)
     setIsVetoCompleted(false)
     setCurrentStepIndex(0)
     setPendingSidePick(null)
+    setActingTeamOverride(initialActor)
+    setActionTypeOverride('Ban')
+    const updates = {
+      mapResults: [],
+      mapBans: [],
+      mapPicks: [],
+      vetoSteps: [],
+      vetoStarted: false,
+      vetoCompleted: false,
+      vetoStepIndex: 0,
+      vetoActingTeamOverride: initialActor,
+      vetoActionTypeOverride: 'Ban' as const,
+      vetoPendingSidePick: null,
+    }
+    setState(prev => ({ ...prev, ...updates }))
+    broadcastVetoState(updates)
     showToast('Series reset — map history cleared')
   }
 
@@ -364,21 +573,31 @@ export default function MapVeto() {
         mapId,
         bannedBy: actor,
       }
+      const newBans = [...(state.mapBans || []), newBan]
+      const newSteps = [...(state.vetoSteps || []), { team: actor, action: 'Ban' as const, map: mapId, stepId: sequence[currentStepIndex]?.id }]
       setState(prev => ({
         ...prev,
-        mapBans: [...(prev.mapBans || []), newBan],
-        vetoSteps: [...(prev.vetoSteps || []), { team: actor, action: 'Ban' as const, map: mapId, stepId: sequence[currentStepIndex]?.id }],
+        mapBans: newBans,
+        vetoSteps: newSteps,
       }))
+      broadcastVetoState({
+        mapBans: newBans,
+        vetoSteps: newSteps,
+      })
       showToast(`${actor === 'TEAM_A' ? teamA?.name : teamB?.name} banned ${mapId.toUpperCase()}`)
       advanceStep()
     } else if (action === 'Pick') {
-      const choosingSideTeam = actor === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A'
-      setPendingSidePick({
+      const choosingSideTeam: 'TEAM_A' | 'TEAM_B' = actor === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A'
+      const sidePickObj = {
         mapId,
         pickedBy: actor,
         choosingSideTeam,
         slot: `map${pickedMaps.length + 1}`,
         stepId: sequence[currentStepIndex]?.id,
+      }
+      setPendingSidePick(sidePickObj)
+      broadcastVetoState({
+        vetoPendingSidePick: sidePickObj,
       })
     } else if (action === 'Decider') {
       const newPick = {
@@ -387,11 +606,17 @@ export default function MapVeto() {
         pickedBy: 'DECIDER' as const,
         slot: 'decider',
       }
+      const newPicks = [...(state.mapPicks || []), newPick]
+      const newSteps = [...(state.vetoSteps || []), { team: 'DECIDER', action: 'Decider' as const, map: mapId, stepId: sequence[currentStepIndex]?.id }]
       setState(prev => ({
         ...prev,
-        mapPicks: [...(prev.mapPicks || []), newPick],
-        vetoSteps: [...(prev.vetoSteps || []), { team: 'DECIDER', action: 'Decider' as const, map: mapId, stepId: sequence[currentStepIndex]?.id }],
+        mapPicks: newPicks,
+        vetoSteps: newSteps,
       }))
+      broadcastVetoState({
+        mapPicks: newPicks,
+        vetoSteps: newSteps,
+      })
       showToast(`${mapId.toUpperCase()} selected as Decider!`)
       advanceStep()
     }
@@ -417,11 +642,20 @@ export default function MapVeto() {
       sideSelection,
     }
 
+    const newPicks = [...(state.mapPicks || []), newPick]
+    const newSteps = [...(state.vetoSteps || []), { team: pendingSidePick.pickedBy, action: 'Pick' as const, map: pendingSidePick.mapId, side: (side === 'ATTACK' ? 'Offense' : 'Defense') as 'Offense' | 'Defense', stepId: pendingSidePick.stepId }]
+
     setState(prev => ({
       ...prev,
-      mapPicks: [...(prev.mapPicks || []), newPick],
-      vetoSteps: [...(prev.vetoSteps || []), { team: pendingSidePick.pickedBy, action: 'Pick' as const, map: pendingSidePick.mapId, side: side === 'ATTACK' ? 'Offense' : 'Defense', stepId: pendingSidePick.stepId }],
+      mapPicks: newPicks,
+      vetoSteps: newSteps,
     }))
+
+    broadcastVetoState({
+      mapPicks: newPicks,
+      vetoSteps: newSteps,
+      vetoPendingSidePick: null,
+    })
 
     showToast(
       `${choosingSideTeam === 'TEAM_A' ? teamA?.name : teamB?.name} picked ${side} on ${pendingSidePick.mapId.toUpperCase()}`
@@ -435,10 +669,14 @@ export default function MapVeto() {
     if (!decider) return
     const otherSide = side === 'ATTACK' ? 'DEFENSE' : 'ATTACK'
     const sideSelection = { TEAM_A: side, TEAM_B: otherSide } as { TEAM_A: 'ATTACK' | 'DEFENSE'; TEAM_B: 'ATTACK' | 'DEFENSE' }
+    const updatedPicks = (state.mapPicks || []).map(p => p.slot === 'decider' ? { ...p, sideSelection } : p)
     setState(prev => ({
       ...prev,
-      mapPicks: (prev.mapPicks || []).map(p => p.slot === 'decider' ? { ...p, sideSelection } : p),
+      mapPicks: updatedPicks,
     }))
+    broadcastVetoState({
+      mapPicks: updatedPicks,
+    })
     setDeciderSideOpen(false)
     showToast(`Decider side set: ${teamA?.name} ${side} / ${teamB?.name} ${otherSide}`)
   }
@@ -449,27 +687,43 @@ export default function MapVeto() {
       showToast('Map Veto completed!')
       setCurrentStepIndex(sequence.length)
       setIsVetoCompleted(true)
+      broadcastVetoState({
+        vetoStepIndex: sequence.length,
+        vetoCompleted: true,
+      })
     } else {
       setCurrentStepIndex(nextIdx)
       const nextStep = sequence[nextIdx]
       if (nextStep) {
-        setActingTeamOverride(nextStep.actor === 'DECIDER' ? 'TEAM_A' : nextStep.actor)
-        setActionTypeOverride(nextStep.type === 'BAN' ? 'Ban' : nextStep.type === 'PICK' ? 'Pick' : nextStep.type === 'DECIDER' ? 'Decider' : 'Side pick')
+        const nextActor = nextStep.actor === 'DECIDER' ? 'TEAM_A' : nextStep.actor
+        const nextAction = nextStep.type === 'BAN' ? 'Ban' : nextStep.type === 'PICK' ? 'Pick' : nextStep.type === 'DECIDER' ? 'Decider' : 'Side pick'
+        setActingTeamOverride(nextActor)
+        setActionTypeOverride(nextAction)
+        broadcastVetoState({
+          vetoStepIndex: nextIdx,
+          vetoActingTeamOverride: nextActor,
+          vetoActionTypeOverride: nextAction,
+        })
       }
     }
   }
 
   const undoLastStep = () => {
     if (currentStepIndex === 0) return
-    setCurrentStepIndex(prev => Math.max(0, prev - 1))
-    setState(prev => {
-      const bans = [...(prev.mapBans || [])]
-      const picks = [...(prev.mapPicks || [])]
-      const steps = [...(prev.vetoSteps || [])]
-      if (bans.length > picks.length) bans.pop()
-      else if (picks.length > 0) picks.pop()
-      steps.pop()
-      return { ...prev, mapBans: bans, mapPicks: picks, vetoSteps: steps }
+    const nextIdx = Math.max(0, currentStepIndex - 1)
+    setCurrentStepIndex(nextIdx)
+    const bans = [...(state.mapBans || [])]
+    const picks = [...(state.mapPicks || [])]
+    const steps = [...(state.vetoSteps || [])]
+    if (bans.length > picks.length) bans.pop()
+    else if (picks.length > 0) picks.pop()
+    steps.pop()
+    setState(prev => ({ ...prev, mapBans: bans, mapPicks: picks, vetoSteps: steps }))
+    broadcastVetoState({
+      vetoStepIndex: nextIdx,
+      mapBans: bans,
+      mapPicks: picks,
+      vetoSteps: steps,
     })
     showToast('Undid previous action')
   }
@@ -526,59 +780,199 @@ export default function MapVeto() {
       {/* ========================================================================= */}
       {!isVetoStarted && !isVetoCompleted && (
         <div className="space-y-6">
-          {/* Controls Bar: FORMAT | TEAM ASSIGNMENT | MAP POOL */}
-          <div className="flex flex-wrap items-center justify-between gap-6 border-b border-white/5 pb-6">
-            {/* Format Pills */}
-            <div className="space-y-2">
-              <span className="text-[11px] font-semibold tracking-wider text-[#e7e7e7]/40 uppercase">FORMAT</span>
-              <div className="flex items-center gap-1 rounded-lg border border-white/5 bg-[#121417] p-1">
-                {(['BO1', 'BO2', 'BO3', 'BO5', 'BO7', 'BO9'] as const).map(fmt => (
-                  <button
-                    key={fmt}
-                    type="button"
-                    onClick={() => setSelectedFormat(fmt)}
-                    className={`rounded-md px-3.5 py-1 text-xs font-semibold tracking-wide transition-all cursor-pointer ${
-                      selectedFormat === fmt
-                        ? 'bg-white/10 text-white shadow-sm'
-                        : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
-                    }`}
-                  >
-                    {fmt}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Team Assignment with Swap Button */}
-            <div className="space-y-2">
-              <span className="text-[11px] font-semibold tracking-wider text-[#e7e7e7]/40 uppercase">TEAM ASSIGNMENT</span>
-              <div className="flex items-center gap-3">
-                <div className="flex w-36 flex-col justify-center rounded-lg border border-white/5 bg-[#121417] px-3.5 py-2">
-                  <span className="text-[9px] font-medium text-[#e7e7e7]/40 uppercase">TEAM A</span>
-                  <span className="truncate text-xs font-semibold text-white">{firstPickTeam === 'TEAM_A' ? teamA?.name : teamB?.name}</span>
-                </div>
-
+          {/* Controls Bar: VCT FORMAT | FORMAT | TEAM ASSIGNMENT + COIN TOSS | MAP POOL | CAPTAIN LINK */}
+          <div className="space-y-4 border-b border-white/5 pb-6">
+            {/* VCT Veto Format Mode Toggle */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold tracking-wider text-[#e7e7e7]/40 uppercase">VCT VETO FORMAT</span>
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={swapOrder}
-                  className="flex size-7 items-center justify-center text-[#e7e7e7]/40 hover:text-white transition-colors cursor-pointer"
-                  title="Swap team assignment"
+                  onClick={() => setVetoMode('standard')}
+                  className={`rounded-lg px-4 py-2 text-xs font-semibold tracking-wide transition-all cursor-pointer flex items-center gap-2 border ${
+                    vetoMode === 'standard'
+                      ? 'bg-white/10 text-white border-white/20 shadow-sm'
+                      : 'bg-[#121417] text-zinc-400 border-white/5 hover:text-white'
+                  }`}
                 >
-                  <SwitchSidesIcon className="size-4" />
+                  <span>Standard VCT (Equal Seeds / No Bracket Advantage)</span>
                 </button>
-
-                <div className="flex w-36 flex-col justify-center rounded-lg border border-white/5 bg-[#121417] px-3.5 py-2">
-                  <span className="text-[9px] font-medium text-[#e7e7e7]/40 uppercase">TEAM B</span>
-                  <span className="truncate text-xs font-semibold text-white">{firstPickTeam === 'TEAM_A' ? teamB?.name : teamA?.name}</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVetoMode('grand_finals')
+                    setSelectedFormat('BO5')
+                  }}
+                  className={`rounded-lg px-4 py-2 text-xs font-semibold tracking-wide transition-all cursor-pointer flex items-center gap-2 border ${
+                    vetoMode === 'grand_finals'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                      : 'bg-[#121417] text-zinc-400 border-white/5 hover:text-white'
+                  }`}
+                >
+                  <span className="text-amber-400 font-bold">★</span>
+                  <span>VCT Grand Finals (Upper Bracket Advantage - 2 Opening Bans)</span>
+                </button>
               </div>
+              {vetoMode === 'grand_finals' && (
+                <p className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-md px-3 py-1.5 w-fit">
+                  Upper Bracket ({firstPickTeam === 'TEAM_A' ? teamA?.name : teamB?.name}) bans 2 maps immediately. Lower Bracket receives 0 bans. (BO5: 2 Bans, 4 Picks, 1 Decider)
+                </p>
+              )}
             </div>
 
-            {/* Map Pool Counter */}
-            <div className="space-y-2">
-              <span className="text-[11px] font-semibold tracking-wider text-[#e7e7e7]/40 uppercase">MAP POOL</span>
-              <div className="flex h-10 items-center justify-center rounded-lg border border-white/5 bg-[#121417] px-4">
-                <span className="text-xs font-semibold text-white/80">{selectedMapIds.length} selected</span>
+            <div className="flex flex-wrap items-center justify-between gap-6 pt-1">
+              {/* Format Pills */}
+              <div className="space-y-2">
+                <span className="text-[11px] font-semibold tracking-wider text-[#e7e7e7]/40 uppercase">MATCH FORMAT</span>
+                <div className="flex items-center gap-1 rounded-lg border border-white/5 bg-[#121417] p-1">
+                  {(['BO1', 'BO2', 'BO3', 'BO5', 'BO7', 'BO9'] as const).map(fmt => (
+                    <button
+                      key={fmt}
+                      type="button"
+                      onClick={() => setSelectedFormat(fmt)}
+                      className={`rounded-md px-3.5 py-1 text-xs font-semibold tracking-wide transition-all cursor-pointer ${
+                        selectedFormat === fmt
+                          ? 'bg-white/10 text-white shadow-sm'
+                          : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                      }`}
+                    >
+                      {fmt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Team Assignment with Dropdowns, Swap, and Coin Toss */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold tracking-wider text-[#e7e7e7]/40 uppercase">MATCHING TEAMS</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = firstPickTeam === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A'
+                      setFirstPickTeam(next)
+                      broadcastVetoState({ vetoFirstPickTeam: next })
+                      showToast(`1st Action: ${next === 'TEAM_A' ? (teamA?.name || 'Team A') : (teamB?.name || 'Team B')}`)
+                    }}
+                    className="text-[10px] font-semibold text-amber-400/90 hover:text-amber-300 transition-colors cursor-pointer"
+                    title="Toggle which team acts first in veto ladder"
+                  >
+                    1st Action: <span className="underline font-bold">{firstPickTeam === 'TEAM_A' ? (teamA?.name || 'Team A') : (teamB?.name || 'Team B')}</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Team A Dropdown Box */}
+                  <div className="relative flex w-44 items-center gap-2 rounded-lg border border-white/10 bg-[#121417] px-2.5 py-1.5 focus-within:border-white/30">
+                    {teamA?.logoUrl ? (
+                      <img src={teamA.logoUrl} alt="" className="size-5 shrink-0 object-contain" />
+                    ) : (
+                      <div
+                        className="grid size-5 shrink-0 place-items-center rounded-full text-[10px] font-bold text-black"
+                        style={{ background: teamA?.color || '#38BDF8' }}
+                      >
+                        {(teamA?.name || 'A').slice(0, 1)}
+                      </div>
+                    )}
+                    <div className="flex flex-1 flex-col overflow-hidden">
+                      <span className="text-[9px] font-medium text-[#e7e7e7]/40 uppercase leading-none">
+                        {vetoMode === 'grand_finals' ? 'UPPER BRACKET (A)' : 'TEAM A'}
+                      </span>
+                      <select
+                        value={state.teamAId || teamA?.id}
+                        onChange={e => handleTeamAChange(e.target.value)}
+                        className="w-full bg-transparent text-xs font-semibold text-white outline-none cursor-pointer truncate appearance-none pr-4"
+                      >
+                        {state.teams.map(t => (
+                          <option key={t.id} value={t.id} className="bg-[#1A1C1E] text-white">
+                            {t.name} {t.tag ? `[${t.tag}]` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 size-3 text-[#e7e7e7]/40" />
+                  </div>
+
+                  {/* Swap Teams Button */}
+                  <button
+                    type="button"
+                    onClick={swapTeams}
+                    className="flex size-7 items-center justify-center rounded-md border border-white/5 bg-[#121417] text-[#e7e7e7]/40 hover:text-white hover:border-white/20 transition-all cursor-pointer"
+                    title="Swap Team A and Team B"
+                  >
+                    <SwitchSidesIcon className="size-4" />
+                  </button>
+
+                  {/* Team B Dropdown Box */}
+                  <div className="relative flex w-44 items-center gap-2 rounded-lg border border-white/10 bg-[#121417] px-2.5 py-1.5 focus-within:border-white/30">
+                    {teamB?.logoUrl ? (
+                      <img src={teamB.logoUrl} alt="" className="size-5 shrink-0 object-contain" />
+                    ) : (
+                      <div
+                        className="grid size-5 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white"
+                        style={{ background: teamB?.color || '#F43F5E' }}
+                      >
+                        {(teamB?.name || 'B').slice(0, 1)}
+                      </div>
+                    )}
+                    <div className="flex flex-1 flex-col overflow-hidden">
+                      <span className="text-[9px] font-medium text-[#e7e7e7]/40 uppercase leading-none">
+                        {vetoMode === 'grand_finals' ? 'LOWER BRACKET (B)' : 'TEAM B'}
+                      </span>
+                      <select
+                        value={state.teamBId || teamB?.id}
+                        onChange={e => handleTeamBChange(e.target.value)}
+                        className="w-full bg-transparent text-xs font-semibold text-white outline-none cursor-pointer truncate appearance-none pr-4"
+                      >
+                        {state.teams.map(t => (
+                          <option key={t.id} value={t.id} className="bg-[#1A1C1E] text-white">
+                            {t.name} {t.tag ? `[${t.tag}]` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 size-3 text-[#e7e7e7]/40" />
+                  </div>
+
+                  {/* Coin Toss Button */}
+                  <button
+                    type="button"
+                    onClick={() => setCoinTossOpen(true)}
+                    className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-2 text-xs font-bold text-amber-400 transition-all cursor-pointer shadow-sm"
+                    title="VCT Official Coin Toss"
+                  >
+                    <Coins className="size-3.5" />
+                    <span>Coin Toss</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Map Pool Counter & Captain Link */}
+              <div className="flex items-center gap-4">
+                <div className="space-y-2">
+                  <span className="text-[11px] font-semibold tracking-wider text-[#e7e7e7]/40 uppercase">MAP POOL</span>
+                  <div className="flex h-10 items-center justify-center rounded-lg border border-white/5 bg-[#121417] px-4">
+                    <span className="text-xs font-semibold text-white/80">{selectedMapIds.length} selected</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-[11px] font-semibold tracking-wider text-[#e7e7e7]/40 uppercase">CAPTAIN LOBBY</span>
+                  <div className="flex h-10 items-center gap-2 rounded-lg border border-white/5 bg-[#121417] px-3">
+                    <span className="text-xs text-zinc-400 font-mono">/veto/{state.serverCode || 'ROOM'}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/veto/${state.serverCode}`).catch(() => {})
+                        showToast('Captain lobby link copied!')
+                      }}
+                      className="text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                      title="Copy Captain Lobby Link"
+                    >
+                      <Copy className="size-3.5" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1294,6 +1688,24 @@ export default function MapVeto() {
           </div>
         )
       })()}
+
+      {/* VCT Official Coin Toss Modal */}
+      <CoinTossModal
+        isOpen={coinTossOpen}
+        onClose={() => setCoinTossOpen(false)}
+        teamA={teamA}
+        teamB={teamB}
+        onAssignWinner={(winner) => {
+          if (winner === 'TEAM_B') {
+            setFirstPickTeam('TEAM_B')
+            setActingTeamOverride('TEAM_B')
+          } else {
+            setFirstPickTeam('TEAM_A')
+            setActingTeamOverride('TEAM_A')
+          }
+          showToast(`${winner === 'TEAM_A' ? teamA?.name : teamB?.name} assigned as Team A (First Action)`)
+        }}
+      />
     </div>
   )
 }

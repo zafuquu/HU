@@ -2,7 +2,7 @@ import {
   type PostgamePlayer,
   type PostGameSceneProps,
 } from '../classic/PostgameScene'
-import { agentBust, agentIcon, agentPortrait } from '../broadcastKit'
+import { agentBust, agentIcon, agentPortrait, agentMasteryPortrait } from '../broadcastKit'
 import { resolveAgent } from '../../../data/valAgentMeta'
 
 /**
@@ -147,12 +147,79 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
         <circle cx="1200" cy="320" r="3" fill="#38BDF8" />
       </svg>
 
+      {/* Staggered entrance animation: Team headers top-to-bottom -> Non-MVP inward -> MVP bottom-to-top */}
+      <style>{`
+        @keyframes postgameTopDown {
+          0% {
+            opacity: 0;
+            transform: translateY(-55px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes postgameInwardLeft {
+          0% {
+            opacity: 0;
+            transform: translateX(-80px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        @keyframes postgameInwardRight {
+          0% {
+            opacity: 0;
+            transform: translateX(80px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        @keyframes postgameFadeCenter {
+          0% {
+            opacity: 0;
+            transform: scale(0.88);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        @keyframes postgameBottomUp {
+          0% {
+            opacity: 0;
+            transform: translateY(90px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes postgameBustFadeIn {
+          0% {
+            opacity: 0;
+            transform: scale(0.94) translateY(60px);
+          }
+          100% {
+            opacity: 0.95;
+            transform: scale(1) translateY(0);
+          }
+        }
+      `}</style>
+
       {/* =========================================================================
-          TOP SCORE HEADERS (top: 72px)
+          TOP SCORE HEADERS (top: 72px) - Transition 1: Top to Bottom
           Left Header starts at X = 330px
           Right Header ends at X = 1590px (right: 330px)
          ========================================================================= */}
-      <div className="pointer-events-none absolute inset-x-0 top-[72px] h-[52px]">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-[72px] h-[52px]"
+        style={{ animation: 'postgameTopDown 550ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+      >
         {/* Left Team Header: Logo -> Team Name -> Score -> Vertical Tallies */}
         <div
           className="pointer-events-auto absolute flex items-center gap-3.5"
@@ -237,10 +304,15 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
             className="pointer-events-none absolute inset-x-0 h-[62px]"
             style={{ top: rowTop }}
           >
-            {/* Left Block (330px to 780px, width 450px) */}
+            {/* Left Block (330px to 780px, width 450px) - Transition 2: Outward to Inward */}
             <div
               className="pointer-events-auto absolute flex h-full items-center justify-between"
-              style={{ left: 330, width: 450 }}
+              style={{
+                left: 330,
+                width: 450,
+                animation: 'postgameInwardLeft 500ms cubic-bezier(0.16, 1, 0.3, 1) both',
+                animationDelay: `${0.35 + i * 0.08}s`,
+              }}
             >
               {/* Player Card: Icon + Agent/Player Names with Team Color Gradient to Transparent */}
               <div
@@ -281,7 +353,12 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
             {/* Center Column: KD / ACS (880px to 1040px, width 160px) */}
             <div
               className="pointer-events-auto absolute flex h-full flex-col items-center justify-center text-center leading-none"
-              style={{ left: 880, width: 160 }}
+              style={{
+                left: 880,
+                width: 160,
+                animation: 'postgameFadeCenter 450ms ease-out both',
+                animationDelay: `${0.42 + i * 0.08}s`,
+              }}
             >
               <span className="font-baijam text-[11px] font-bold tracking-widest text-[#6E7687] uppercase">
                 KD
@@ -291,10 +368,15 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
               </span>
             </div>
 
-            {/* Right Block (1140px to 1590px, width 450px) */}
+            {/* Right Block (1140px to 1590px, width 450px) - Transition 2: Outward to Inward */}
             <div
               className="pointer-events-auto absolute flex h-full items-center justify-between"
-              style={{ left: 1140, width: 450 }}
+              style={{
+                left: 1140,
+                width: 450,
+                animation: 'postgameInwardRight 500ms cubic-bezier(0.16, 1, 0.3, 1) both',
+                animationDelay: `${0.35 + i * 0.08}s`,
+              }}
             >
               {/* Right Stats: Left-aligned at the start of right block */}
               <div className="flex flex-col items-start leading-none">
@@ -336,12 +418,18 @@ export function BroadcastPostgameScene(props: PostGameSceneProps) {
       })}
 
       {/* =========================================================================
-          ROW 5: BOTTOM MVP HIGHLIGHT (bottom: 75px)
+          ROW 5: BOTTOM MVP HIGHLIGHT (bottom: 75px) - Transition 3: Bottom to Top
           Left Block:  X = 330px to 780px (width 450px)
           Center:      X = 880px to 1040px (width 160px, center = 960px)
           Right Block: X = 1140px to 1590px (width 450px)
          ========================================================================= */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-[75px] z-20 h-[100px]">
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-[75px] z-20 h-[100px]"
+        style={{
+          animation: 'postgameBottomUp 700ms cubic-bezier(0.16, 1, 0.3, 1) both',
+          animationDelay: '0.85s',
+        }}
+      >
         {/* Left MVP Block */}
         {leftMvp && (
           <div
@@ -473,22 +561,27 @@ function MvpBustArt({
   side: 'left' | 'right'
 }) {
   const isRight = side === 'right'
+  const mastery = agentMasteryPortrait(player)
   const bust = agentBust(player)
   const portrait = agentPortrait(player)
-  const artSrc = player.photoUrl || (player as any).avatarUrl || (player as any).avatar || bust || portrait
+  const artSrc = player.photoUrl || (player as any).avatarUrl || (player as any).avatar || mastery || bust || portrait
 
   return (
     <div
       className={`pointer-events-none absolute bottom-0 z-10 h-[560px] w-[540px] overflow-hidden ${
         isRight ? 'right-0' : 'left-0'
       }`}
+      style={{
+        animation: 'postgameBustFadeIn 800ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        animationDelay: '0.92s',
+      }}
     >
       <img
         src={artSrc}
         alt=""
         className="size-full object-cover object-top"
         style={{
-          transform: `${isRight ? 'scaleX(-1) ' : ''}scale(1.35) translateY(12%)`,
+          transform: `${isRight ? 'scaleX(-1) ' : ''}scale(1.22) translateY(6%)`,
           transformOrigin: 'top center',
           maskImage:
             'linear-gradient(to top, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,1) 85%, rgba(0,0,0,0) 100%), linear-gradient(' +
@@ -503,7 +596,9 @@ function MvpBustArt({
           opacity: 0.95,
         }}
         onError={e => {
-          if (artSrc !== portrait) {
+          if (artSrc !== bust && bust) {
+            ;(e.currentTarget as HTMLImageElement).src = bust
+          } else if (artSrc !== portrait && portrait) {
             ;(e.currentTarget as HTMLImageElement).src = portrait
           } else {
             ;(e.currentTarget as HTMLImageElement).style.visibility = 'hidden'

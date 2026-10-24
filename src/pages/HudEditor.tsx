@@ -342,11 +342,11 @@ const PrimaryAgentSelect = kit === 'version1' ? Version1AgentSelectScene : Agent
   }
 
   const copyOverlayUrl = () => {
-    const kitParam = kit === 'version1' ? '?kit=version1' : ''
-    const url = `${window.location.origin}/overlay/${state.serverCode}/${selectedSceneKey}${kitParam}`
+    const activeKit = (state.broadcastKit || '').toLowerCase().includes('classic') ? 'classic' : 'version1'
+    const url = `${window.location.origin}/overlay/${state.serverCode}/${selectedSceneKey}?kit=${activeKit}`
     navigator.clipboard.writeText(url).catch(() => {})
     setCopiedUrl(true)
-    showToast('Overlay URL copied!')
+    showToast(`Overlay URL copied! (${activeKit.toUpperCase()})`)
     setTimeout(() => setCopiedUrl(false), 2000)
   }
 
@@ -391,6 +391,17 @@ const PrimaryAgentSelect = kit === 'version1' ? Version1AgentSelectScene : Agent
               <Settings size={14} />
             </button>
           </div>
+        </div>
+
+        {/* Broadcast Kit */}
+        <div>
+          <label style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, display: 'block' }}>Broadcast Kit</label>
+          <Dropdown
+            value={state.broadcastKit || 'Version 1'}
+            options={['Version 1', 'Classic']}
+            onChange={v => setState(prev => ({ ...prev, broadcastKit: v }))}
+            width={140}
+          />
         </div>
 
         {/* P3: HUD state preview tabs (ingame scene only) — BLOB's Main | Buy | Timeout */}

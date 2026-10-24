@@ -177,10 +177,13 @@ export default function Overview() {
             onChange={setOverlayUrl}
           />
           <button
-            onClick={() => copyToClipboard(
-              `${window.location.origin}/overlays/${state.serverCode}/${SCREEN_KEYS[overlayUrl] || 'default'}?screen=${SCREEN_KEYS[overlayUrl] || 'default'}`,
-              'overlay'
-            )}
+            onClick={() => {
+              const kitSlug = (state.broadcastKit || '').toLowerCase().includes('classic') ? 'classic' : 'version1'
+              copyToClipboard(
+                `${window.location.origin}/overlays/${state.serverCode}/${SCREEN_KEYS[overlayUrl] || 'default'}?screen=${SCREEN_KEYS[overlayUrl] || 'default'}&kit=${kitSlug}`,
+                'overlay'
+              )
+            }}
             style={{ background: 'none', border: 'none', color: copiedField === 'overlay' ? '#22c55e' : 'hsla(var(--muted-foreground))', cursor: 'pointer', padding: '0 4px', flexShrink: 0 }}
           >
             {copiedField === 'overlay' ? <Check size={14} /> : <Copy size={14} />}

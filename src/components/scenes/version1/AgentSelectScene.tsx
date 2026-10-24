@@ -99,20 +99,24 @@ function AgentCard({
   const role = meta?.role || player?.role || null
   const playerName = player.alias || player.riotId || ''
 
-  // Silhouette transition: when an agent is picked (img exists), display team-colored
+  // Lock-in check: If player only clicked/hovered without locking in, keep only the box frame.
+  const isLocked = player?.locked !== false && player?.isLocked !== false && player?.selection !== 'selected'
+  const shouldShowPortrait = isLocked && !!img
+
+  // Silhouette transition: when an agent is picked AND locked in, display team-colored
   // silhouette first for 450ms, then reveal the full agent portrait.
   const [stage, setStage] = useState<'none' | 'silhouette' | 'revealed'>(() => {
-    return img ? 'silhouette' : 'none'
+    return shouldShowPortrait ? 'silhouette' : 'none'
   })
-  const prevImgRef = useRef(img)
+  const prevImgRef = useRef(shouldShowPortrait ? img : '')
 
   useEffect(() => {
-    if (!img) {
+    if (!shouldShowPortrait) {
       setStage('none')
       prevImgRef.current = ''
       return
     }
-    // If an agent was newly selected or changed
+    // If an agent was newly locked in or changed
     if (img !== prevImgRef.current || stage === 'silhouette') {
       prevImgRef.current = img
       setStage('silhouette')
@@ -121,7 +125,7 @@ function AgentCard({
       }, 480)
       return () => clearTimeout(timer)
     }
-  }, [img])
+  }, [shouldShowPortrait, img])
 
   // Card rises up staggered based on index (starting at ~700ms)
   const cardDelayMs = 680 + index * 40
@@ -143,8 +147,8 @@ function AgentCard({
           </div>
         )}
 
-        {/* 1st Step: Team Colored Silhouette */}
-        {img && stage === 'silhouette' && (
+        {/* 1st Step: Team Colored Silhouette (only when locked in) */}
+        {shouldShowPortrait && stage === 'silhouette' && (
           <div
             className="absolute inset-0 z-15 overflow-hidden flex justify-center pointer-events-none"
             style={{
@@ -171,8 +175,8 @@ function AgentCard({
           </div>
         )}
 
-        {/* 2nd Step: Full Agent Portrait Image */}
-        {img && (
+        {/* 2nd Step: Full Agent Portrait Image (only when locked in) */}
+        {shouldShowPortrait && (
           <div className="absolute inset-0 z-10 overflow-hidden flex justify-center pointer-events-none">
             <img
               src={img || BLANK_IMG}
@@ -450,8 +454,8 @@ export function Version1AgentSelectScene(props: AgentSelectSceneProps) {
             </div>
           </div>
 
-          {/* Stage 2: Center Map Reveal (slides up from the bottom) */}
-          {showMapName && mapImage && (
+          {/* Stage 2: Center Map Reveal (slides up from the bottom — fixed 218px width anchors team boxes) */}
+          {showMapName && (
             <div
               className={`clickable-component agentSelectMapReveal relative h-[286px] w-[218px] z-20 mx-[-1px] overflow-hidden border-x border-white/20 bg-black cursor-pointer shadow-2xl flex flex-col items-center justify-end${
                 activeComponentId === 'map-name' ? ' selected' : ''
@@ -466,15 +470,30 @@ export function Version1AgentSelectScene(props: AgentSelectSceneProps) {
                 onSelectComponent?.('map-name')
               }}
             >
-              <img
-                src={mapImage}
-                alt={mapName}
-                className="absolute inset-0 size-full object-cover object-center"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/20 to-black/40" />
-              <h1 className="relative z-10 mb-4 font-schabo text-[54px] leading-none text-white uppercase tracking-wider text-center pl-1 w-full drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]">
-                {mapName}
-              </h1>
+              {mapImage ? (
+                <>
+                  <img
+                    src={mapImage}
+                    alt={mapName}
+                    className="absolute inset-0 size-full object-cover object-center"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/20 to-black/40" />
+                </>
+              ) : (
+                <div className="absolute inset-0 bg-[#0E1116] flex flex-col items-center justify-center p-4">
+                  <div className="size-12 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-white/30 mb-2">
+                    <svg className="size-6 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                  </div>
+                  <span className="font-baijam text-[12px] font-semibold text-white/40 uppercase tracking-widest text-center">Loading Map</span>
+                </div>
+              )}
+              {mapName && (
+                <h1 className="relative z-10 mb-4 font-schabo text-[54px] leading-none text-white uppercase tracking-wider text-center pl-1 w-full drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]">
+                  {mapName}
+                </h1>
+              )}
             </div>
           )}
 

@@ -323,6 +323,13 @@ function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
   )
 }
 
+const ValCredIcon = ({ color = '#F9E4AB', className = 'relative inline size-3.5 -translate-y-0.5 rotate-45 shrink-0' }: { color?: string; className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className={className}>
+    <circle cx="94.566" cy="94.574" r="54.425" stroke={color} strokeWidth="22.41" />
+    <path fill={color} d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z" />
+  </svg>
+)
+
 /** One buy-round player card: portrait, name, KDA, abilities, gun+shield, econ. */
 function KitBuyCard({
   player,
@@ -377,22 +384,16 @@ function KitBuyCard({
         />
         <img src={getShieldImg(player)} alt="" className="h-[21px] object-contain" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} />
       </div>
-      {/* Classic creds display (matching classic BuyRoundScene) */}
-      <div className="mt-2.5 flex w-full flex-col items-center justify-center gap-1 pb-1.5">
-        <p className="relative w-fit text-center leading-none whitespace-nowrap opacity-95">
-          <span className="mr-0.5 text-[#F9E4AB] font-bold text-[14px]">-</span>
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="relative mr-1 inline size-3.5 -translate-y-0.5 rotate-45">
-            <circle cx="94.566" cy="94.574" r="54.425" stroke="#F9E4AB" strokeWidth="22.41" />
-            <path fill="#F9E4AB" d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z" />
-          </svg>
-          <span className="font-barlowCond text-[17px] font-extrabold text-[#F9E4AB] tabular-nums">{credits}</span>
+      {/* Creds display: same as classic, horizontal side-by-side (spent and current credits) */}
+      <div className="mt-2.5 flex w-full items-center justify-center gap-3 px-2 pb-1 leading-none">
+        <p className="flex items-center text-center font-barlowSemiCond text-[17px] font-bold text-[#F9E4AB] tabular-nums whitespace-nowrap opacity-90">
+          <span className="mr-0.5 text-[#F9E4AB] font-black">-</span>
+          <ValCredIcon color="#F9E4AB" />
+          <span className="ml-0.5 text-[#F9E4AB]">{spent}</span>
         </p>
-        <p className="relative w-fit text-center leading-none whitespace-nowrap opacity-85 mt-0.5">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className="relative mr-1 inline size-3 -translate-y-0.5 rotate-45 text-[#EFF1FF]">
-            <circle cx="94.566" cy="94.574" r="54.425" stroke="currentColor" strokeWidth="22.41" />
-            <path fill="currentColor" d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z" />
-          </svg>
-          <span className="font-barlowCond text-[14px] font-bold text-white tabular-nums">{spent}</span>
+        <p className="flex items-center text-center font-barlowSemiCond text-[17px] font-bold text-white tabular-nums whitespace-nowrap opacity-90">
+          <ValCredIcon color="#EFF1FF" />
+          <span className="ml-0.5 text-white">{credits}</span>
         </p>
       </div>
     </div>

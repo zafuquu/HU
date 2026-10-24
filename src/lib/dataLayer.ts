@@ -333,47 +333,97 @@ export async function saveBroadcastState(tournamentId: string, value: unknown): 
 /** Saves the broadcast workspace keyed by SERVER CODE (room code) so any device
  *  joining that room sees the same rosters/scores — no tournament required. */
 export async function loadRoomBroadcast(serverCode: string): Promise<unknown | null> {
+  const cleanCode = String(serverCode || '').trim()
+  if (!cleanCode) return null
+
+  // 1. Instant local storage cache (0ms latency for same-browser captain lobby & overlays)
+  let cachedVal: unknown = null
+  try {
+    const raw = localStorage.getItem(`hu_room_${cleanCode}`)
+    if (raw) cachedVal = JSON.parse(raw)
+  } catch { /* ignore */ }
+
+  // 2. Query Supabase
   try {
     const { data } = await supabase
       .from('site_settings')
       .select('value')
-      .eq('id', `broadcast-room:${serverCode}`)
+      .eq('id', `broadcast-room:${cleanCode}`)
       .maybeSingle()
-    return (data?.value as unknown) ?? null
-  } catch {
-    return null
-  }
+    if (data?.value) {
+      try { localStorage.setItem(`hu_room_${cleanCode}`, JSON.stringify(data.value)) } catch {}
+      return data.value
+    }
+  } catch { /* fall through */ }
+
+  // 3. Fallback: local dev middleware or serverless endpoint
+  try {
+    const res = await fetch(`/api/broadcast-room?roomCode=${encodeURIComponent(cleanCode)}`)
+    if (res.ok) {
+      const json = await res.json()
+      if (json?.value) {
+        try { localStorage.setItem(`hu_room_${cleanCode}`, JSON.stringify(json.value)) } catch {}
+        return json.value
+      }
+    }
+  } catch { /* ignore */ }
+
+  return cachedVal
 }
 
 export async function saveRoomBroadcast(serverCode: string, value: unknown): Promise<void> {
-  const key = `broadcast-room:${serverCode}`
-  const { error } = await supabase
-    .from('site_settings' as any)
-    .upsert({ id: key, value }, { onConflict: 'id' })
-  if (!error) return
+  const cleanCode = String(serverCode || '').trim()
+  if (!cleanCode) return
 
-  // Fallback 1: same-origin Vercel function (cookie session + service key).
-  // Works whenever signed into the website - no Supabase JWT needed.
+  // 1. Instantly persist to localStorage for local tabs
+  try {
+    localStorage.setItem(`hu_room_${cleanCode}`, JSON.stringify(value))
+  } catch { /* ignore */ }
+
+  // 2. Real-time broadcast to all local tabs & windows via BroadcastChannel (0ms latency)
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel(`hu_channel_${cleanCode}`)
+      bc.postMessage({ type: 'ROOM_UPDATE', serverCode: cleanCode, value })
+      bc.close()
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('hu_room_update', { detail: { serverCode: cleanCode, value } }))
+    }
+  } catch { /* ignore */ }
+
+  // 3. Persist to Supabase if available
+  const key = `broadcast-room:${cleanCode}`
+  try {
+    const { error } = await supabase
+      .from('site_settings' as any)
+      .upsert({ id: key, value }, { onConflict: 'id' })
+    if (!error) return
+  } catch { /* fall through to API */ }
+
+  // 4. Fallback: post to /api/broadcast-room (handled in dev by Vite plugin, in prod by Vercel function)
   try {
     const res2 = await fetch('/api/broadcast-room', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ serverCode, value }),
+      body: JSON.stringify({ serverCode: cleanCode, value }),
     })
     if (res2.ok) return
   } catch { /* ignore */ }
 
-  // Fallback 2: cloud bridge with a Supabase JWT (only when one exists).
-  const bridge = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
-  const { data: sess } = await supabase.auth.getSession()
-  const jwt = sess?.session?.access_token
-  if (!jwt) throw new Error(error.message)
-  const res = await fetch(`${bridge}/broadcast-room`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
-    body: JSON.stringify({ serverCode, value }),
-  })
-  if (!res.ok) throw new Error(`bridge save failed: ${res.status}`)
+  // 5. Cloud bridge fallback with JWT
+  try {
+    const bridge = (import.meta as any).env?.VITE_BRIDGE_ORIGIN || 'https://hu-bridge.onrender.com'
+    const { data: sess } = await supabase.auth.getSession()
+    const jwt = sess?.session?.access_token
+    if (jwt) {
+      await fetch(`${bridge}/broadcast-room`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ serverCode: cleanCode, value }),
+      })
+    }
+  } catch { /* ignore */ }
 }
 
 /** Loads a previously-saved broadcast state for a tournament from site_settings. */
