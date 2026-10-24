@@ -5,6 +5,8 @@ import {
   type IngameHudSceneProps,
 } from '../classic/IngameHudScene'
 import { Version1RoundCeremony } from './GameEventsScene'
+import { MatchHistoryGrid, KitBuyCard, TEAM_INCOME_SIDE } from './BuyRoundScene'
+import { EconomyTracker } from '../EconomyTracker'
 import {
   BLANK_IMG,
   abilityImg,
@@ -19,6 +21,8 @@ import {
   getAbilityCurrentCharges,
   hexRgba,
   hpOf,
+  isDurationUltAgent,
+  incomeEstimate,
   kdaOf,
   ultMaxOf,
   ultPointsOf,
@@ -35,6 +39,10 @@ const KIT_CSS = `
 }
 @keyframes kitBlink { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
 @keyframes kitGeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes v1ScorelineEnter {
+  0% { transform: translate(-50%, -100%); opacity: 0; }
+  100% { transform: translate(-50%, 0); opacity: 1; }
+}
 @keyframes v1InwardLeft {
   0% { transform: translateX(-80px); opacity: 0; }
   100% { transform: translateX(0); opacity: 1; }
@@ -130,7 +138,7 @@ function UltOrb({
   const center = size / 2
   const radius = 11.5
   const step = 360 / ultMax
-  const gap = ultMax > 7 ? 5 : 6
+  const gap = 16
 
   const describeArc = (startAngle: number, endAngle: number) => {
     const rad = (deg: number) => ((deg - 90) * Math.PI) / 180.0
@@ -160,7 +168,7 @@ function UltOrb({
               fill="none"
               stroke={ready ? teamColor : isLit ? '#FFFFFF' : 'rgba(255,255,255,0.22)'}
               strokeWidth={isLit ? 2.2 : 1.4}
-              strokeLinecap="round"
+              strokeLinecap="butt"
               style={
                 ready
                   ? {
@@ -289,43 +297,65 @@ function KitPanel({
   // Persistent timeout ref so snapshot re-renders (every 250ms) NEVER cancel the active timer
   const ultTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const triggerUltAnimation = React.useCallback(() => {
+    if (!alive) return
     if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
     setLocalUltActive(true)
     ultTimerRef.current = setTimeout(() => {
       setLocalUltActive(false)
       ultTimerRef.current = null
     }, 3800)
-  }, [])
+  }, [alive])
 
-  // Cleanup strictly on unmount
+  // Cleanup on unmount or cancel immediately if player dies
   React.useEffect(() => {
     return () => {
       if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
     }
   }, [])
 
-  // Trigger 0: Ult Ready transitions from true to false (consumed ult)
+  React.useEffect(() => {
+    if (!alive) {
+      if (ultTimerRef.current) {
+        clearTimeout(ultTimerRef.current)
+        ultTimerRef.current = null
+      }
+      setLocalUltActive(false)
+      setUltStage('idle')
+    }
+  }, [alive])
+
+  const isDuration = isDurationUltAgent(player)
   const ready = ultReadyOf(player)
+  const ultPts = ultPointsOf(player)
+  const ultMax = ultMaxOf(player)
+
+  // Track if player previously held a full ready ultimate
+  const hadReadyRef = React.useRef(false)
+  React.useEffect(() => {
+    if (ready || (ultPts != null && ultMax > 0 && ultPts >= ultMax)) {
+      hadReadyRef.current = true
+    }
+  }, [ready, ultPts, ultMax])
+
+  // Trigger 0: For non-duration agents only, Ult Ready transitions from true to false (consumed ult)
   const prevReadyRef = React.useRef<boolean | null>(null)
   React.useEffect(() => {
     const prevReady = prevReadyRef.current
     prevReadyRef.current = ready
-    if (prevReady === true && !ready && alive) {
+    if (!isDuration && prevReady === true && !ready && alive) {
       triggerUltAnimation()
     }
-  }, [ready, alive, triggerUltAnimation])
+  }, [ready, alive, isDuration, triggerUltAnimation])
 
-  // Trigger 1: Ult points drop from max/ready (e.g. Sova, Breach, Killjoy, Fade, Gekko)
-  const ultPts = ultPointsOf(player)
-  const ultMax = ultMaxOf(player)
+  // Trigger 1: For non-duration agents only, Ult points drop from max/ready (e.g. Sova, Breach, Killjoy, Fade, Gekko)
   const prevUltPts = React.useRef<number | null>(null)
   React.useEffect(() => {
     const prev = prevUltPts.current
     prevUltPts.current = ultPts
-    if (prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive) {
+    if (!isDuration && prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive) {
       triggerUltAnimation()
     }
-  }, [ultPts, ultMax, alive, triggerUltAnimation])
+  }, [ultPts, ultMax, alive, isDuration, triggerUltAnimation])
 
   // Trigger 2: Channeled / summoned ultimate weapons (Chamber Tour De Force, Jett Blade Storm, Neon Overdrive, Raze Showstopper)
   const currentWeapon = String(player.weapon || player.weaponName || '')
@@ -333,21 +363,23 @@ function KitPanel({
   React.useEffect(() => {
     const prevW = prevWeaponRef.current
     prevWeaponRef.current = currentWeapon
-    const isUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher/i.test(currentWeapon)
-    const wasUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher/i.test(prevW)
+    const isUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher|hunter.*fury/i.test(currentWeapon)
+    const wasUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher|hunter.*fury/i.test(prevW)
     if (isUltW && !wasUltW && alive) {
       triggerUltAnimation()
     }
   }, [currentWeapon, alive, triggerUltAnimation])
 
-  // Trigger 3: Local player abilityState.X turns ACTIVE (Viper Pit, Reyna Empress, Phoenix Run It Back, Yoru Drift, etc.)
+  // Trigger 3: Local player abilityState.X turns from true (ready) to false (cast/spent)
+  // NEVER trigger on prev === false && abilityX === true (that is reaching 8 points!)
   const abilityX = Boolean(player.abilityState?.X ?? player.abilityState?.x ?? player.abilityState?.ultimate)
   const prevAbilityX = React.useRef<boolean | null>(null)
   React.useEffect(() => {
     const prev = prevAbilityX.current
     prevAbilityX.current = abilityX
-    if (prev === false && abilityX === true && alive) {
+    if (prev === true && abilityX === false && alive && hadReadyRef.current) {
       triggerUltAnimation()
+      hadReadyRef.current = false
     }
   }, [abilityX, alive, triggerUltAnimation])
 
@@ -473,9 +505,9 @@ function KitPanel({
             </div>
           </div>
 
-          {/* Stage 3: Agent Bust portrait overlapping the slant on outer side */}
+          {/* Stage 3: Agent Bust portrait overlapping the slant on outer side (shoulder to head framed cleanly) */}
           <div
-            className="absolute inset-y-0 z-20 overflow-hidden flex items-center justify-center pointer-events-none"
+            className="absolute inset-y-0 z-20 overflow-hidden flex items-start justify-center pointer-events-none"
             style={{
               [isRight ? 'left' : 'right']: 0,
               width: '140px',
@@ -487,10 +519,10 @@ function KitPanel({
             <img
               src={headArt}
               alt=""
-              className="h-[88px] w-auto max-w-none object-contain"
+              className="h-[140px] w-auto max-w-none object-cover object-top"
               style={{
                 transform: isRight ? 'scaleX(-1)' : undefined,
-                marginTop: '-2px',
+                marginTop: '-4px',
               }}
               onError={e => {
                 const el = e.currentTarget as HTMLImageElement
@@ -670,6 +702,7 @@ export interface ScorebugProps {
   timerColor?: string
   spikeActive?: boolean
   spikeBlinkOn?: boolean
+  spikeState?: 'none' | 'planted' | 'defusing' | 'detonated' | 'defused' | null
   seriesTitleText?: string
   gameSeriesText?: string
   eventTitleText?: string
@@ -693,7 +726,7 @@ export function Scorebug(props: ScorebugProps) {
     showBombTimer = true,
     leftLogo, rightLogo,
     timerText, timerColor = '#DADBE3',
-    spikeActive, spikeBlinkOn,
+    spikeActive, spikeBlinkOn, spikeState,
     seriesTitleText, gameSeriesText, eventTitleText, roundText,
     scoreLineSmall = false,
     scoreLineSize = 3,
@@ -783,7 +816,12 @@ export function Scorebug(props: ScorebugProps) {
       className={`clickable-component absolute top-0 z-20 cursor-pointer ${
         activeComponentId === 'score-line' ? 'selected ring-2 ring-blue-500/70' : ''
       }`}
-      style={{ left: '50%', width: scoreLineSmall ? 700 : 812, transform: 'translateX(-50%)' }}
+      style={{
+        left: '50%',
+        width: scoreLineSmall ? 700 : 812,
+        transform: 'translateX(-50%)',
+        animation: 'v1ScorelineEnter 450ms cubic-bezier(0.16, 1, 0.3, 1) both',
+      }}
       data-component-id="score-line"
       onClick={e => {
         e.stopPropagation()
@@ -804,8 +842,28 @@ export function Scorebug(props: ScorebugProps) {
         <div className="relative flex w-[110px] shrink-0 items-center justify-center">
           {showBombTimer && (
             <div className="flex h-full items-center justify-center">
-              {spikeActive ? (
-                // Spike Planted state: digits disappear, replaced by pulsing red Spike Icon
+              {spikeState === 'defused' ? (
+                // Defused: red pulsing spike icon turns to solid WHITE (stops pulsing)
+                <img
+                  src="/game/val/misc/Spike_Icon.svg"
+                  alt="spike defused"
+                  className="h-[36px] w-auto object-contain brightness-0 invert"
+                  style={{
+                    filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.95))',
+                  }}
+                />
+              ) : spikeState === 'detonated' ? (
+                // Exploded: stops pulsing and stays solid RED
+                <img
+                  src="/game/val/misc/Spike_Icon.svg"
+                  alt="spike detonated"
+                  className="h-[36px] w-auto object-contain"
+                  style={{
+                    filter: 'drop-shadow(0 0 12px #FF3549)',
+                  }}
+                />
+              ) : (spikeActive || spikeState === 'planted' || spikeState === 'defusing') ? (
+                // Planted: red pulsing spike icon
                 <img
                   src="/game/val/misc/Spike_Icon.svg"
                   alt="spike"
@@ -816,8 +874,9 @@ export function Scorebug(props: ScorebugProps) {
                   }}
                 />
               ) : (
+                // Normal / Round Over: clean timer digits only, NEVER any text labels
                 <span className="font-schabo text-[36px] leading-none tabular-nums" style={{ color: timerColor }}>
-                  {timerText}
+                  {timerText || '0:00'}
                 </span>
               )}
             </div>
@@ -930,8 +989,15 @@ function DeathStrip({ players, side }: { players: any[]; side: 'left' | 'right' 
   )
 }
 
-export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
+export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
+  activeScene?: 'ingame-hud' | 'buy-round'
+  economy?: any
+  roundHistory?: any[]
+}) {
   const {
+    activeScene = 'ingame-hud',
+    economy = null,
+    roundHistory = [],
     leftTeamName = 'Left Team',
     rightTeamName = 'Right Team',
     leftTeamSeed,
@@ -977,9 +1043,9 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
     currentlyObserving = null,
     localPlayerName = null,
     spectating = false,
-    spikeSite = null,
+    spikeSite: _spikeSite = null,
     spikeState = null,
-    spikePlantedAt = null,
+    spikePlantedAt: _spikePlantedAt = null,
     eventsBg,
     eventsHighlight,
     gameEventsIndividual = false,
@@ -999,6 +1065,8 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
     teamStatsLeftColor,
     teamStatsRightColor,
   } = props
+
+  const isBuyRound = activeScene === 'buy-round'
 
   // Interactive Ult state for testing / operator trigger
   const [toggledUlts, setToggledUlts] = React.useState<Record<string, boolean>>({})
@@ -1035,6 +1103,21 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
   const leftRoster = leftTeamPlayers || []
   const rightRoster = rightTeamPlayers || []
 
+  // Economy calculation for buy round view
+  const calcEco = (players: any[]) => {
+    const creds = players.map(p => Number(p.credits ?? p.money)).filter(v => Number.isFinite(v) && v > 0)
+    const total = creds.reduce((a, b) => a + b, 0)
+    const avg = creds.length ? Math.round(total / creds.length) : 0
+    const ecoType = avg >= 4000 ? 'full-buy' : avg >= 2600 ? 'half-buy' : avg >= 1500 ? 'force-buy' : 'eco'
+    return { total, avgCredits: avg, ecoType, playerCount: creds.length || 5 }
+  }
+  const effectiveEconomy = economy || {
+    left: calcEco(leftRoster),
+    right: calcEco(rightRoster),
+  }
+  const incomeLeft = incomeEstimate(roundHistory, TEAM_INCOME_SIDE.left)
+  const incomeRight = incomeEstimate(roundHistory, TEAM_INCOME_SIDE.right)
+
   // Bans should not appear in Ingame HUD map history; only picks and deciders
   const activeMapHistory = (mapHistoryItems || []).filter(i => i.kind !== 'pool' && i.kind !== 'ban')
   const labeledMapHistory = (() => {
@@ -1055,7 +1138,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
     return Boolean(obs === pName || (pRiot && obs === pRiot) || (pName && obs.includes(pName)) || (pName && pName.includes(obs)))
   }
 
-  // Spike clock (classic parity)
+  // Spike clock
   const isRoundOver = Boolean(
     roundEnd != null ||
     (roundEndReasonText && roundEndReasonText.length > 0)
@@ -1075,28 +1158,9 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
       (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('plant') || spikeState.toLowerCase().includes('defus'))))
   )
   const spikeBlinkOn = useSpikeBlink(spikeState === 'planted' && isSpikeActive)
-  const [spikeNow, setSpikeNow] = React.useState(Date.now())
-  React.useEffect(() => {
-    if (!isSpikeActive || spikeState !== 'planted' || !spikePlantedAt) return
-    setSpikeNow(Date.now())
-    const t = setInterval(() => setSpikeNow(Date.now()), 200)
-    return () => clearInterval(t)
-  }, [isSpikeActive, spikeState, spikePlantedAt])
-  const spikeRemainingSec = (() => {
-    if (!isSpikeActive || spikeState !== 'planted' || !spikePlantedAt) return null
-    return Math.max(0, 45 - Math.floor((spikeNow - Number(spikePlantedAt)) / 1000))
-  })()
-  const displayTimerText = isRoundOver
-    ? (roundEndReasonText || '0:00')
-    : isSpikeDetonatedOrDefused
-      ? (spikeState === 'defused' ? 'DEFUSED' : 'DETONATED')
-      : isSpikeActive
-        ? (spikeState === 'defusing'
-            ? 'DEFUSING'
-            : spikeRemainingSec != null
-              ? `${Math.floor(spikeRemainingSec / 60)}:${String(spikeRemainingSec % 60).padStart(2, '0')}`
-              : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
-        : timerText
+
+  // Clean timer text: never text strings on the timer (no "ROUND WIN", no "SPIKE DETONATED", no "SPIKE DEFUSED")
+  const displayTimerText = isRoundOver ? '0:00' : (timerText || '1:40')
   const displayTimerColor = isSpikeActive || isSpikeDetonatedOrDefused ? '#FF3549' : timerColor
 
   const showScoreLine = isToggled('score-line')
@@ -1169,6 +1233,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
   const duelSurvivorLeft = leftAlive[0] ?? null
   const duelSurvivorRight = rightAlive[0] ?? null
   const duelMode =
+    !isBuyRound &&
     leftRoster.length > 0 &&
     rightRoster.length > 0 &&
     leftAlive.length <= 1 &&
@@ -1268,7 +1333,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
         </div>
       )}
 
-      {/* Top Scorebug */}
+      {/* Top Scorebug (remains static and never refreshes when toggling buyround <-> ingamehud) */}
       {showScoreLine && (
         <Scorebug
           leftName={leftTeamName}
@@ -1291,6 +1356,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
           timerColor={displayTimerColor}
           spikeActive={isSpikeActive}
           spikeBlinkOn={spikeBlinkOn}
+          spikeState={spikeState}
           seriesTitleText={seriesTitleText}
           gameSeriesText={gameSeriesText}
           eventTitleText={eventTitleText}
@@ -1333,7 +1399,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
         </div>
       )}
 
-      {/* ===== Normal mode: side roster columns (outward to inward entrance) ===== */}
+      {/* ===== Normal mode: side roster columns (slides outward when entering buy round, inward on ingame hud) ===== */}
       {!duelMode && showTeamStats && (
         <div
           className={`clickable-component border-0 border-none absolute bottom-0 inset-x-0 z-10 flex justify-between p-[16px] pointer-events-auto ${
@@ -1347,7 +1413,12 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
         >
           <div
             className="flex flex-col gap-[6px]"
-            style={{ animation: 'v1InwardLeft 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+            style={{
+              transform: isBuyRound ? 'translateX(-130%)' : 'translateX(0)',
+              opacity: isBuyRound ? 0 : 1,
+              pointerEvents: isBuyRound ? 'none' : 'auto',
+              transition: 'transform 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease',
+            }}
           >
             {leftRoster.map((player: any, idx: number) => {
               const pKey = String(player.id || player.name || player.alias || `left-${idx}`)
@@ -1373,7 +1444,12 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
           {rightRoster.length > 0 && (
             <div
               className="flex flex-col items-end gap-[6px]"
-              style={{ animation: 'v1InwardRight 460ms cubic-bezier(0.16, 1, 0.3, 1) both' }}
+              style={{
+                transform: isBuyRound ? 'translateX(130%)' : 'translateX(0)',
+                opacity: isBuyRound ? 0 : 1,
+                pointerEvents: isBuyRound ? 'none' : 'auto',
+                transition: 'transform 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease',
+              }}
             >
               {rightRoster.map((player: any, idx: number) => {
                 const pKey = String(player.id || player.name || player.alias || `right-${idx}`)
@@ -1399,6 +1475,113 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps) {
           )}
         </div>
       )}
+
+      {/* ===== Buy Round Bottom HUD Stack (slides up from bottom, sponsors & history from sides) ===== */}
+      <div
+        className="absolute inset-x-0 bottom-2 z-20 flex flex-col items-center gap-1.5 px-0 pointer-events-auto"
+        style={{
+          transform: isBuyRound ? 'translateY(0)' : 'translateY(115%)',
+          opacity: isBuyRound ? 1 : 0,
+          pointerEvents: isBuyRound ? 'auto' : 'none',
+          transition: 'transform 440ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease',
+        }}
+      >
+        {/* Row 1: Left Sponsor Card | Match History Grid | Right Sponsor Card */}
+        <div className="flex w-full items-center justify-between px-2 gap-3">
+          <div
+            className="h-[84px] w-[385px] rounded-[4px] bg-[#1A1A1AE0] overflow-hidden"
+            style={{
+              transform: isBuyRound ? 'translateX(0)' : 'translateX(-120px)',
+              opacity: isBuyRound ? 1 : 0,
+              transition: 'transform 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease',
+              visibility: !showSponsors ? 'hidden' : undefined,
+            }}
+          >
+            <div className="sponsors-card relative overflow-hidden p-1 size-full rounded-sm">
+              <div className="absolute top-0 left-0 size-full bg-[#292929] opacity-[0.5]" />
+              <img
+                alt="sponsor"
+                className="absolute inset-0 z-1 size-full object-contain p-2"
+                src={sponsorImageUrl || tournamentLogo || '/sponsor/Sponsor-1.png'}
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              transform: isBuyRound ? 'translateY(0)' : 'translateY(-24px)',
+              opacity: isBuyRound ? 1 : 0,
+              transition: 'transform 400ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease',
+            }}
+          >
+            <MatchHistoryGrid
+              roundHistory={roundHistory}
+              leftTeamName={leftTeamName}
+              rightTeamName={rightTeamName}
+              leftTeamColor={leftTeamColor}
+              rightTeamColor={rightTeamColor}
+            />
+          </div>
+
+          <div
+            className="h-[84px] w-[385px] rounded-[4px] bg-[#1A1A1AE0] overflow-hidden"
+            style={{
+              transform: isBuyRound ? 'translateX(0)' : 'translateX(120px)',
+              opacity: isBuyRound ? 1 : 0,
+              transition: 'transform 420ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease',
+              visibility: !showSponsors ? 'hidden' : undefined,
+            }}
+          >
+            <div className="sponsors-card relative overflow-hidden p-1 size-full rounded-sm">
+              <div className="absolute top-0 left-0 size-full bg-[#292929] opacity-[0.5]" />
+              <img
+                alt="sponsor"
+                className="absolute inset-0 z-1 size-full object-contain p-2"
+                src={sponsorImageUrl || tournamentLogo || '/sponsor/Sponsor-1.png'}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Economy Tracker */}
+        <div className="w-full flex justify-center py-1">
+          <EconomyTracker
+            economy={effectiveEconomy}
+            leftTeamName={leftTeamName}
+            rightTeamName={rightTeamName}
+            leftTeamColor={leftTeamColor}
+            rightTeamColor={rightTeamColor}
+          />
+        </div>
+
+        {/* Player cards: outward to inward entrance, flush on both sides without outer gaps (px-0), centered agent icons */}
+        <div className="flex w-full items-stretch justify-between px-0 gap-3">
+          <div
+            className="flex min-w-0 flex-1 justify-between gap-1.5"
+            style={{
+              transform: isBuyRound ? 'translateX(0)' : 'translateX(-80px)',
+              opacity: isBuyRound ? 1 : 0,
+              transition: 'transform 440ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease',
+            }}
+          >
+            {leftRoster.slice(0, 5).map((p: any, i: number) => (
+              <KitBuyCard key={p.id || i} player={p} teamColor={leftTeamColor} income={incomeLeft} />
+            ))}
+          </div>
+          <div
+            className="flex min-w-0 flex-1 flex-row-reverse justify-between gap-1.5"
+            style={{
+              transform: isBuyRound ? 'translateX(0)' : 'translateX(80px)',
+              opacity: isBuyRound ? 1 : 0,
+              transition: 'transform 440ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease',
+            }}
+          >
+            {rightRoster.slice(0, 5).map((p: any, i: number) => (
+              <KitBuyCard key={p.id || i} player={p} teamColor={rightTeamColor} income={incomeRight} />
+            ))}
+          </div>
+        </div>
+      </div>
 
       {/* ===== Duel (1v1) mode: survivor panel + camera per side, death strips at the corners ===== */}
       {duelMode && showTeamStats && (

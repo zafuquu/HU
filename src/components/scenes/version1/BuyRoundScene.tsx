@@ -76,10 +76,10 @@ const KIT_BUY_CSS = `
 }
 `
 
-const TEAM_INCOME_SIDE = { left: 'blue', right: 'red' } as const
+export const TEAM_INCOME_SIDE = { left: 'blue', right: 'red' } as const
 
 /** Match history grid in the middle above player panels with round reason win icons */
-function MatchHistoryGrid({
+export function MatchHistoryGrid({
   roundHistory = [],
   leftTeamName = 'LEFT',
   rightTeamName = 'RIGHT',
@@ -280,7 +280,7 @@ function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
   const center = size / 2
   const radius = 10.5
   const step = 360 / ultMax
-  const gap = 8
+  const gap = 16
 
   const describeArc = (startAngle: number, endAngle: number) => {
     const rad = (deg: number) => ((deg - 90) * Math.PI) / 180.0
@@ -306,7 +306,7 @@ function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
               fill="none"
               stroke={ready ? teamColor : isLit ? '#FFFFFF' : 'rgba(255,255,255,0.22)'}
               strokeWidth={isLit ? 2.2 : 1.4}
-              strokeLinecap="round"
+              strokeLinecap="butt"
               style={
                 ready
                   ? { filter: `drop-shadow(0 0 3px ${teamColor})` }
@@ -334,7 +334,7 @@ function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
   )
 }
 
-const ValCredIcon = ({ color = '#F9E4AB', className = 'relative inline size-3.5 -translate-y-0.5 rotate-45 shrink-0' }: { color?: string; className?: string }) => (
+export const ValCredIcon = ({ color = '#F9E4AB', className = 'relative inline size-3.5 -translate-y-0.5 rotate-45 shrink-0' }: { color?: string; className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 190 190" className={className}>
     <circle cx="94.566" cy="94.574" r="54.425" stroke={color} strokeWidth="22.41" />
     <path fill={color} d="M80.164.12h28.813v32.015H80.164zM80.162 156.996h28.813v32.015H80.162zM32.135 76.965v28.813H.12V76.965zM189.01 76.964v28.813h-32.014V76.964z" />
@@ -342,7 +342,7 @@ const ValCredIcon = ({ color = '#F9E4AB', className = 'relative inline size-3.5 
 )
 
 /** One buy-round player card: portrait, name, KDA, abilities, gun+shield, econ. */
-function KitBuyCard({
+export function KitBuyCard({
   player,
   teamColor,
 }: {

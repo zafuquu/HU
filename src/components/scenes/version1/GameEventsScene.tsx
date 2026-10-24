@@ -136,7 +136,12 @@ export function Version1RoundCeremony({
 
   // Determine Side: DEF or ATK
   const sideRaw = String(winSide || '').toLowerCase()
-  const sideLabel = sideRaw.includes('def') ? 'DEF' : sideRaw.includes('atk') || sideRaw.includes('att') ? 'ATK' : 'DEF'
+  const sideLabel =
+    sideRaw.includes('atk') || sideRaw.includes('att')
+      ? 'ATK'
+      : sideRaw.includes('def')
+        ? 'DEF'
+        : (roundNumber && roundNumber >= 13 ? 'ATK' : 'DEF')
 
   // Clean event title text
   const cleanTitle = (reasonText || 'ROUND WIN').trim().toUpperCase()
@@ -317,6 +322,8 @@ interface GameEventsSceneProps {
   leftTeamColor?: string
   rightTeamColor?: string
   ceremonyWinner?: 'blue' | 'red' | null
+  winSide?: string | null
+  winnerLogo?: string | null
 }
 
 const RESULT_TITLES: Record<NonNullable<GameEventResult>, string> = {
@@ -340,12 +347,14 @@ export function GameEventsScene(props: GameEventsSceneProps) {
     ceremonyWinner,
     leftTeamLogo,
     rightTeamLogo,
+    winSide,
+    winnerLogo,
   } = props
 
   if (!result) return null
 
   const title = RESULT_TITLES[result] || 'ROUND WIN'
-  const logo = (ceremonyWinner === 'blue' ? leftTeamLogo : rightTeamLogo) || tournamentLogo
+  const resolvedLogo = winnerLogo || (ceremonyWinner === 'red' ? rightTeamLogo : leftTeamLogo) || tournamentLogo
 
   return (
     <Version1RoundCeremony
@@ -354,8 +363,9 @@ export function GameEventsScene(props: GameEventsSceneProps) {
       roundNumber={roundNumber}
       winnerName={teamName}
       winnerColor={teamColor}
-      winnerLogo={logo}
+      winnerLogo={resolvedLogo}
       tournamentLogo={tournamentLogo}
+      winSide={winSide}
       onComplete={onComplete}
     />
   )

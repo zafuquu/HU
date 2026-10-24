@@ -178,15 +178,19 @@ export default function OverlayPopout() {
       return
     }
     if (sceneKey !== prevSceneKeyRef.current) {
+      const prev = prevSceneKeyRef.current
       prevSceneKeyRef.current = sceneKey
+      const isV1HudBuyToggle = kit === 'version1' &&
+        (prev === 'ingame-hud' || prev === 'buy-round' || prev === 'default') &&
+        (sceneKey === 'ingame-hud' || sceneKey === 'buy-round' || sceneKey === 'default')
       // Only run visual transition if we had prior data (avoid cold-mount flash)
-      if (hasEverHadDataRef.current) {
+      if (hasEverHadDataRef.current && !isV1HudBuyToggle) {
         setSceneTransitioning(true)
         if (sceneTransitionRef.current) clearTimeout(sceneTransitionRef.current)
         sceneTransitionRef.current = setTimeout(() => setSceneTransitioning(false), 300)
       }
     }
-  }, [sceneKey])
+  }, [sceneKey, kit])
   // Sponsor cycler: rotate through the tournament's sponsors every 8s
   // (ValoSpectra sponsor-cycle parity). Logos are 1:1 square; backdrops 875x200.
   const sponsorList = (state.sponsors || []).map((s: any) => s?.imageUrl).filter((u: any): u is string => !!u)
@@ -879,7 +883,11 @@ export default function OverlayPopout() {
     ceremonyTrigger &&
     ceremonyTrigger !== lastGameEventTrigger &&
     gamePhase !== 'shopping' &&
-    gamePhase !== 'game_start'
+    gamePhase !== 'game_start' &&
+    gamePhase !== 'game_end' &&
+    sceneKey !== 'post-game' &&
+    !(snapState as any)?.matchEnd &&
+    !(snapState as any)?.matchWinner
   // Phantom-camera guard: only treat the configured player as a live publisher
   // when the desktop is connected AND they are in the current live roster.
   // Otherwise no camera box is rendered and no viewer connection is opened.
@@ -1021,135 +1029,194 @@ export default function OverlayPopout() {
           top: `calc(50% - ${(1080 * scale) / 2}px)`,
         }}
       >
-        <div key={sceneKey} className={`scene-wrap ${sceneTransitioning ? 'scene-exit' : ''}`}>
-        {(sceneKey === 'default' || sceneKey === 'ingame-hud') && (
-          <PrimaryHud
-            leftTeamName={hudLeftName}
-            rightTeamName={hudRightName}
-            leftTeamSeed={hudLeftSeed}
-            rightTeamSeed={hudRightSeed}
-            leftTeamColor={hudLeftColor}
-            rightTeamColor={hudRightColor}
-            scoreLeft={hudScoreLeft}
-            scoreRight={hudScoreRight}
-            seriesScoreLeft={hudSeriesLeft}
-            seriesScoreRight={hudSeriesRight}
-            bestOf={Number(state.matchFormat) || state.bestOf || 3}
-            roundText={roundText}
-            timerText={timerText}
-            seriesTitleText={state.seriesTitle || ''}
-            eventTitleText={state.eventTitle || ''}
-            gameSeriesText={state.gameSeries || ''}
-            leftTeamLogo={hudLeftLogo}
-            rightTeamLogo={hudRightLogo}
-            mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds, state.mapResults)}
-            webcamPlayerName={webcamPlayer?.alias || ''}
-            webcamPlayerPhoto={webcamActive ? (webcamPlayer?.avatarUrl || null) : null}
-            webcamActive={webcamActive}
-            webcamPlayerStats={webcamStats}
-            webcamStream={webcamStream}
-            localPlayerName={(snapState as any)?.viewerName ?? null}
-            liveOnly={true}
-            gameEvent={liveEventText}
-            winSide={roundWinSide}
-            sponsorImageUrl={sponsorImageUrl}
-            tournamentLogo={tournamentLogoUrl}
-            ceremonyText={ceremonyText}
-            ceremonyTrigger={ceremonyTrigger}
-            ceremonyWinner={ceremonyWinner}
-            roundEnd={hudRoundEnd}
-            roundNumber={liveRoundNumber || null}
-            currentlyObserving={liveCurrentlyObserving}
-            spectating={spectating}
-            spikeSite={spikeSite}
-            spikeState={spikeState}
-            spikePlantedAt={spikePlantedAt}
-            leftTeamPlayers={hudLeftPlayers}
-            rightTeamPlayers={hudRightPlayers}
-          />
-        )}
-        {sceneKey === 'agent-select' && (
-          <PrimaryAgentSelect
-            leftTeamName={hudLeftName}
-            rightTeamName={hudRightName}
-            leftTeamColor={hudLeftColor}
-            rightTeamColor={hudRightColor}
-            mapName={liveMapName}
-            mapImage={liveMapImage}
-            leftTeamPlayers={hudLeftPlayers}
-            rightTeamPlayers={hudRightPlayers}
-            leftTeamLogo={hudLeftLogo}
-            rightTeamLogo={hudRightLogo}
-          />
-        )}
-        {sceneKey === 'buy-round' && (
-          <PrimaryBuy
-            leftTeamName={hudLeftName}
-            rightTeamName={hudRightName}
-            leftTeamColor={hudLeftColor}
-            rightTeamColor={hudRightColor}
-            leftTeamPlayers={hudLeftPlayers}
-            rightTeamPlayers={hudRightPlayers}
-            economy={liveEconomy}
-            sponsorImageUrl={sponsorImageUrl || tournamentLogoUrl}
-            leftTeamLogo={hudLeftLogo}
-            rightTeamLogo={hudRightLogo}
-            scoreLeft={hudScoreLeft}
-            scoreRight={hudScoreRight}
-            seriesScoreLeft={hudSeriesLeft}
-            seriesScoreRight={hudSeriesRight}
-            roundText={roundText}
-            mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds, state.mapResults)}
-            roundHistory={hudRoundHistory}
-          />
-        )}
-        {sceneKey === 'map-ban' && (
-          <MapBanScene
-            key={`map-ban-${state.vetoReplayRun || 0}`}
-            leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-            rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-            leftTeamColor={leftTeam?.color || '#28D091'}
-            rightTeamColor={rightTeam?.color || '#FF3549'}
-            leftTeamLogo={leftTeam?.logoUrl || null}
-            rightTeamLogo={rightTeam?.logoUrl || null}
-            mapSlots={overlayMapSlots.length ? overlayMapSlots : undefined}
-            mapBans={(state.mapBans || []).map((m: any) => VAL_MAPS.find(v => v.mapId === m.mapId)).filter((v): v is (typeof VAL_MAPS)[number] => !!v)}
-            mapPicks={(state.mapPicks || []).map((m: any) => VAL_MAPS.find(v => v.mapId === m.mapId)).filter((v): v is (typeof VAL_MAPS)[number] => !!v)}
-            mapDecider={VAL_MAPS.find(v => v.mapId === state.vetoSelectedMapIds?.[0]) || undefined}
-          />
-        )}
-        {sceneKey === 'post-game' && (
-          <PrimaryPost
-            leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
-            rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
-            leftTeamColor={leftTeam?.color || '#28D091'}
-            rightTeamColor={rightTeam?.color || '#FF3549'}
-            leftTeamLogo={leftTeam?.logoUrl || null}
-            rightTeamLogo={rightTeam?.logoUrl || null}
-            scoreLeft={scoreLeft}
-            scoreRight={scoreRight}
-            leftTeamPlayers={leftPlayers}
-            rightTeamPlayers={rightPlayers}
-            allowDemo={false}
-          />
-        )}
+        {(() => {
+          const isV1Match = kit === 'version1' && (sceneKey === 'ingame-hud' || sceneKey === 'buy-round' || sceneKey === 'default')
+          return (
+            <div key={isV1Match ? 'v1-match' : sceneKey} className={`scene-wrap ${sceneTransitioning ? 'scene-exit' : ''}`}>
+              {isV1Match && (
+                <PrimaryHud
+                  activeScene={sceneKey === 'buy-round' ? 'buy-round' : 'ingame-hud'}
+                  economy={liveEconomy}
+                  roundHistory={hudRoundHistory}
+                  leftTeamName={hudLeftName}
+                  rightTeamName={hudRightName}
+                  leftTeamSeed={hudLeftSeed}
+                  rightTeamSeed={hudRightSeed}
+                  leftTeamColor={hudLeftColor}
+                  rightTeamColor={hudRightColor}
+                  scoreLeft={hudScoreLeft}
+                  scoreRight={hudScoreRight}
+                  seriesScoreLeft={hudSeriesLeft}
+                  seriesScoreRight={hudSeriesRight}
+                  bestOf={Number(state.matchFormat) || state.bestOf || 3}
+                  roundText={roundText}
+                  timerText={timerText}
+                  seriesTitleText={state.seriesTitle || ''}
+                  eventTitleText={state.eventTitle || ''}
+                  gameSeriesText={state.gameSeries || ''}
+                  leftTeamLogo={hudLeftLogo}
+                  rightTeamLogo={hudRightLogo}
+                  mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds, state.mapResults)}
+                  webcamPlayerName={webcamPlayer?.alias || ''}
+                  webcamPlayerPhoto={webcamActive ? (webcamPlayer?.avatarUrl || null) : null}
+                  webcamActive={webcamActive}
+                  webcamPlayerStats={webcamStats}
+                  webcamStream={webcamStream}
+                  localPlayerName={(snapState as any)?.viewerName ?? null}
+                  liveOnly={true}
+                  gameEvent={liveEventText}
+                  winSide={roundWinSide}
+                  sponsorImageUrl={sponsorImageUrl}
+                  tournamentLogo={tournamentLogoUrl}
+                  ceremonyText={ceremonyText}
+                  ceremonyTrigger={ceremonyTrigger}
+                  ceremonyWinner={ceremonyWinner}
+                  roundEnd={hudRoundEnd}
+                  roundNumber={liveRoundNumber || null}
+                  currentlyObserving={liveCurrentlyObserving}
+                  spectating={spectating}
+                  spikeSite={spikeSite}
+                  spikeState={spikeState}
+                  spikePlantedAt={spikePlantedAt}
+                  leftTeamPlayers={hudLeftPlayers}
+                  rightTeamPlayers={hudRightPlayers}
+                />
+              )}
+              {!isV1Match && (sceneKey === 'default' || sceneKey === 'ingame-hud') && (
+                <PrimaryHud
+                  leftTeamName={hudLeftName}
+                  rightTeamName={hudRightName}
+                  leftTeamSeed={hudLeftSeed}
+                  rightTeamSeed={hudRightSeed}
+                  leftTeamColor={hudLeftColor}
+                  rightTeamColor={hudRightColor}
+                  scoreLeft={hudScoreLeft}
+                  scoreRight={hudScoreRight}
+                  seriesScoreLeft={hudSeriesLeft}
+                  seriesScoreRight={hudSeriesRight}
+                  bestOf={Number(state.matchFormat) || state.bestOf || 3}
+                  roundText={roundText}
+                  timerText={timerText}
+                  seriesTitleText={state.seriesTitle || ''}
+                  eventTitleText={state.eventTitle || ''}
+                  gameSeriesText={state.gameSeries || ''}
+                  leftTeamLogo={hudLeftLogo}
+                  rightTeamLogo={hudRightLogo}
+                  mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds, state.mapResults)}
+                  webcamPlayerName={webcamPlayer?.alias || ''}
+                  webcamPlayerPhoto={webcamActive ? (webcamPlayer?.avatarUrl || null) : null}
+                  webcamActive={webcamActive}
+                  webcamPlayerStats={webcamStats}
+                  webcamStream={webcamStream}
+                  localPlayerName={(snapState as any)?.viewerName ?? null}
+                  liveOnly={true}
+                  gameEvent={liveEventText}
+                  winSide={roundWinSide}
+                  sponsorImageUrl={sponsorImageUrl}
+                  tournamentLogo={tournamentLogoUrl}
+                  ceremonyText={ceremonyText}
+                  ceremonyTrigger={ceremonyTrigger}
+                  ceremonyWinner={ceremonyWinner}
+                  roundEnd={hudRoundEnd}
+                  roundNumber={liveRoundNumber || null}
+                  currentlyObserving={liveCurrentlyObserving}
+                  spectating={spectating}
+                  spikeSite={spikeSite}
+                  spikeState={spikeState}
+                  spikePlantedAt={spikePlantedAt}
+                  leftTeamPlayers={hudLeftPlayers}
+                  rightTeamPlayers={hudRightPlayers}
+                />
+              )}
+              {sceneKey === 'agent-select' && (
+                <PrimaryAgentSelect
+                  leftTeamName={hudLeftName}
+                  rightTeamName={hudRightName}
+                  leftTeamColor={hudLeftColor}
+                  rightTeamColor={hudRightColor}
+                  mapName={liveMapName}
+                  mapImage={liveMapImage}
+                  leftTeamPlayers={hudLeftPlayers}
+                  rightTeamPlayers={hudRightPlayers}
+                  leftTeamLogo={hudLeftLogo}
+                  rightTeamLogo={hudRightLogo}
+                />
+              )}
+              {!isV1Match && sceneKey === 'buy-round' && (
+                <PrimaryBuy
+                  leftTeamName={hudLeftName}
+                  rightTeamName={hudRightName}
+                  leftTeamColor={hudLeftColor}
+                  rightTeamColor={hudRightColor}
+                  leftTeamPlayers={hudLeftPlayers}
+                  rightTeamPlayers={hudRightPlayers}
+                  economy={liveEconomy}
+                  sponsorImageUrl={sponsorImageUrl || tournamentLogoUrl}
+                  leftTeamLogo={hudLeftLogo}
+                  rightTeamLogo={hudRightLogo}
+                  scoreLeft={hudScoreLeft}
+                  scoreRight={hudScoreRight}
+                  seriesScoreLeft={hudSeriesLeft}
+                  seriesScoreRight={hudSeriesRight}
+                  roundText={roundText}
+                  mapHistoryItems={buildMapHistoryItems(state.mapPicks, state.mapBans, state.vetoSelectedMapIds, state.mapResults)}
+                  roundHistory={hudRoundHistory}
+                />
+              )}
+              {sceneKey === 'map-ban' && (
+                <MapBanScene
+                  key={`map-ban-${state.vetoReplayRun || 0}`}
+                  leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+                  rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
+                  leftTeamColor={leftTeam?.color || '#28D091'}
+                  rightTeamColor={rightTeam?.color || '#FF3549'}
+                  leftTeamLogo={leftTeam?.logoUrl || null}
+                  rightTeamLogo={rightTeam?.logoUrl || null}
+                  mapSlots={overlayMapSlots.length ? overlayMapSlots : undefined}
+                  mapBans={(state.mapBans || []).map((m: any) => VAL_MAPS.find(v => v.mapId === m.mapId)).filter((v): v is (typeof VAL_MAPS)[number] => !!v)}
+                  mapPicks={(state.mapPicks || []).map((m: any) => VAL_MAPS.find(v => v.mapId === m.mapId)).filter((v): v is (typeof VAL_MAPS)[number] => !!v)}
+                  mapDecider={VAL_MAPS.find(v => v.mapId === state.vetoSelectedMapIds?.[0]) || undefined}
+                />
+              )}
+              {sceneKey === 'post-game' && (
+                <PrimaryPost
+                  leftTeamName={leftTeam?.name || (snapState as any)?.leftTeam?.name || 'TEAM A'}
+                  rightTeamName={rightTeam?.name || (snapState as any)?.rightTeam?.name || 'TEAM B'}
+                  leftTeamColor={leftTeam?.color || '#28D091'}
+                  rightTeamColor={rightTeam?.color || '#FF3549'}
+                  leftTeamLogo={leftTeam?.logoUrl || null}
+                  rightTeamLogo={rightTeam?.logoUrl || null}
+                  scoreLeft={scoreLeft}
+                  scoreRight={scoreRight}
+                  leftTeamPlayers={leftPlayers}
+                  rightTeamPlayers={rightPlayers}
+                  allowDemo={false}
+                />
+              )}
 
-        {/* ====== Game Events / Round Ceremony (VCT-style) ====== */}
-        {showGameEvent && (
-          <PrimaryGameEvents
-            key={`game-event-${ceremonyTrigger}`}
-            result={gameEventResult}
-            teamColor={gameEventTeamColor}
-            teamName={gameEventTeamName}
-            playerName={gameEventPlayerName}
-            agent={gameEventAgent}
-            roundNumber={liveRoundNumber ?? null}
-            displayMs={3000}
-            onComplete={onGameEventComplete}
-          />
-        )}
-
-        </div>
+              {/* ====== Game Events / Round Ceremony (VCT-style) ====== */}
+              {showGameEvent && (
+                <PrimaryGameEvents
+                  key={`game-event-${ceremonyTrigger}`}
+                  result={gameEventResult}
+                  teamColor={gameEventTeamColor}
+                  teamName={gameEventTeamName}
+                  playerName={gameEventPlayerName}
+                  agent={gameEventAgent}
+                  roundNumber={liveRoundNumber ?? null}
+                  winSide={roundWinnerSide || (roundWinSide ? (roundWinSide.includes('ATTACK') ? 'attack' : 'defense') : null)}
+                  ceremonyWinner={ceremonyWinner}
+                  leftTeamLogo={hudLeftLogo}
+                  rightTeamLogo={hudRightLogo}
+                  winnerLogo={ceremonyWinner === 'red' ? hudRightLogo : hudLeftLogo}
+                  tournamentLogo={tournamentLogoUrl}
+                  displayMs={3000}
+                  onComplete={onGameEventComplete}
+                />
+              )}
+            </div>
+          )
+        })()}
 
         {/* ====== NEW OVERLAY LAYERS (#4) ====== */}
 
