@@ -20,6 +20,7 @@ import {
   getAbilityCurrentCharges,
   hexRgba,
   hpOf,
+  isDurationUltAgent,
   incomeEstimate,
   kdaOf,
   ultMaxOf,
@@ -324,6 +325,7 @@ function KitPanel({
   }, [alive])
 
   const ready = ultReadyOf(player)
+  const isDurationUlt = isDurationUltAgent(player)
   const rawUltPoints = player.currUltPoints ?? player.ultPoints ?? player.ultimate
   const ultPointsKnown = rawUltPoints != null && Number.isFinite(Number(rawUltPoints))
   const ultPts = ultPointsOf(player)
@@ -347,11 +349,11 @@ function KitPanel({
       return
     }
     prevReadyRef.current = ready
-    if (prevReady === true && !ready && alive && hadReadyRef.current) {
+    if (!isDurationUlt && prevReady === true && !ready && alive && hadReadyRef.current) {
       triggerUltAnimation()
       hadReadyRef.current = false
     }
-  }, [ready, ultPointsKnown, alive, triggerUltAnimation])
+  }, [ready, ultPointsKnown, isDurationUlt, alive, triggerUltAnimation])
 
   // Ult points are also authoritative evidence of a spend when ability charges
   // are unavailable (for example, on rows other than the local player).
@@ -363,11 +365,11 @@ function KitPanel({
       return
     }
     prevUltPts.current = ultPts
-    if (prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive && hadReadyRef.current) {
+    if (!isDurationUlt && prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive && hadReadyRef.current) {
       triggerUltAnimation()
       hadReadyRef.current = false
     }
-  }, [ultPts, ultMax, ultPointsKnown, alive, triggerUltAnimation])
+  }, [ultPts, ultMax, ultPointsKnown, isDurationUlt, alive, triggerUltAnimation])
 
   // Trigger 2: Channeled / summoned ultimate weapons (Chamber Tour De Force, Jett Blade Storm, Neon Overdrive, Raze Showstopper, etc.)
   const currentWeapon = String(player.weapon || player.weaponName || '')
@@ -401,11 +403,11 @@ function KitPanel({
       return
     }
     prevAbilityX.current = abilityX
-    if (prev === true && abilityX === false && alive && hadReadyRef.current) {
+    if (!isDurationUlt && prev === true && abilityX === false && alive && hadReadyRef.current) {
       triggerUltAnimation()
       hadReadyRef.current = false
     }
-  }, [abilityX, alive, triggerUltAnimation])
+  }, [abilityX, isDurationUlt, alive, triggerUltAnimation])
 
   // Trigger 4: Explicit active ult flag from telemetry
   const isUltActiveFlag = Boolean(
@@ -416,9 +418,7 @@ function KitPanel({
     player.activeAbility === 'ultimate' ||
     player.ultimate === 'active' ||
     player.abilityState?.ultimate === 'active' ||
-    player.abilityState?.ultimate === true ||
     player.abilityState?.X === 'active' ||
-    player.abilityState?.X === true ||
     player.abilityState?.X === 'using' ||
     player.abilityState?.X === 'cast' ||
     st?.X === 'active' ||
@@ -559,7 +559,8 @@ function KitPanel({
               alt="agent portrait"
               className="size-full object-cover object-top"
               style={{
-                transform: isRight ? 'scaleX(-1)' : undefined,
+                transform: isRight ? 'translateY(-8px) scale(1.7) scaleX(-1)' : 'translateY(-8px) scale(1.7)',
+                transformOrigin: 'center top',
               }}
               onError={e => {
                 const image = e.currentTarget as HTMLImageElement
