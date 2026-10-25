@@ -85,12 +85,14 @@ export function MatchHistoryGrid({
   rightTeamName = 'RIGHT',
   leftTeamColor = '#28D091',
   rightTeamColor = '#FF3549',
+  leftIsBlue = true,
 }: {
   roundHistory: RoundRow[]
   leftTeamName: string
   rightTeamName: string
   leftTeamColor: string
   rightTeamColor: string
+  leftIsBlue?: boolean
 }) {
   const maxRound = Math.max(0, ...(roundHistory || []).map((h: any) => Number(h?.round) || 0))
   const isSecondHalf = maxRound >= 12
@@ -116,23 +118,23 @@ export function MatchHistoryGrid({
       {otGroups.length > 0 && (
         <div className="mb-1 flex w-full flex-col gap-1">
           {otGroups.map((g: number[], gi: number) => (
-            <div key={'ot' + gi} className="flex h-[28px] w-full items-center gap-1 rounded-sm border border-white/20 bg-[#151515] p-1 shadow-md">
+            <div key={'ot' + gi} className="flex h-[34px] w-full items-center gap-1 rounded-sm border border-white/20 bg-[#151515] p-1 shadow-md">
               <div className="w-[119px] shrink-0 text-center font-baijam text-[11px] font-bold uppercase text-[#FFD166]">
                 OT {gi + 1}
               </div>
               <div className="flex h-full flex-1 flex-row gap-1 overflow-x-auto">
                 {g.map((n: number) => {
                   const rec = (roundHistory || []).find((h: any) => h.round === n)
-                  const wonLeft = !!rec && rec.winner === 'blue'
-                  const wonRight = !!rec && rec.winner === 'red'
+                  const wonLeft = !!rec && (leftIsBlue ? rec.winner === 'blue' : rec.winner === 'red')
+                  const wonRight = !!rec && (leftIsBlue ? rec.winner === 'red' : rec.winner === 'blue')
                   const icon = rec ? REASON_ICON[rec.reason] || 'kills' : null
                   return (
-                    <div key={n} className="flex h-full w-[34.6px] shrink-0 flex-col items-center justify-center gap-[2px]">
-                      <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
-                        {wonLeft && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                    <div key={n} className="flex h-full w-[35px] shrink-0 flex-col items-center justify-center gap-[2px]">
+                      <div className="flex w-full flex-1 items-center justify-center rounded-[2px] overflow-hidden" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
+                        {wonLeft && icon && <img className="size-[17px] max-h-[17px] max-w-[17px] object-contain drop-shadow" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
                       </div>
-                      <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
-                        {wonRight && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                      <div className="flex w-full flex-1 items-center justify-center rounded-[2px] overflow-hidden" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
+                        {wonRight && icon && <img className="size-[17px] max-h-[17px] max-w-[17px] object-contain drop-shadow" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
                       </div>
                     </div>
                   )
@@ -151,14 +153,14 @@ export function MatchHistoryGrid({
         <div className="flex h-full flex-1 justify-between">
           <div className={`mr-3 flex h-full flex-row justify-end gap-1 overflow-hidden transition-opacity duration-300 ${isSecondHalf ? 'opacity-40' : 'opacity-100'}`}>
             {['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'].map(n => (
-              <div key={n} className={`w-[34.6px] text-center font-baijam text-[12px] ${!isSecondHalf ? 'text-[#D2D2D2]' : 'text-[#737373]'}`}>
+              <div key={n} className={`w-[35px] text-center font-baijam text-[12px] ${!isSecondHalf ? 'text-[#D2D2D2]' : 'text-[#737373]'}`}>
                 <h1>{n}</h1>
               </div>
             ))}
           </div>
           <div className={`flex h-full flex-row justify-end gap-1 overflow-hidden transition-opacity duration-300 ${isSecondHalf ? 'opacity-100' : 'opacity-40'}`}>
             {['13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24'].map(n => (
-              <div key={n} className={`w-[34.6px] text-center font-baijam text-[12px] ${isSecondHalf ? 'text-[#D2D2D2]' : 'text-[#737373]'}`}>
+              <div key={n} className={`w-[35px] text-center font-baijam text-[12px] ${isSecondHalf ? 'text-[#D2D2D2]' : 'text-[#737373]'}`}>
                 <h1>{n}</h1>
               </div>
             ))}
@@ -169,7 +171,7 @@ export function MatchHistoryGrid({
       {/* Grid rows */}
       <div className="mt-1 flex w-full flex-row items-center gap-1 rounded-sm border border-white/20 bg-[#151515] p-1 shadow-lg">
         {/* Team names column */}
-        <div className="font-semibold flex h-[50px] w-[119px] shrink-0 flex-col items-center gap-1 font-barlowCond uppercase">
+        <div className="font-semibold flex h-[58px] w-[119px] shrink-0 flex-col items-center gap-1 font-barlowCond uppercase">
           <div className="font-unbounded flex size-full flex-1 items-center bg-[#1A1A1A] font-extrabold text-white overflow-hidden">
             <div className="h-full w-[6px] shrink-0" style={{ backgroundColor: leftTeamColor }} />
             <span className="truncate px-2 text-[12px]">{leftTeamName}</span>
@@ -181,22 +183,22 @@ export function MatchHistoryGrid({
         </div>
 
         {/* Round boxes */}
-        <div className="flex h-[50px] flex-1 justify-between">
+        <div className="flex h-[58px] flex-1 justify-between">
           {/* Half 1 */}
           <div className={`flex h-full flex-row justify-end gap-1 overflow-hidden transition-opacity duration-300 ${isSecondHalf ? 'opacity-40' : 'opacity-100'}`}>
             {Array.from({ length: 12 }, (_, i) => {
               const n = i + 1
               const rec = (roundHistory || []).find((h: any) => h.round === n)
-              const wonLeft = !!rec && rec.winner === 'blue'
-              const wonRight = !!rec && rec.winner === 'red'
+              const wonLeft = !!rec && (leftIsBlue ? rec.winner === 'blue' : rec.winner === 'red')
+              const wonRight = !!rec && (leftIsBlue ? rec.winner === 'red' : rec.winner === 'blue')
               const icon = rec ? REASON_ICON[rec.reason] || 'kills' : null
               return (
-                <div key={n} className="flex h-full w-[34.6px] flex-col items-center justify-center gap-1">
-                  <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
-                    {wonLeft && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                <div key={n} className="flex h-full w-[35px] flex-col items-center justify-center gap-[3px]">
+                  <div className="flex w-full flex-1 items-center justify-center rounded-[2px] p-[2px] overflow-hidden" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
+                    {wonLeft && icon && <img className="size-[19px] max-h-[19px] max-w-[19px] object-contain drop-shadow" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
                   </div>
-                  <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
-                    {wonRight && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                  <div className="flex w-full flex-1 items-center justify-center rounded-[2px] p-[2px] overflow-hidden" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
+                    {wonRight && icon && <img className="size-[19px] max-h-[19px] max-w-[19px] object-contain drop-shadow" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
                   </div>
                 </div>
               )
@@ -208,16 +210,16 @@ export function MatchHistoryGrid({
             {Array.from({ length: 12 }, (_, i) => {
               const n = 12 + i + 1
               const rec = (roundHistory || []).find((h: any) => h.round === n)
-              const wonLeft = !!rec && rec.winner === 'blue'
-              const wonRight = !!rec && rec.winner === 'red'
+              const wonLeft = !!rec && (leftIsBlue ? rec.winner === 'blue' : rec.winner === 'red')
+              const wonRight = !!rec && (leftIsBlue ? rec.winner === 'red' : rec.winner === 'blue')
               const icon = rec ? REASON_ICON[rec.reason] || 'kills' : null
               return (
-                <div key={n} className="flex h-full w-[34.6px] flex-col items-center justify-center gap-1">
-                  <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
-                    {wonLeft && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                <div key={n} className="flex h-full w-[35px] flex-col items-center justify-center gap-[3px]">
+                  <div className="flex w-full flex-1 items-center justify-center rounded-[2px] p-[2px] overflow-hidden" style={{ backgroundColor: tint(leftTeamColor, wonLeft) }}>
+                    {wonLeft && icon && <img className="size-[19px] max-h-[19px] max-w-[19px] object-contain drop-shadow" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
                   </div>
-                  <div className="flex w-full flex-1 items-center justify-center" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
-                    {wonRight && icon && <img className="size-[80%] object-contain" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
+                  <div className="flex w-full flex-1 items-center justify-center rounded-[2px] p-[2px] overflow-hidden" style={{ backgroundColor: tint(rightTeamColor, wonRight) }}>
+                    {wonRight && icon && <img className="size-[19px] max-h-[19px] max-w-[19px] object-contain drop-shadow" src={`/game/val/roundWinReason/${icon}.webp`} alt={rec.reason} />}
                   </div>
                 </div>
               )
@@ -435,7 +437,7 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
     seriesTitleText = '',
     gameSeriesText = '',
     eventTitleText = '',
-    timerText = '',
+    timerText: _timerText = '',
     timerColor = '#DADBE3',
     bestOf = 3,
     showSeries = true,
@@ -460,6 +462,25 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
     left: calcEco(leftTeamPlayers),
     right: calcEco(rightTeamPlayers),
   }
+  const leftIsBlue = (() => {
+    if (leftTeamPlayers && leftTeamPlayers.length > 0) {
+      const p = leftTeamPlayers[0]
+      if (p.teamIndex === 0) return true
+      if (p.teamIndex === 1) return false
+      const t = String(p.teamId || p.team || '').toLowerCase()
+      if (t === 'blue') return true
+      if (t === 'red') return false
+    }
+    if (rightTeamPlayers && rightTeamPlayers.length > 0) {
+      const p = rightTeamPlayers[0]
+      if (p.teamIndex === 0) return false
+      if (p.teamIndex === 1) return true
+      const t = String(p.teamId || p.team || '').toLowerCase()
+      if (t === 'blue') return false
+      if (t === 'red') return true
+    }
+    return true
+  })()
 
   // Match IngameHUD Main: retain map picks and decider; omit pool entries and bans.
   const activeMapHistory = (mapHistoryItems || []).filter((i: any) => i.kind !== 'pool' && i.kind !== 'ban')
@@ -527,10 +548,11 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
           bestOf={bestOf}
           showSeries={showSeries}
           showLogos={showLogos}
+          showBombTimer={false}
           leftLogo={leftTeamLogo}
           rightLogo={rightTeamLogo}
           roundLabel={roundText || ''}
-          timerText={timerText}
+          timerText=""
           timerColor={timerColor}
           seriesTitleText={seriesTitleText}
           gameSeriesText={gameSeriesText}
@@ -566,6 +588,7 @@ export function BroadcastBuyRoundScene(props: BroadcastBuyRoundProps) {
             rightTeamName={rightTeamName}
             leftTeamColor={leftTeamColor}
             rightTeamColor={rightTeamColor}
+            leftIsBlue={leftIsBlue}
           />
 
           <div

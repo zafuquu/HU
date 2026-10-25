@@ -606,56 +606,68 @@ export default function OverlayPopout() {
   // Buy phase: everyone is alive by definition — stale death evidence that
   // trails the round reset must never grey out the freshly mounted cards.
   const snapShopping = (snapState as any)?.roundPhase === 'shopping'
-  const mapLivePlayers = (arr: any[]) => arr.map((p: any, idx: number) => ({
-    id: p.playerId || p.name || Math.random(),
-    alias: p.name || p.alias || p.agentName || `Player ${idx + 1}`,
-    agentKey: p.agentKey ?? null,
-    abilityState: p.abilityState ?? null,
-    riotId: p.tagline || '',
-    agentName: p.agentName || p.character || p.agent || null,
-    agent: p.agentName || p.character || p.agent || null,
-    character: p.agentName || p.character || p.agent || null,
-    role: null,
-    img: null,
-    photoUrl: null,
-    avatarUrl: null,
-    health: snapShopping ? 100 : (p.health ?? (p.isAlive === false ? 0 : 100)),
-    isAlive: snapShopping ? true : (p.isAlive ?? ((p.health ?? 100) === 0 ? false : true)),
-    // Real desktop protocol carries shieldType (0 none / 1 light 25 / 2 heavy 50
-    // / 3 enemy-heavy 50 / 4 regen 25) — derive the armor bar values from it.
-    armor: p.armor ?? (p.shieldType === 2 || p.shieldType === 3 ? 50 : p.shieldType === 1 || p.shieldType === 4 ? 25 : 0),
-    armorType: p.armorType ?? (p.shieldType === 2 || p.shieldType === 3 ? 'Heavy' : p.shieldType === 1 || p.shieldType === 4 ? 'Light' : 'None'),
-    credits: p.credits ?? p.money ?? null,
-    spent: p.loadoutValue != null ? p.loadoutValue : null,
-    // Authoritative spent/loadout (snapshot publishes spentCredits; tolerate
-    // the legacy `spent`/`loadoutValue` spellings for compatibility).
-    spentCredits: p.spentCredits ?? p.spent ?? p.loadoutValue ?? null,
-    weaponName: p.weaponName || p.scoreboardWeaponInternal || p.weapon || null,
-    shieldType: p.shieldType,
-    currUltPoints: p.currUltPoints ?? p.ultPoints ?? p.ultimate ?? 0,
-    ultPoints: p.ultPoints ?? p.currUltPoints ?? p.ultimate ?? 0,
-    shield: p.shield ?? p.armor ?? 0,
-    maxUltPoints: Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p),
-    hasSpike: Boolean(p.hasSpike),
-    kills: p.kills ?? 0,
-    deaths: p.deaths ?? 0,
-    assists: p.assists ?? 0,
-    firstBloods: p.firstBloods ?? p.firstKills ?? p.first_blood ?? 0,
-    firstKills: p.firstKills ?? p.firstBloods ?? p.first_blood ?? 0,
-    acs: p.acs ?? (
-      ((p.kills ?? 0) * 140 + ((p.firstBloods ?? p.firstKills ?? 0) * 70) + ((p.assists ?? 0) * 25)) > 0
-        ? Math.round(((p.kills ?? 0) * 140 + ((p.firstBloods ?? p.firstKills ?? 0) * 70) + ((p.assists ?? 0) * 25)) / Math.max(1, (snapState?.score?.blue ?? 0) + (snapState?.score?.red ?? 0) || (snapState?.round?.number ?? 1)))
-        : 0
-    ),
-    score: p.score ?? null,
-    // No fake weapon fallback — blank until GEP reports the real carried gun.
-    weapon: p.weapon ?? p.weaponName ?? null,
-    ultimate: p.ultimate ?? p.currUltPoints ?? p.ultPoints ?? 0,
-    ultimateMax: Number(p.ultimateMax ?? p.maxUltPoints ?? p.ultMax) || getAgentUltMax(p),
-    isUltReady: p.isUltReady ?? ((p.currUltPoints ?? p.ultPoints ?? 0) >= (Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p)) && (Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p)) > 0),
-    abilities: p.abilities ?? [],
-    locked: p.locked ?? p.isLocked ?? (p.selection === 'locked' ? true : p.selection === 'selected' ? false : undefined),
-  }))
+  const mapLivePlayers = (arr: any[]) => arr.map((p: any, idx: number) => {
+    // Pistol rounds (1, 13, 25): 800 starting credits make heavy shield impossible, clamp to 0.
+    const roundNow = Number((snapState as any)?.roundNumber ?? scores?.roundNumber ?? 0)
+    const isPistol = roundNow === 1 || roundNow === 13 || roundNow === 25
+    let initArmor = p.armor ?? (p.shieldType === 2 || p.shieldType === 3 ? (isPistol ? 0 : 50) : p.shieldType === 1 || p.shieldType === 4 ? 25 : 0)
+    if (isPistol && initArmor >= 50) initArmor = 0
+    const curHp = snapShopping ? 100 : (p.health ?? (p.isAlive === false ? 0 : 100))
+    // Armor absorption formula: Valorant armor absorbs 66% (2:1 ratio to HP). When HP drops below 100, armor was damaged.
+    const liveArmor = curHp <= 0 ? 0 : (curHp < 100 && initArmor > 0) ? Math.max(0, Math.round(initArmor - (100 - curHp) * 2)) : initArmor
+
+    return {
+      id: p.playerId || p.name || Math.random(),
+      alias: p.name || p.alias || p.agentName || `Player ${idx + 1}`,
+      agentKey: p.agentKey ?? null,
+      abilityState: p.abilityState ?? null,
+      riotId: p.tagline || '',
+      agentName: p.agentName || p.character || p.agent || null,
+      agent: p.agentName || p.character || p.agent || null,
+      character: p.agentName || p.character || p.agent || null,
+      role: null,
+      img: null,
+      photoUrl: null,
+      avatarUrl: null,
+      health: curHp,
+      isAlive: snapShopping ? true : (p.isAlive ?? (curHp === 0 ? false : true)),
+      armor: liveArmor,
+      armorType: p.armorType ?? (liveArmor >= 50 ? 'Heavy' : liveArmor > 0 ? 'Light' : 'None'),
+      credits: p.credits ?? p.money ?? null,
+      spent: p.loadoutValue != null ? p.loadoutValue : null,
+      // Authoritative spent/loadout (snapshot publishes spentCredits; tolerate
+      // the legacy `spent`/`loadoutValue` spellings for compatibility).
+      spentCredits: p.spentCredits ?? p.spent ?? p.loadoutValue ?? null,
+      weaponName: p.weaponName || p.scoreboardWeaponInternal || p.weapon || null,
+      shieldType: p.shieldType,
+      currUltPoints: p.currUltPoints ?? p.ultPoints ?? p.ultimate ?? 0,
+      ultPoints: p.ultPoints ?? p.currUltPoints ?? p.ultimate ?? 0,
+      shield: liveArmor,
+      maxUltPoints: Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p),
+      hasSpike: Boolean(p.hasSpike),
+      kills: p.kills ?? 0,
+      deaths: p.deaths ?? 0,
+      assists: p.assists ?? 0,
+      firstBloods: p.firstBloods ?? p.firstKills ?? p.first_blood ?? 0,
+      firstKills: p.firstKills ?? p.firstBloods ?? p.first_blood ?? 0,
+      acs: p.acs ?? (
+        ((p.kills ?? 0) * 140 + ((p.firstBloods ?? p.firstKills ?? 0) * 70) + ((p.assists ?? 0) * 25)) > 0
+          ? Math.round(((p.kills ?? 0) * 140 + ((p.firstBloods ?? p.firstKills ?? 0) * 70) + ((p.assists ?? 0) * 25)) / Math.max(1, (snapState?.score?.blue ?? 0) + (snapState?.score?.red ?? 0) || (snapState?.round?.number ?? 1)))
+          : 0
+      ),
+      score: p.score ?? null,
+      // No fake weapon fallback — blank until GEP reports the real carried gun.
+      weapon: p.weapon ?? p.weaponName ?? null,
+      ultimate: p.ultimate ?? p.currUltPoints ?? p.ultPoints ?? 0,
+      ultimateMax: Number(p.ultimateMax ?? p.maxUltPoints ?? p.ultMax) || getAgentUltMax(p),
+      isUltReady: p.isUltReady ?? ((p.currUltPoints ?? p.ultPoints ?? 0) >= (Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p)) && (Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p)) > 0),
+      abilities: p.abilities ?? [],
+      locked: p.locked ?? p.isLocked ?? (p.selection === 'locked' ? true : p.selection === 'selected' ? false : undefined),
+      teamIndex: p.teamIndex ?? p.startTeam ?? null,
+      teamId: p.teamId ?? p.team ?? null,
+      team: p.teamId ?? p.team ?? null,
+    }
+  })
     // Team side: trust explicit startTeam/teamIndex, then the team id string.
   // Players with NO side evidence go LEFT only — never both sides.
   const sideOf = (p: any): 0 | 1 => {
@@ -855,10 +867,30 @@ export default function OverlayPopout() {
   }
   const gameEventResult: GameEventResult =
     ceremonyText ? (GAME_EVENT_RESULT_MAP[ceremonyText] ?? 'round_won') : null
+  const leftIsBlue = (() => {
+    if (hudLeftPlayers && hudLeftPlayers.length > 0) {
+      const p = hudLeftPlayers[0] as any
+      if (p.teamIndex === 0) return true
+      if (p.teamIndex === 1) return false
+      const t = String(p.teamId || p.team || '').toLowerCase()
+      if (t === 'blue') return true
+      if (t === 'red') return false
+    }
+    if (hudRightPlayers && hudRightPlayers.length > 0) {
+      const p = hudRightPlayers[0] as any
+      if (p.teamIndex === 0) return false
+      if (p.teamIndex === 1) return true
+      const t = String(p.teamId || p.team || '').toLowerCase()
+      if (t === 'blue') return false
+      if (t === 'red') return true
+    }
+    return true
+  })()
+  const ceremonyWinnerIsLeft = ceremonyWinner ? (ceremonyWinner === (leftIsBlue ? 'blue' : 'red')) : null
   const gameEventTeamColor =
-    ceremonyWinner === 'red' ? rightTeam?.color : ceremonyWinner === 'blue' ? leftTeam?.color : undefined
+    ceremonyWinnerIsLeft === false ? rightTeam?.color : ceremonyWinnerIsLeft === true ? leftTeam?.color : undefined
   const gameEventTeamName =
-    ceremonyWinner === 'red' ? rightTeam?.name : ceremonyWinner === 'blue' ? leftTeam?.name : undefined
+    ceremonyWinnerIsLeft === false ? rightTeam?.name : ceremonyWinnerIsLeft === true ? leftTeam?.name : undefined
   const gameEventPlayerName = (hudRoundEnd as any)?.highlightPlayer?.name ?? null
   const gameEventAgent = (hudRoundEnd as any)?.highlightPlayer?.agent ?? null
 
@@ -1236,7 +1268,7 @@ export default function OverlayPopout() {
                   ceremonyWinner={ceremonyWinner}
                   leftTeamLogo={hudLeftLogo}
                   rightTeamLogo={hudRightLogo}
-                  winnerLogo={ceremonyWinner === 'red' ? hudRightLogo : hudLeftLogo}
+                  winnerLogo={ceremonyWinnerIsLeft === false ? hudRightLogo : hudLeftLogo}
                   tournamentLogo={tournamentLogoUrl}
                   displayMs={3000}
                   onComplete={onGameEventComplete}

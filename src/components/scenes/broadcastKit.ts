@@ -190,7 +190,17 @@ export const aliveOf = (p: any): boolean => {
   if (n != null) return n > 0
   return p?.isAlive !== false
 }
-export const armorOf = (p: any): number => Number(p?.armor ?? p?.shield ?? 0) || 0
+export const armorOf = (p: any): number => {
+  const h = hpOf(p)
+  if (h <= 0) return 0
+  const base = Number(p?.armor ?? p?.shield ?? 0) || 0
+  if (base <= 0) return 0
+  // In Valorant, armor absorbs 66% (2:1 ratio to HP). When HP drops below 100, armor took damage.
+  if (h < 100) {
+    return Math.max(0, Math.round(base - (100 - h) * 2))
+  }
+  return base
+}
 export const ultPointsOf = (p: any): number => Number(p?.currUltPoints ?? p?.ultPoints ?? p?.ultimate ?? 0) || 0
 /** Canonical maximum ultimate points per agent in Valorant (7, 8, or 9). */
 export const AGENT_ULT_MAX: Record<string, number> = {

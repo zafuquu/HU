@@ -337,25 +337,25 @@ function KitPanel({
     }
   }, [ready, ultPts, ultMax])
 
-  // Trigger 0: For non-duration agents only, Ult Ready transitions from true to false (consumed ult)
+  // Trigger 0: Ult Ready transitions from true to false (consumed ult on cast for any agent)
   const prevReadyRef = React.useRef<boolean | null>(null)
   React.useEffect(() => {
     const prevReady = prevReadyRef.current
     prevReadyRef.current = ready
-    if (!isDuration && prevReady === true && !ready && alive) {
+    if (prevReady === true && !ready && alive) {
       triggerUltAnimation()
     }
-  }, [ready, alive, isDuration, triggerUltAnimation])
+  }, [ready, alive, triggerUltAnimation])
 
-  // Trigger 1: For non-duration agents only, Ult points drop from max/ready (e.g. Sova, Breach, Killjoy, Fade, Gekko)
+  // Trigger 1: Ult points drop from max/ready (e.g. cast/spent ult for Sova, Viper, Breach, Killjoy, Fade, Gekko, etc.)
   const prevUltPts = React.useRef<number | null>(null)
   React.useEffect(() => {
     const prev = prevUltPts.current
     prevUltPts.current = ultPts
-    if (!isDuration && prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive) {
+    if (prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive) {
       triggerUltAnimation()
     }
-  }, [ultPts, ultMax, alive, isDuration, triggerUltAnimation])
+  }, [ultPts, ultMax, alive, triggerUltAnimation])
 
   // Trigger 2: Channeled / summoned ultimate weapons (Chamber Tour De Force, Jett Blade Storm, Neon Overdrive, Raze Showstopper, etc.)
   const currentWeapon = String(player.weapon || player.weaponName || '')
@@ -1093,6 +1093,26 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
   const leftRoster = leftTeamPlayers || []
   const rightRoster = rightTeamPlayers || []
 
+  const leftIsBlue = (() => {
+    if (leftRoster && leftRoster.length > 0) {
+      const p = leftRoster[0]
+      if (p.teamIndex === 0) return true
+      if (p.teamIndex === 1) return false
+      const t = String(p.teamId || p.team || '').toLowerCase()
+      if (t === 'blue') return true
+      if (t === 'red') return false
+    }
+    if (rightRoster && rightRoster.length > 0) {
+      const p = rightRoster[0]
+      if (p.teamIndex === 0) return false
+      if (p.teamIndex === 1) return true
+      const t = String(p.teamId || p.team || '').toLowerCase()
+      if (t === 'blue') return false
+      if (t === 'red') return true
+    }
+    return true
+  })()
+
   // Economy calculation for buy round view
   const calcEco = (players: any[]) => {
     const creds = players.map(p => Number(p.credits ?? p.money)).filter(v => Number.isFinite(v) && v > 0)
@@ -1275,10 +1295,10 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
           reasonText={ceremonyText || roundEndReasonText || 'ROUND WIN'}
           roundNumber={roundNumber ?? 13}
           winSide={winSide || 'defense'}
-          winnerName={(ceremonyWinner || roundEnd?.winner) === 'blue' ? bannerLeftName : bannerRightName}
-          winnerLogo={((ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamLogo : rightTeamLogo) ?? null}
-          winnerColor={(ceremonyWinner || roundEnd?.winner) === 'blue' ? leftTeamColor : rightTeamColor}
-          winnerFromLeft={(ceremonyWinner || roundEnd?.winner) === 'blue'}
+          winnerName={((ceremonyWinner || roundEnd?.winner) ? ((ceremonyWinner || roundEnd?.winner) === (leftIsBlue ? 'blue' : 'red')) : true) ? bannerLeftName : bannerRightName}
+          winnerLogo={(((ceremonyWinner || roundEnd?.winner) ? ((ceremonyWinner || roundEnd?.winner) === (leftIsBlue ? 'blue' : 'red')) : true) ? leftTeamLogo : rightTeamLogo) ?? null}
+          winnerColor={((ceremonyWinner || roundEnd?.winner) ? ((ceremonyWinner || roundEnd?.winner) === (leftIsBlue ? 'blue' : 'red')) : true) ? leftTeamColor : rightTeamColor}
+          winnerFromLeft={(ceremonyWinner || roundEnd?.winner) ? ((ceremonyWinner || roundEnd?.winner) === (leftIsBlue ? 'blue' : 'red')) : true}
           leftColor={leftTeamColor}
           rightColor={rightTeamColor}
           tournamentLogo={tournamentLogo}
@@ -1338,7 +1358,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
           bestOf={bestOf}
           showSeries={showSeries}
           showLogos={showLogos}
-          showBombTimer={showBombTimer}
+          showBombTimer={!isBuyRound && showBombTimer}
           leftLogo={leftTeamLogo}
           rightLogo={rightTeamLogo}
           timerText={displayTimerText}
@@ -1509,6 +1529,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
               rightTeamName={rightTeamName}
               leftTeamColor={leftTeamColor}
               rightTeamColor={rightTeamColor}
+              leftIsBlue={leftIsBlue}
             />
           </div>
 
