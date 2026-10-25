@@ -1184,7 +1184,6 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     currentlyObserving = null,
     localPlayerName = null,
     spectating = false,
-    spikeSite = null,
     spikeState = null,
     eventsBg,
     eventsHighlight,
