@@ -273,6 +273,10 @@ export const ultMaxOf = (p: any): number => {
   return getAgentUltMax(p)
 }
 export const ultReadyOf = (p: any): boolean => {
+  const abilityReady = p?.abilityState?.X ?? p?.abilityState?.x ?? p?.abilityState?.ultimate
+  const direct = abilityReady ?? p?.isUltReady
+  if (direct === true || direct === 1 || direct === '1' || direct === 'ready') return true
+  if (direct === false || direct === 0 || direct === '0') return false
   const m = ultMaxOf(p)
   return m > 0 && ultPointsOf(p) >= m
 }

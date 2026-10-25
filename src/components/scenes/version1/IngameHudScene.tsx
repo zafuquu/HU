@@ -20,7 +20,6 @@ import {
   getAbilityCurrentCharges,
   hexRgba,
   hpOf,
-  isDurationUltAgent,
   incomeEstimate,
   kdaOf,
   ultMaxOf,
@@ -63,6 +62,10 @@ const KIT_CSS = `
 @keyframes ultIconPulse {
   0%, 100% { transform: scale(1); filter: brightness(1) drop-shadow(0 0 6px rgba(255,255,255,0.7)); }
   50% { transform: scale(1.1); filter: brightness(1.2) drop-shadow(0 0 14px rgba(255,255,255,0.95)); }
+}
+@keyframes ultReadyPulse {
+  0%, 100% { filter: drop-shadow(0 0 2px currentColor); transform: scale(1); opacity: .86; }
+  50% { filter: drop-shadow(0 0 7px currentColor); transform: scale(1.12); opacity: 1; }
 }
 @keyframes v1UltSlideInLeft {
   0% { transform: translateX(-105%); }
@@ -188,7 +191,9 @@ function UltOrb({
       <div
         className="relative grid size-[21px] place-items-center rounded-full bg-black/85 transition-transform group-hover:scale-105 active:scale-95"
         style={{
+          color: teamColor,
           boxShadow: ready ? `0 0 10px 2px ${hexRgba(teamColor, 0.75)}` : undefined,
+          animation: ready ? 'ultReadyPulse 1.15s ease-in-out infinite' : undefined,
         }}
       >
         <img
@@ -325,7 +330,6 @@ function KitPanel({
   }, [alive])
 
   const ready = ultReadyOf(player)
-  const isDurationUlt = isDurationUltAgent(player)
   const rawUltPoints = player.currUltPoints ?? player.ultPoints ?? player.ultimate
   const ultPointsKnown = rawUltPoints != null && Number.isFinite(Number(rawUltPoints))
   const ultPts = ultPointsOf(player)
@@ -349,11 +353,11 @@ function KitPanel({
       return
     }
     prevReadyRef.current = ready
-    if (!isDurationUlt && prevReady === true && !ready && alive && hadReadyRef.current) {
+    if (prevReady === true && !ready && alive && hadReadyRef.current) {
       triggerUltAnimation()
       hadReadyRef.current = false
     }
-  }, [ready, ultPointsKnown, isDurationUlt, alive, triggerUltAnimation])
+  }, [ready, ultPointsKnown, alive, triggerUltAnimation])
 
   // Ult points are also authoritative evidence of a spend when ability charges
   // are unavailable (for example, on rows other than the local player).
@@ -365,11 +369,11 @@ function KitPanel({
       return
     }
     prevUltPts.current = ultPts
-    if (!isDurationUlt && prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive && hadReadyRef.current) {
+    if (prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive && hadReadyRef.current) {
       triggerUltAnimation()
       hadReadyRef.current = false
     }
-  }, [ultPts, ultMax, ultPointsKnown, isDurationUlt, alive, triggerUltAnimation])
+  }, [ultPts, ultMax, ultPointsKnown, alive, triggerUltAnimation])
 
   // Trigger 2: Channeled / summoned ultimate weapons (Chamber Tour De Force, Jett Blade Storm, Neon Overdrive, Raze Showstopper, etc.)
   const currentWeapon = String(player.weapon || player.weaponName || '')
@@ -403,11 +407,11 @@ function KitPanel({
       return
     }
     prevAbilityX.current = abilityX
-    if (!isDurationUlt && prev === true && abilityX === false && alive && hadReadyRef.current) {
+    if (prev === true && abilityX === false && alive && hadReadyRef.current) {
       triggerUltAnimation()
       hadReadyRef.current = false
     }
-  }, [abilityX, isDurationUlt, alive, triggerUltAnimation])
+  }, [abilityX, alive, triggerUltAnimation])
 
   // Trigger 4: Explicit active ult flag from telemetry
   const isUltActiveFlag = Boolean(
@@ -1347,7 +1351,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
           }
           reasonText={ceremonyText || roundEndReasonText || 'ROUND WIN'}
           roundNumber={roundNumber ?? 13}
-          winSide={winSide || 'defense'}
+          winSide={winSide}
           winnerName={((ceremonyWinner || roundEnd?.winner) ? ((ceremonyWinner || roundEnd?.winner) === (leftIsBlue ? 'blue' : 'red')) : true) ? bannerLeftName : bannerRightName}
           winnerLogo={(((ceremonyWinner || roundEnd?.winner) ? ((ceremonyWinner || roundEnd?.winner) === (leftIsBlue ? 'blue' : 'red')) : true) ? leftTeamLogo : rightTeamLogo) ?? null}
           winnerColor={((ceremonyWinner || roundEnd?.winner) ? ((ceremonyWinner || roundEnd?.winner) === (leftIsBlue ? 'blue' : 'red')) : true) ? leftTeamColor : rightTeamColor}

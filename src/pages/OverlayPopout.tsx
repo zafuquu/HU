@@ -859,8 +859,8 @@ export default function OverlayPopout() {
   // truth) → winner-aware flip from the live side fact → start-side
   // derivation from the round window. NEVER the old "team_0 attacked first"
   // parity guess (inverted for every defense-start player).
-  const roundWinnerSide = winnerSideFromViewer(baseRoundEnd?.winner ?? null, liveViewerSide)
-    ?? (baseRoundEnd as any)?.winnerSide
+  const roundWinnerSide = (baseRoundEnd as any)?.winnerSide
+    ?? winnerSideFromViewer(baseRoundEnd?.winner ?? null, liveViewerSide)
     ?? winnerSideFromStart(baseRoundEnd?.winner ?? null, (snapState as any)?.viewerStartSide, nativeRoundNumber ?? liveRoundNumber)
   const roundWinSide = roundWinnerSide === 'attacker' || roundWinnerSide === 'attack'
     ? 'ATTACKER WIN'

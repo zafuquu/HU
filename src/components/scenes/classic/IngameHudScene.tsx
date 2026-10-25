@@ -1,7 +1,7 @@
 import React from 'react'
 import { resolveAgent } from '../../../data/valAgentMeta'
 import { fitScaleFor, contentWidth, refitAfterFonts } from '../../../lib/autoFit'
-import { agentBust, agentPortrait, BLANK_IMG, isDurationUltAgent } from '../broadcastKit'
+import { agentBust, agentPortrait, BLANK_IMG } from '../broadcastKit'
 
 const CLASSIC_ULT_CSS = `
 @keyframes ultGlowPulse {
@@ -619,7 +619,6 @@ function IngamePlayerCard({
   const ultPoints = ultPointsKnown ? Number(rawUltPoints) : 0
   const ultMax = player.maxUltPoints ?? player.ultMax ?? player.ultimateMax ?? 0
   const ultReady = ultPointsKnown && ultMax > 0 && ultPoints >= ultMax
-  const isDurationUlt = isDurationUltAgent(player)
 
   // Ult active / trigger logic
   const [localUltActive, setLocalUltActive] = React.useState(false)
@@ -638,7 +637,7 @@ function IngamePlayerCard({
   )
 
   const ultTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
-  const triggerUltAnimation = React.useCallback((durationMs = 6500) => {
+  const triggerUltAnimation = React.useCallback((durationMs = 3800) => {
     if (!isAlive) return
     setLocalUltActive(true)
     if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
@@ -667,11 +666,11 @@ function IngamePlayerCard({
       return
     }
     prevUltReadyRef.current = ultReady
-    if (!isDurationUlt && prev === true && !ultReady && ultMax > 0 && isAlive && hadReadyUltRef.current) {
+    if (prev === true && !ultReady && ultMax > 0 && isAlive && hadReadyUltRef.current) {
       triggerUltAnimation()
       hadReadyUltRef.current = false
     }
-  }, [ultReady, ultPointsKnown, ultMax, isDurationUlt, isAlive, triggerUltAnimation])
+  }, [ultReady, ultPointsKnown, ultMax, isAlive, triggerUltAnimation])
 
   const prevUltPointsRef = React.useRef<number | null>(null)
   React.useEffect(() => {
@@ -681,11 +680,11 @@ function IngamePlayerCard({
       return
     }
     prevUltPointsRef.current = ultPoints
-    if (!isDurationUlt && prev != null && prev >= ultMax && ultMax > 0 && ultPoints < prev && isAlive && hadReadyUltRef.current) {
+    if (prev != null && prev >= ultMax && ultMax > 0 && ultPoints < prev && isAlive && hadReadyUltRef.current) {
       triggerUltAnimation()
       hadReadyUltRef.current = false
     }
-  }, [ultPoints, ultPointsKnown, ultMax, isDurationUlt, isAlive, triggerUltAnimation])
+  }, [ultPoints, ultPointsKnown, ultMax, isAlive, triggerUltAnimation])
 
   const rawAbilityX = player?.abilityState?.X ?? player?.abilityState?.x ?? player?.abilityState?.ultimate
   const abilityXReady = rawAbilityX === true || rawAbilityX === 1 || rawAbilityX === '1'
@@ -704,11 +703,11 @@ function IngamePlayerCard({
       return
     }
     prevAbilityXRef.current = abilityXReady
-    if (!isDurationUlt && prev === true && !abilityXReady && isAlive && hadReadyUltRef.current) {
+    if (prev === true && !abilityXReady && isAlive && hadReadyUltRef.current) {
       triggerUltAnimation()
       hadReadyUltRef.current = false
     }
-  }, [abilityXReady, isDurationUlt, isAlive, triggerUltAnimation])
+  }, [abilityXReady, isAlive, triggerUltAnimation])
 
   const currentWeapon = String(player?.weapon || player?.weaponName || '')
   const prevWeaponRef = React.useRef(currentWeapon)
@@ -726,7 +725,7 @@ function IngamePlayerCard({
   const prevUltActiveFlag = React.useRef(false)
   React.useEffect(() => {
     if (isUltActiveFlag && !prevUltActiveFlag.current && isAlive) {
-      triggerUltAnimation(6500)
+      triggerUltAnimation()
     }
     prevUltActiveFlag.current = isUltActiveFlag
     if (!isAlive && localUltActive) {
@@ -740,8 +739,7 @@ function IngamePlayerCard({
   const isUsingUlt = Boolean(
     isAlive && (
       isUsingUltOverride ||
-      localUltActive ||
-      isUltActiveFlag
+      localUltActive
     )
   )
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { agentBust, BLANK_IMG } from '../broadcastKit'
 
 /**
  * GameEventsScene — Version 1 VCT-style animated game event & round-win ceremony.
@@ -66,7 +67,7 @@ export interface Version1RoundCeremonyProps {
   rightColor?: string
   gameEventLogo?: string | null
   tournamentLogo?: string | null
-  clutchHighlight?: any
+  clutchHighlight?: { name: string; agent: string | null; clutchSize?: number | null } | null
   baseColor?: string | null
   accentColor?: string | null
   eventImage?: string | null
@@ -86,10 +87,12 @@ export function Version1RoundCeremony({
   reasonText = 'ROUND WIN',
   roundNumber,
   winSide,
+  winnerFromLeft = true,
   winnerName = 'HAVOC UNLEASH',
   winnerLogo,
   winnerColor = '#28D091',
   tournamentLogo,
+  clutchHighlight,
   baseColor,
   accentColor,
   eventImage,
@@ -138,7 +141,7 @@ export function Version1RoundCeremony({
       ? 'ATK'
       : sideRaw.includes('def')
         ? 'DEF'
-        : (roundNumber && roundNumber >= 13 ? 'ATK' : 'DEF')
+        : null
 
   // Clean event title text
   const cleanTitle = (reasonText || 'ROUND WIN').trim().toUpperCase()
@@ -256,29 +259,56 @@ export function Version1RoundCeremony({
                 animation: !isExiting ? 'v1ContentIn 420ms cubic-bezier(0.16, 1, 0.3, 1) 520ms both' : undefined,
               }}
             >
-              {/* Main Title: ROUND WIN, CLUTCH, ACE, etc. */}
-              <div className="relative flex flex-col items-center justify-center py-4 px-8 text-center">
+              {/* Main event title or winner-side clutch card. */}
+              <div className={`relative flex flex-col items-center justify-center px-8 text-center ${clutchHighlight?.clutchSize ? 'min-h-[112px] py-2' : 'py-4'}`}>
                 {roundNumber != null && (
                   <span className="mb-1 font-baijam text-[10px] font-extrabold uppercase tracking-[0.24em] text-white/50">
                     ROUND {roundNumber}
                   </span>
                 )}
-                <h1
-                  className="font-schabo text-[48px] uppercase tracking-[0.14em] leading-none text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]"
-                  style={{
-                    color: accentColor || '#FFFFFF',
-                    textShadow: `0 0 28px ${(accentColor || winnerColor)}55, 0 4px 12px rgba(0,0,0,0.9)`,
-                  }}
-                >
-                  {cleanTitle}
-                </h1>
+                {clutchHighlight?.clutchSize ? (
+                  <div className={`flex items-center gap-2 ${winnerFromLeft ? '-translate-x-10' : 'translate-x-10'}`}>
+                    {winnerFromLeft && (
+                      <img
+                        src={agentBust({ agent: clutchHighlight.agent }) || BLANK_IMG}
+                        alt=""
+                        className="h-[88px] w-[70px] object-contain object-bottom drop-shadow-[0_0_10px_rgba(0,0,0,0.9)]"
+                        onError={e => { e.currentTarget.style.visibility = 'hidden' }}
+                      />
+                    )}
+                    <div className="flex min-w-[105px] flex-col items-center">
+                      <span className="font-schabo text-[48px] uppercase leading-[0.9] text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]" style={{ color: accentColor || '#FFFFFF', textShadow: `0 0 28px ${(accentColor || winnerColor)}55, 0 4px 12px rgba(0,0,0,0.9)` }}>
+                        1v{clutchHighlight.clutchSize}
+                      </span>
+                      <span className="mt-1 max-w-[180px] truncate font-baijam text-[10px] uppercase tracking-[0.12em] text-white/80">
+                        {clutchHighlight.name}
+                      </span>
+                    </div>
+                    {!winnerFromLeft && (
+                      <img
+                        src={agentBust({ agent: clutchHighlight.agent }) || BLANK_IMG}
+                        alt=""
+                        className="h-[88px] w-[70px] object-contain object-bottom drop-shadow-[0_0_10px_rgba(0,0,0,0.9)]"
+                        onError={e => { e.currentTarget.style.visibility = 'hidden' }}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <h1
+                    className="font-schabo text-[48px] uppercase tracking-[0.14em] leading-none text-white drop-shadow-[0_4px_16px_rgba(0,0,0,0.9)]"
+                    style={{
+                      color: accentColor || '#FFFFFF',
+                      textShadow: `0 0 28px ${(accentColor || winnerColor)}55, 0 4px 12px rgba(0,0,0,0.9)`,
+                    }}
+                  >
+                    {cleanTitle}
+                  </h1>
+                )}
               </div>
 
               {/* Bottom Sub-Bar: DEF / ATK  |  Team Icon/Badge  |  Team Name */}
               <div className="relative flex h-[32px] items-center justify-center gap-3 border-t border-white/10 bg-[#121511]/95 px-6 font-barlowCond">
-                <span className="font-baijam text-[12px] font-extrabold uppercase tracking-[0.18em] text-white/80">
-                  {sideLabel}
-                </span>
+                {sideLabel && <span className="font-baijam text-[12px] font-extrabold uppercase tracking-[0.18em] text-white/80">{sideLabel}</span>}
 
                 {/* Team icon */}
                 {winnerLogo ? (
