@@ -138,7 +138,7 @@ function UltOrb({
   const center = size / 2
   const radius = 11.5
   const step = 360 / ultMax
-  const gap = 16
+  const gap = Math.max(18, Math.min(26, (360 / ultMax) * 0.44))
 
   const describeArc = (startAngle: number, endAngle: number) => {
     const rad = (deg: number) => ((deg - 90) * Math.PI) / 180.0
@@ -167,16 +167,16 @@ function UltOrb({
               d={describeArc(startAngle, endAngle)}
               fill="none"
               stroke={ready ? teamColor : isLit ? '#FFFFFF' : 'rgba(255,255,255,0.22)'}
-              strokeWidth={isLit ? 2.2 : 1.4}
+              strokeWidth={isLit ? 2.4 : 1.5}
               strokeLinecap="butt"
               style={
                 ready
                   ? {
-                      filter: `drop-shadow(0 0 4px ${teamColor}) drop-shadow(0 0 1px #FFFFFF)`,
+                      filter: `drop-shadow(0 0 2px ${teamColor})`,
                     }
                   : isLit
                     ? {
-                        filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.9))',
+                        filter: 'drop-shadow(0 0 1.5px rgba(255,255,255,0.7))',
                       }
                     : undefined
               }
@@ -357,14 +357,14 @@ function KitPanel({
     }
   }, [ultPts, ultMax, alive, isDuration, triggerUltAnimation])
 
-  // Trigger 2: Channeled / summoned ultimate weapons (Chamber Tour De Force, Jett Blade Storm, Neon Overdrive, Raze Showstopper)
+  // Trigger 2: Channeled / summoned ultimate weapons (Chamber Tour De Force, Jett Blade Storm, Neon Overdrive, Raze Showstopper, etc.)
   const currentWeapon = String(player.weapon || player.weaponName || '')
   const prevWeaponRef = React.useRef<string>(currentWeapon)
   React.useEffect(() => {
     const prevW = prevWeaponRef.current
     prevWeaponRef.current = currentWeapon
-    const isUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher|hunter.*fury/i.test(currentWeapon)
-    const wasUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher|hunter.*fury/i.test(prevW)
+    const isUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher|hunter.*fury|viper.*pit|empress|run\s*it\s*back|dimensional\s*drift|kill\s*contract|ability_x|abilityx|ultimate/i.test(currentWeapon)
+    const wasUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher|hunter.*fury|viper.*pit|empress|run\s*it\s*back|dimensional\s*drift|kill\s*contract|ability_x|abilityx|ultimate/i.test(prevW)
     if (isUltW && !wasUltW && alive) {
       triggerUltAnimation()
     }
@@ -372,16 +372,17 @@ function KitPanel({
 
   // Trigger 3: Local player abilityState.X turns from true (ready) to false (cast/spent)
   // NEVER trigger on prev === false && abilityX === true (that is reaching 8 points!)
+  // ONLY for non-duration agents (duration agents keep abilityX true until expiration!)
   const abilityX = Boolean(player.abilityState?.X ?? player.abilityState?.x ?? player.abilityState?.ultimate)
   const prevAbilityX = React.useRef<boolean | null>(null)
   React.useEffect(() => {
     const prev = prevAbilityX.current
     prevAbilityX.current = abilityX
-    if (prev === true && abilityX === false && alive && hadReadyRef.current) {
+    if (!isDuration && prev === true && abilityX === false && alive && hadReadyRef.current) {
       triggerUltAnimation()
       hadReadyRef.current = false
     }
-  }, [abilityX, alive, triggerUltAnimation])
+  }, [abilityX, alive, isDuration, triggerUltAnimation])
 
   // Trigger 4: Explicit active ult flag from telemetry
   const isUltActiveFlag = Boolean(
@@ -481,18 +482,18 @@ function KitPanel({
                 : (isRight ? 'v1UltSlideInRight 260ms cubic-bezier(0.16,1,0.3,1) forwards' : 'v1UltSlideInLeft 260ms cubic-bezier(0.16,1,0.3,1) forwards'),
             }}
           >
-            {/* Stage 2: Large White Ult Icon (matching using ult1.jpg: size ~38px) */}
+            {/* Stage 2: Large White Ult Icon (matching using ult1.jpg: size ~46px) */}
             <div
               className="relative z-10 flex items-center justify-center"
               style={{
-                [isRight ? 'marginRight' : 'marginLeft']: '24px',
-                width: '44px',
+                [isRight ? 'marginRight' : 'marginLeft']: '18px',
+                width: '56px',
               }}
             >
               <img
                 src={abilityImg(player, 'X')}
                 alt="ult"
-                className="size-[38px] object-contain brightness-0 invert drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
+                className="size-[46px] object-contain brightness-0 invert drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
                 style={{
                   animation: isExiting
                     ? undefined
@@ -505,12 +506,12 @@ function KitPanel({
             </div>
           </div>
 
-          {/* Stage 3: Agent Bust portrait overlapping the slant on outer side (shoulder to head framed cleanly) */}
+          {/* Stage 3: Agent Bust portrait overlapping the slant on outer side (shoulder to head framed cleanly, matching using ult1.jpg) */}
           <div
             className="absolute inset-y-0 z-20 overflow-hidden flex items-start justify-center pointer-events-none"
             style={{
-              [isRight ? 'left' : 'right']: 0,
-              width: '140px',
+              [isRight ? 'left' : 'right']: '10px',
+              width: '150px',
               animation: isExiting
                 ? undefined
                 : (isRight ? 'v1UltBustRevealRight 280ms ease-out 180ms both' : 'v1UltBustRevealLeft 280ms ease-out 180ms both'),
@@ -519,14 +520,20 @@ function KitPanel({
             <img
               src={headArt}
               alt=""
-              className="h-[140px] w-auto max-w-none object-cover object-top"
+              className="h-[340px] w-auto max-w-none object-cover"
               style={{
                 transform: isRight ? 'scaleX(-1)' : undefined,
-                marginTop: '-4px',
+                marginTop: '-44px',
               }}
               onError={e => {
                 const el = e.currentTarget as HTMLImageElement
-                if (el.src !== iconArt) el.src = iconArt
+                if (el.src !== iconArt) {
+                  el.src = iconArt
+                  el.style.marginTop = '2px'
+                  el.style.height = '50px'
+                  el.style.width = '50px'
+                  el.style.objectFit = 'contain'
+                }
               }}
             />
           </div>
@@ -537,14 +544,6 @@ function KitPanel({
 
   return (
     <div className="relative" style={{ width: alive ? 300 : 200, opacity: alive ? 1 : 0.6 }}>
-      {/* Spike carrier badge — small white circle on the panel's outer edge (image 1) */}
-      {hasSpike && (
-        <div
-          className={`absolute top-[6px] z-30 grid size-[26px] place-items-center rounded-full bg-white shadow-lg ${isRight ? '-right-[10px]' : '-left-[10px]'}`}
-        >
-          <img src="/game/val/misc/Spike_Icon.svg" alt="spike" className="size-[13px] object-contain" />
-        </div>
-      )}
       {/* Spectated-row eye badge */}
       {isObserved && (
         <div
@@ -583,14 +582,6 @@ function KitPanel({
           >
             {alias}
           </h1>
-          {hasSpike && (
-            <img
-              src="/game/val/misc/Spike_Icon.svg"
-              alt="spike"
-              className="h-[14px] w-auto shrink-0 object-contain drop-shadow-[0_0_6px_#FF3549]"
-              title="Spike Carrier"
-            />
-          )}
           {(showKills || showDeaths || showAssists) && (
             <span className="font-barlowCond text-[11px] font-semibold leading-none tabular-nums text-white/55">
               {[
@@ -601,17 +592,16 @@ function KitPanel({
             </span>
           )}
           <div className={`flex shrink-0 items-center gap-1.5 ${isRight ? 'flex-row-reverse' : ''}`}>
-            {showEco && (
+            {showEco && armor > 0 && (
               <div
                 className="grid size-[21px] place-items-center"
                 style={{
                   clipPath: 'polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)',
-                  background: armor > 0 ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.14)',
+                  background: 'rgba(255,255,255,0.92)',
                 }}
               >
                 <span
-                  className="font-barlowCond text-[10px] font-extrabold leading-none"
-                  style={{ color: armor > 0 ? '#0A0C11' : 'rgba(255,255,255,0.65)' }}
+                  className="font-barlowCond text-[10px] font-extrabold leading-none text-[#0A0C11]"
                 >
                   {armor}
                 </span>
@@ -1151,13 +1141,12 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
     (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('detonat') || spikeState.toLowerCase().includes('explod') || spikeState.toLowerCase().includes('defus')))
   )
   const isSpikeActive = Boolean(
-    !isRoundOver &&
     !isSpikeDetonatedOrDefused &&
     (spikeState === 'planted' ||
       spikeState === 'defusing' ||
       (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('plant') || spikeState.toLowerCase().includes('defus'))))
   )
-  const spikeBlinkOn = useSpikeBlink(spikeState === 'planted' && isSpikeActive)
+  const spikeBlinkOn = useSpikeBlink(Boolean((spikeState === 'planted' || isSpikeActive) && !isSpikeDetonatedOrDefused))
 
   // Clean timer text: never text strings on the timer (no "ROUND WIN", no "SPIKE DETONATED", no "SPIKE DEFUSED")
   const displayTimerText = isRoundOver ? '0:00' : (timerText || '1:40')
@@ -1277,11 +1266,11 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
       <style>{KIT_CSS}</style>
 
       {/* Round ceremony (game events) — Version 1 official VCT banner design (new gameevent.png) */}
-      {(showTeamStats || activeComponentId === 'game-events') && (
+      {!isBuyRound && (showTeamStats || activeComponentId === 'game-events') && (
         <Version1RoundCeremony
           trigger={
             ceremonyTrigger ||
-            (roundEnd?.winner ? 'rd:' + (roundNumber ?? 0) + ':' + roundEnd.winner : (ceremonyPersistent || activeComponentId === 'game-events' ? 'editor-preview' : null))
+            (roundEnd?.winner ? 'rd:' + ((roundEnd as any)?.round ?? roundNumber ?? 0) + ':' + roundEnd.winner : (ceremonyPersistent || activeComponentId === 'game-events' ? 'editor-preview' : null))
           }
           reasonText={ceremonyText || roundEndReasonText || 'ROUND WIN'}
           roundNumber={roundNumber ?? 13}
@@ -1718,7 +1707,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
       )}
 
       {/* Facecam (normal mode) — classic identity/fallback chain, kit position */}
-      {!duelMode && shouldRenderWebcam && (
+      {!duelMode && shouldRenderWebcam && !isBuyRound && (
         <div
           className="clickable-component absolute z-30 flex cursor-pointer flex-col overflow-hidden rounded-sm border border-white/20 bg-black/95 shadow-2xl"
           data-component-id="webcam"

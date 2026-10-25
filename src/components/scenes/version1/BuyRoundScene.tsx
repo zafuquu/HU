@@ -280,7 +280,7 @@ function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
   const center = size / 2
   const radius = 10.5
   const step = 360 / ultMax
-  const gap = 16
+  const gap = Math.max(18, Math.min(26, (360 / ultMax) * 0.44))
 
   const describeArc = (startAngle: number, endAngle: number) => {
     const rad = (deg: number) => ((deg - 90) * Math.PI) / 180.0
@@ -305,13 +305,13 @@ function BuyUlt({ player, teamColor }: { player: any; teamColor: string }) {
               d={describeArc(startAngle, endAngle)}
               fill="none"
               stroke={ready ? teamColor : isLit ? '#FFFFFF' : 'rgba(255,255,255,0.22)'}
-              strokeWidth={isLit ? 2.2 : 1.4}
+              strokeWidth={isLit ? 2.4 : 1.5}
               strokeLinecap="butt"
               style={
                 ready
-                  ? { filter: `drop-shadow(0 0 3px ${teamColor})` }
+                  ? { filter: `drop-shadow(0 0 2px ${teamColor})` }
                   : isLit
-                    ? { filter: 'drop-shadow(0 0 3px rgba(255,255,255,0.8))' }
+                    ? { filter: 'drop-shadow(0 0 1.5px rgba(255,255,255,0.7))' }
                     : undefined
               }
             />

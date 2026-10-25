@@ -841,7 +841,7 @@ export default function OverlayPopout() {
   const ceremonyWinner: 'blue' | 'red' | null =
     hudRoundEnd?.winner ?? (kbFresh ? (kbFresh.team === 'right' ? 'red' : 'blue') : null)
   const ceremonyTrigger = hudRoundEnd
-    ? `rd:${nativeRoundNumber ?? 0}:${hudRoundEnd.winner}`
+    ? `rd:${(hudRoundEnd as any)?.round ?? nativeRoundNumber ?? 0}:${hudRoundEnd.winner}`
     : (kbFresh ? `kb:${kbFresh.at}` : null)
 
   // ====== Game Events / Round Ceremony derived props ======
@@ -886,6 +886,7 @@ export default function OverlayPopout() {
     gamePhase !== 'game_start' &&
     gamePhase !== 'game_end' &&
     sceneKey !== 'post-game' &&
+    sceneKey !== 'buy-round' &&
     !(snapState as any)?.matchEnd &&
     !(snapState as any)?.matchWinner
   // Phantom-camera guard: only treat the configured player as a live publisher
@@ -969,17 +970,44 @@ export default function OverlayPopout() {
     (snapState as any)?.spike === 'defused' ||
     (snapState as any)?.roundEnd?.reason === 'defusion' ||
     (typeof spikeRaw === 'string' && spikeRaw.toLowerCase().includes('defus'))
+  const isPlanted =
+    !isDetonated &&
+    !isDefused &&
+    (
+      spikeRaw === 'planted' ||
+      (typeof spikeRaw === 'string' && spikeRaw.toLowerCase().includes('plant')) ||
+      (typeof spikeRaw === 'object' && spikeRaw?.state === 'planted') ||
+      (snapState as any)?.bombPlanted === true ||
+      (snapState as any)?.isBombPlanted === true ||
+      (snapState as any)?.spike === 'planted' ||
+      (snapState as any)?.round?.spikePlantedAt != null ||
+      (snapState as any)?.spikePlantedAt != null ||
+      (liveScores as any)?.spikePlantedAt != null ||
+      (liveScores as any)?.spike?.planted === true ||
+      Boolean((snapState as any)?.plantSite && (snapState as any)?.plantSite !== 'none')
+    )
+  const isDefusing =
+    !isDetonated &&
+    !isDefused &&
+    (
+      spikeRaw === 'defusing' ||
+      (typeof spikeRaw === 'string' && spikeRaw.toLowerCase().includes('defusing')) ||
+      (typeof spikeRaw === 'object' && spikeRaw?.state === 'defusing') ||
+      (snapState as any)?.spike === 'defusing'
+    )
   const spikeState = (
     isDetonated
       ? 'detonated'
       : isDefused
         ? 'defused'
-        : (
-            (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null)) ||
-            ((snapState as any)?.bombPlanted ? 'planted' : null) ||
-            ((snapState as any)?.spike === 'planted' ? 'planted' : null) ||
-            null
-          )
+        : isDefusing
+          ? 'defusing'
+          : isPlanted
+            ? 'planted'
+            : (
+                (typeof spikeRaw === 'string' ? spikeRaw : (spikeRaw?.state ?? null)) ||
+                null
+              )
   ) as 'none' | 'planted' | 'defusing' | 'detonated' | 'defused' | null
   const spikePlantedAt = (snapState as any)?.round?.spikePlantedAt ?? (snapState as any)?.spikePlantedAt ?? (liveScores as any)?.spikePlantedAt ?? null
 

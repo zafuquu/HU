@@ -82,6 +82,8 @@ export interface Version1RoundCeremonyProps {
   onComplete?: () => void
 }
 
+const globalSeenTriggers = new Set<string>()
+
 /**
  * Dedicated Version 1 Round Ceremony component matching new gameevent.png.
  */
@@ -114,8 +116,9 @@ export function Version1RoundCeremony({
       }
       return
     }
-    if (trigger === seenTrigger.current && !persistent) return
+    if ((trigger === seenTrigger.current || globalSeenTriggers.has(trigger)) && !persistent) return
     seenTrigger.current = trigger
+    globalSeenTriggers.add(trigger)
     setStage('active')
 
     if (persistent) return
