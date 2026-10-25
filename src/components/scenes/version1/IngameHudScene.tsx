@@ -10,8 +10,8 @@ import { EconomyTracker } from '../EconomyTracker'
 import {
   BLANK_IMG,
   abilityImg,
+  agentBust,
   agentIcon,
-  agentMasteryPortrait,
   agentPortrait,
   aliveOf,
   armorOf,
@@ -20,7 +20,6 @@ import {
   getAbilityCurrentCharges,
   hexRgba,
   hpOf,
-  isDurationUltAgent,
   incomeEstimate,
   kdaOf,
   ultMaxOf,
@@ -324,40 +323,51 @@ function KitPanel({
     }
   }, [alive])
 
-  const isDuration = isDurationUltAgent(player)
   const ready = ultReadyOf(player)
+  const rawUltPoints = player.currUltPoints ?? player.ultPoints ?? player.ultimate
+  const ultPointsKnown = rawUltPoints != null && Number.isFinite(Number(rawUltPoints))
   const ultPts = ultPointsOf(player)
   const ultMax = ultMaxOf(player)
 
   // Track if player previously held a full ready ultimate
   const hadReadyRef = React.useRef(false)
   React.useEffect(() => {
-    if (ready || (ultPts != null && ultMax > 0 && ultPts >= ultMax)) {
+    if (ultPointsKnown && (ready || (ultMax > 0 && ultPts >= ultMax))) {
       hadReadyRef.current = true
     }
-  }, [ready, ultPts, ultMax])
+  }, [ultPointsKnown, ready, ultPts, ultMax])
 
-  // Trigger 0: Ult Ready transitions from true to false (consumed ult on cast for instant agents; duration agents handled by Trigger 3/weapon)
+  // A ready-state drop means the ultimate was spent. Do not defer duration
+  // ultimates until their points/weapon return to normal at the end.
   const prevReadyRef = React.useRef<boolean | null>(null)
   React.useEffect(() => {
     const prevReady = prevReadyRef.current
+    if (!ultPointsKnown) {
+      prevReadyRef.current = null
+      return
+    }
     prevReadyRef.current = ready
-    if (!isDuration && prevReady === true && !ready && alive && hadReadyRef.current) {
+    if (prevReady === true && !ready && alive && hadReadyRef.current) {
       triggerUltAnimation()
       hadReadyRef.current = false
     }
-  }, [ready, alive, isDuration, triggerUltAnimation])
+  }, [ready, ultPointsKnown, alive, triggerUltAnimation])
 
-  // Trigger 1: Ult points drop from max/ready (instant cast ult; duration agents only zero at duration end so guarded by !isDuration)
+  // Ult points are also authoritative evidence of a spend when ability charges
+  // are unavailable (for example, on rows other than the local player).
   const prevUltPts = React.useRef<number | null>(null)
   React.useEffect(() => {
     const prev = prevUltPts.current
+    if (!ultPointsKnown) {
+      prevUltPts.current = null
+      return
+    }
     prevUltPts.current = ultPts
-    if (!isDuration && prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive && hadReadyRef.current) {
+    if (prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive && hadReadyRef.current) {
       triggerUltAnimation()
       hadReadyRef.current = false
     }
-  }, [ultPts, ultMax, alive, isDuration, triggerUltAnimation])
+  }, [ultPts, ultMax, ultPointsKnown, alive, triggerUltAnimation])
 
   // Trigger 2: Channeled / summoned ultimate weapons (Chamber Tour De Force, Jett Blade Storm, Neon Overdrive, Raze Showstopper, etc.)
   const currentWeapon = String(player.weapon || player.weaponName || '')
@@ -374,10 +384,22 @@ function KitPanel({
   }, [currentWeapon, alive, triggerUltAnimation])
 
   // Trigger 3: Keypress activation — abilityState.X turns from true (ready) to false (cast/spent) for ALL agents
-  const abilityX = Boolean(player.abilityState?.X ?? player.abilityState?.x ?? player.abilityState?.ultimate)
+  const rawAbilityX = player.abilityState?.X ?? player.abilityState?.x ?? player.abilityState?.ultimate
+  const abilityX = rawAbilityX === true || rawAbilityX === 1 || rawAbilityX === '1'
+    ? true
+    : rawAbilityX === false || rawAbilityX === 0 || rawAbilityX === '0'
+      ? false
+      : null
+  React.useEffect(() => {
+    if (abilityX) hadReadyRef.current = true
+  }, [abilityX])
   const prevAbilityX = React.useRef<boolean | null>(null)
   React.useEffect(() => {
     const prev = prevAbilityX.current
+    if (abilityX === null) {
+      prevAbilityX.current = null
+      return
+    }
     prevAbilityX.current = abilityX
     if (prev === true && abilityX === false && alive && hadReadyRef.current) {
       triggerUltAnimation()
@@ -390,12 +412,20 @@ function KitPanel({
     player.isUsingUlt ||
     player.usingUlt ||
     player.ultActive ||
+    player.activeAbility === 'X' ||
+    player.activeAbility === 'ultimate' ||
     player.ultimate === 'active' ||
     player.abilityState?.ultimate === 'active' ||
+    player.abilityState?.X === 'active' ||
+    player.abilityState?.X === 'using' ||
+    player.abilityState?.X === 'cast' ||
     st?.X === 'active' ||
-    st?.X === 2
+    st?.X === 2 ||
+    st?.X === 3
   )
-  const prevUltActiveFlag = React.useRef(isUltActiveFlag)
+  // Match Classic's first-frame behavior: if the active-use signal arrives
+  // before this player card mounts, treat that initial true as a trigger.
+  const prevUltActiveFlag = React.useRef(false)
   React.useEffect(() => {
     const prev = prevUltActiveFlag.current
     prevUltActiveFlag.current = isUltActiveFlag
@@ -407,8 +437,7 @@ function KitPanel({
   const isUsingUlt = Boolean(
     alive && (
       isUsingUltOverride ||
-      localUltActive ||
-      isUltActiveFlag
+      localUltActive
     )
   )
 
@@ -434,15 +463,17 @@ function KitPanel({
 
   // === "USING ULT" ACTIVE / EXITING STATE (Matches using ult1.jpg: 54px height, team color block, bust portrait) ===
   if (ultStage === 'active' || ultStage === 'exiting') {
-    const headArt = agentMasteryPortrait(player) || agentIcon(player) || agentPortrait(player) || BLANK_IMG
+    // Crop the canonical portrait to the upper-body area used by the Classic card.
+    const headArt = agentPortrait(player) || resolveAgent(player)?.portrait || agentBust(player) || BLANK_IMG
     const iconArt = agentIcon(player) || BLANK_IMG
+    const portraitFallback = agentBust(player) || resolveAgent(player)?.portrait || agentPortrait(player) || iconArt
     const isExiting = ultStage === 'exiting'
     return (
       <div
         className="relative cursor-pointer select-none"
         style={{
           width: 300,
-          animation: isExiting ? 'ultExit 220ms ease-in forwards' : 'ultEnter 260ms cubic-bezier(0.16,1,0.3,1) forwards',
+          animation: isExiting ? 'ultExit 220ms ease-in forwards' : undefined,
         }}
         onClick={handleToggleUlt}
         title="Using Ult (Click to toggle)"
@@ -464,9 +495,12 @@ function KitPanel({
           </div>
         )}
 
-        {/* Panel body matching using ult1.jpg: h-[54px], rounded-[3px], subtle border */}
+        {/* Panel body matching the classic glow and portrait frame. */}
         <div
-          className="relative h-[54px] overflow-hidden rounded-[3px] border border-white/20 bg-[#0A0D12] shadow-lg"
+          className="relative h-[61px] w-full cursor-pointer select-none overflow-hidden rounded-[3px] border-2 border-[#FACC15] bg-[#0A0D12] shadow-[0_0_18px_rgba(250,204,21,0.85),inset_0_0_10px_rgba(250,204,21,0.35)]"
+          style={{
+            animation: isExiting ? 'ultExit 220ms ease-in forwards' : 'ultEnter 260ms cubic-bezier(0.16,1,0.3,1) forwards, ultGlowPulse 1.8s ease-in-out infinite',
+          }}
         >
           {/* Stage 1: Team color block covers ~65% top slanting to ~42% bottom */}
           <div
@@ -476,29 +510,29 @@ function KitPanel({
               width: '100%',
               background: teamColor,
               clipPath: isRight
-                ? 'polygon(35% 0%, 100% 0%, 100% 100%, 58% 100%)'
-                : 'polygon(0% 0%, 65% 0%, 42% 100%, 0% 100%)',
+                ? 'polygon(25% 0%, 100% 0%, 100% 100%, 52% 100%)'
+                : 'polygon(0% 0%, 75% 0%, 48% 100%, 0% 100%)',
               animation: isExiting
                 ? (isRight ? 'v1UltSlideOutRight 200ms ease-in forwards' : 'v1UltSlideOutLeft 200ms ease-in forwards')
-                : (isRight ? 'v1UltSlideInRight 260ms cubic-bezier(0.16,1,0.3,1) forwards' : 'v1UltSlideInLeft 260ms cubic-bezier(0.16,1,0.3,1) forwards'),
+                : (isRight ? 'v1UltSlideInRight 280ms cubic-bezier(0.16,1,0.3,1) forwards' : 'v1UltSlideInLeft 280ms cubic-bezier(0.16,1,0.3,1) forwards'),
             }}
           >
             {/* Stage 2: Large White Ult Icon (matching using ult1.jpg: size ~46px) */}
             <div
               className="relative z-10 flex items-center justify-center"
               style={{
-                [isRight ? 'marginRight' : 'marginLeft']: '18px',
+                [isRight ? 'marginRight' : 'marginLeft']: '24px',
                 width: '56px',
               }}
             >
               <img
                 src={abilityImg(player, 'X')}
                 alt="ult"
-                className="size-[46px] object-contain brightness-0 invert drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
+                className="size-[44px] object-contain brightness-0 invert drop-shadow-[0_2px_12px_rgba(0,0,0,0.85)]"
                 style={{
                   animation: isExiting
                     ? undefined
-                    : 'v1UltIconReveal 260ms cubic-bezier(0.16,1,0.3,1) 120ms both',
+                    : 'v1UltIconReveal 300ms cubic-bezier(0.16,1,0.3,1) 160ms both, ultIconPulse 1.8s ease-in-out 460ms infinite',
                 }}
                 onError={e => {
                   ;(e.currentTarget as HTMLImageElement).style.visibility = 'hidden'
@@ -507,33 +541,40 @@ function KitPanel({
             </div>
           </div>
 
-          {/* Stage 3: Agent Bust portrait overlapping the slant on outer side (shoulder to head framed cleanly, matching using ult1.jpg) */}
+          {/* Stage 3: Agent bust portrait, layered and cropped like the classic HUD. */}
           <div
-            className="absolute inset-y-0 z-20 overflow-hidden flex items-start justify-center pointer-events-none"
+            className="absolute inset-y-0 z-20 overflow-hidden pointer-events-none"
             style={{
-              [isRight ? 'left' : 'right']: '10px',
-              width: '140px',
+              [isRight ? 'left' : 'right']: 0,
+              width: '60%',
               animation: isExiting
                 ? undefined
-                : (isRight ? 'v1UltBustRevealRight 280ms ease-out 180ms both' : 'v1UltBustRevealLeft 280ms ease-out 180ms both'),
+                : (isRight ? 'v1UltBustRevealRight 300ms ease-out 260ms both' : 'v1UltBustRevealLeft 300ms ease-out 260ms both'),
             }}
           >
             <img
               src={headArt}
-              alt=""
-              className="h-[250px] w-auto max-w-none object-contain"
+              alt="agent portrait"
+              className="size-full object-cover object-[center_18%]"
               style={{
                 transform: isRight ? 'scaleX(-1)' : undefined,
-                marginTop: '-18px',
               }}
               onError={e => {
-                const el = e.currentTarget as HTMLImageElement
-                if (el.src !== iconArt) {
-                  el.src = iconArt
-                  el.style.marginTop = '0px'
-                  el.style.height = '54px'
-                  el.style.width = '54px'
-                  el.style.objectFit = 'cover'
+                const image = e.currentTarget as HTMLImageElement
+                const fallbackSources = [portraitFallback, iconArt, BLANK_IMG]
+                let fallbackIndex = Number(image.dataset.fallbackIndex || '0')
+                while (
+                  fallbackIndex < fallbackSources.length &&
+                  image.src === new URL(fallbackSources[fallbackIndex], window.location.href).href
+                ) {
+                  fallbackIndex += 1
+                }
+                const nextSource = fallbackSources[fallbackIndex]
+                if (nextSource) {
+                  image.dataset.fallbackIndex = String(fallbackIndex + 1)
+                  image.style.objectFit = nextSource === iconArt ? 'contain' : 'cover'
+                  image.style.padding = nextSource === iconArt ? '8px' : '0'
+                  image.src = nextSource
                 }
               }}
             />
@@ -853,12 +894,11 @@ export function Scorebug(props: ScorebugProps) {
                     filter: 'drop-shadow(0 0 12px #FF3549)',
                   }}
                 />
-              ) : (spikeActive || spikeState === 'planted' || spikeState === 'defusing') ? (
-                // Planted: red pulsing spike icon
+              ) : spikeActive ? (
                 <img
                   src="/game/val/misc/Spike_Icon.svg"
                   alt="spike"
-                  className="h-[36px] w-auto object-contain transition-opacity duration-150 animate-[kitBlink_0.8s_ease-in-out_infinite]"
+                  className="h-[36px] w-auto object-contain transition-opacity duration-150"
                   style={{
                     filter: 'drop-shadow(0 0 12px #FF3549)',
                     opacity: spikeBlinkOn ? 1 : 0.25,
@@ -1040,7 +1080,6 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
     spectating = false,
     spikeSite: _spikeSite = null,
     spikeState = null,
-    spikePlantedAt: _spikePlantedAt = null,
     eventsBg,
     eventsHighlight,
     gameEventsIndividual = false,
@@ -1171,12 +1210,13 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
     (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('detonat') || spikeState.toLowerCase().includes('explod') || spikeState.toLowerCase().includes('defus')))
   )
   const isSpikeActive = Boolean(
+    !isRoundOver &&
     !isSpikeDetonatedOrDefused &&
     (spikeState === 'planted' ||
       spikeState === 'defusing' ||
       (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('plant') || spikeState.toLowerCase().includes('defus'))))
   )
-  const spikeBlinkOn = useSpikeBlink(Boolean((spikeState === 'planted' || isSpikeActive) && !isSpikeDetonatedOrDefused))
+  const spikeBlinkOn = useSpikeBlink(Boolean(isSpikeActive && (spikeState === 'planted' || spikeState === 'defusing')))
 
   // Clean timer text: never text strings on the timer (no "ROUND WIN", no "SPIKE DETONATED", no "SPIKE DEFUSED")
   const displayTimerText = isBuyRound ? '' : isRoundOver ? '0:00' : (timerText || '')

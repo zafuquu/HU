@@ -614,31 +614,107 @@ function IngamePlayerCard({
   const shieldSrc = isAlive ? getShieldImg(player) : null
   const weaponSrc = getWeaponImg(player.weapon || player.weaponName)
   // Ult points: the desktop publishes ultPoints/ultMax (GEP scoreboard).
-  const ultPoints = player.currUltPoints ?? player.ultPoints ?? player.ultimate ?? 0
+  const rawUltPoints = player.currUltPoints ?? player.ultPoints ?? player.ultimate
+  const ultPointsKnown = rawUltPoints != null && Number.isFinite(Number(rawUltPoints))
+  const ultPoints = ultPointsKnown ? Number(rawUltPoints) : 0
   const ultMax = player.maxUltPoints ?? player.ultMax ?? player.ultimateMax ?? 0
-  const ultReady = ultMax > 0 && ultPoints >= ultMax
+  const ultReady = ultPointsKnown && ultMax > 0 && ultPoints >= ultMax
 
   // Ult active / trigger logic
   const [localUltActive, setLocalUltActive] = React.useState(false)
   const isUltActiveFlag = Boolean(
     player?.isUsingUlt ||
     player?.abilityState?.X === 'active' ||
-    player?.abilityState?.X === true ||
     player?.abilityState?.ultimate === 'active' ||
-    player?.abilityState?.ultimate === true ||
     player?.activeAbility === 'X' ||
     player?.activeAbility === 'ultimate'
   )
 
   const ultTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const triggerUltAnimation = React.useCallback((durationMs = 6500) => {
+    if (!isAlive) return
     setLocalUltActive(true)
     if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
     ultTimerRef.current = setTimeout(() => {
       setLocalUltActive(false)
       ultTimerRef.current = null
     }, durationMs)
+  }, [isAlive])
+
+  React.useEffect(() => () => {
+    if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
   }, [])
+
+  // GEP ability state is charge availability, not an active-use flag. Detect
+  // the spend transition and start the animation at that point for all agents.
+  const hadReadyUltRef = React.useRef(false)
+  React.useEffect(() => {
+    if (ultPointsKnown && ultReady) hadReadyUltRef.current = true
+  }, [ultPointsKnown, ultReady])
+
+  const prevUltReadyRef = React.useRef<boolean | null>(null)
+  React.useEffect(() => {
+    const prev = prevUltReadyRef.current
+    if (!ultPointsKnown) {
+      prevUltReadyRef.current = null
+      return
+    }
+    prevUltReadyRef.current = ultReady
+    if (prev === true && !ultReady && ultMax > 0 && isAlive && hadReadyUltRef.current) {
+      triggerUltAnimation()
+      hadReadyUltRef.current = false
+    }
+  }, [ultReady, ultPointsKnown, ultMax, isAlive, triggerUltAnimation])
+
+  const prevUltPointsRef = React.useRef<number | null>(null)
+  React.useEffect(() => {
+    const prev = prevUltPointsRef.current
+    if (!ultPointsKnown) {
+      prevUltPointsRef.current = null
+      return
+    }
+    prevUltPointsRef.current = ultPoints
+    if (prev != null && prev >= ultMax && ultMax > 0 && ultPoints < prev && isAlive && hadReadyUltRef.current) {
+      triggerUltAnimation()
+      hadReadyUltRef.current = false
+    }
+  }, [ultPoints, ultPointsKnown, ultMax, isAlive, triggerUltAnimation])
+
+  const rawAbilityX = player?.abilityState?.X ?? player?.abilityState?.x ?? player?.abilityState?.ultimate
+  const abilityXReady = rawAbilityX === true || rawAbilityX === 1 || rawAbilityX === '1'
+    ? true
+    : rawAbilityX === false || rawAbilityX === 0 || rawAbilityX === '0'
+      ? false
+      : null
+  React.useEffect(() => {
+    if (abilityXReady) hadReadyUltRef.current = true
+  }, [abilityXReady])
+  const prevAbilityXRef = React.useRef<boolean | null>(null)
+  React.useEffect(() => {
+    const prev = prevAbilityXRef.current
+    if (abilityXReady === null) {
+      prevAbilityXRef.current = null
+      return
+    }
+    prevAbilityXRef.current = abilityXReady
+    if (prev === true && !abilityXReady && isAlive && hadReadyUltRef.current) {
+      triggerUltAnimation()
+      hadReadyUltRef.current = false
+    }
+  }, [abilityXReady, isAlive, triggerUltAnimation])
+
+  const currentWeapon = String(player?.weapon || player?.weaponName || '')
+  const prevWeaponRef = React.useRef(currentWeapon)
+  React.useEffect(() => {
+    const prev = prevWeaponRef.current
+    prevWeaponRef.current = currentWeapon
+    const isUltWeapon = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher|hunter.*fury|viper.*pit|empress|run\s*it\s*back|dimensional\s*drift|kill\s*contract|ability_x|abilityx|ultimate/i.test(currentWeapon)
+    const wasUltWeapon = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher|hunter.*fury|viper.*pit|empress|run\s*it\s*back|dimensional\s*drift|kill\s*contract|ability_x|abilityx|ultimate/i.test(prev)
+    if (isUltWeapon && !wasUltWeapon && isAlive) {
+      triggerUltAnimation()
+      hadReadyUltRef.current = false
+    }
+  }, [currentWeapon, isAlive, triggerUltAnimation])
 
   const prevUltActiveFlag = React.useRef(false)
   React.useEffect(() => {
@@ -648,7 +724,9 @@ function IngamePlayerCard({
     prevUltActiveFlag.current = isUltActiveFlag
     if (!isAlive && localUltActive) {
       if (ultTimerRef.current) clearTimeout(ultTimerRef.current)
+      ultTimerRef.current = null
       setLocalUltActive(false)
+      hadReadyUltRef.current = false
     }
   }, [isUltActiveFlag, isAlive, triggerUltAnimation, localUltActive])
 
@@ -682,7 +760,8 @@ function IngamePlayerCard({
 
   // === "USING ULT" CARD FOR CLASSIC BROADCAST KIT ===
   if (ultStage === 'active' || ultStage === 'exiting') {
-    const headArt = agentBust(player) || agentPortrait(player) || resolveAgent(player)?.portrait || BLANK_IMG
+    const headArt = agentPortrait(player) || resolveAgent(player)?.portrait || agentBust(player) || BLANK_IMG
+    const portraitFallback = agentBust(player) || resolveAgent(player)?.portrait || agentPortrait(player) || agentIcon
     const isExiting = ultStage === 'exiting'
     const hasSpike = Boolean(player?.hasSpike)
     return (
@@ -764,9 +843,9 @@ function IngamePlayerCard({
               </div>
             </div>
 
-            {/* Agent Bust Portrait Crop */}
+            {/* Agent Portrait Crop: keep the face above the color wedge. */}
             <div
-              className="absolute inset-y-0 z-0 overflow-hidden"
+              className="absolute inset-y-0 z-20 overflow-hidden pointer-events-none"
               style={{
                 [isRight ? 'left' : 'right']: 0,
                 width: '60%',
@@ -777,14 +856,28 @@ function IngamePlayerCard({
             >
               <img
                 src={headArt}
-                alt=""
-                className="absolute top-[-10px] h-[220px] w-auto max-w-none object-contain"
+                alt="agent portrait"
+                className="size-full object-cover object-[center_18%]"
                 style={{
-                  [isRight ? 'left' : 'right']: '-15px',
                   transform: isRight ? 'scaleX(-1)' : undefined,
                 }}
                 onError={e => {
-                  ;(e.currentTarget as HTMLImageElement).src = agentIcon
+                  const image = e.currentTarget as HTMLImageElement
+                  const fallbacks = [portraitFallback, agentIcon, BLANK_IMG]
+                  let fallbackIndex = Number(image.dataset.fallbackIndex || '0')
+                  while (
+                    fallbackIndex < fallbacks.length &&
+                    image.src === new URL(fallbacks[fallbackIndex], window.location.href).href
+                  ) {
+                    fallbackIndex += 1
+                  }
+                  const fallback = fallbacks[fallbackIndex]
+                  if (fallback) {
+                    image.dataset.fallbackIndex = String(fallbackIndex + 1)
+                    image.style.objectFit = fallback === agentIcon ? 'contain' : 'cover'
+                    image.style.padding = fallback === agentIcon ? '8px' : '0'
+                    image.src = fallback
+                  }
                 }}
               />
             </div>
@@ -1091,7 +1184,6 @@ export function IngameHudScene(props: IngameHudSceneProps) {
     spectating = false,
     spikeSite = null,
     spikeState = null,
-    spikePlantedAt = null,
     eventsBg,
     eventsHighlight,
     gameEventsIndividual = false,
@@ -1179,19 +1271,6 @@ export function IngameHudScene(props: IngameHudSceneProps) {
       (typeof spikeState === 'string' && (spikeState.toLowerCase().includes('plant') || spikeState.toLowerCase().includes('defus'))))
   )
   const spikeBlinkOn = useSpikeBlink(spikeState === 'planted' && isSpikeActive)
-  // Spike 45s detonation countdown (VS spike-planted parity): while planted,
-  // the timer slot shows the ticking spike clock instead of the round clock.
-  const [spikeNow, setSpikeNow] = React.useState(Date.now())
-  React.useEffect(() => {
-    if (!isSpikeActive || spikeState !== 'planted' || !spikePlantedAt) return
-    setSpikeNow(Date.now())
-    const t = setInterval(() => setSpikeNow(Date.now()), 200)
-    return () => clearInterval(t)
-  }, [isSpikeActive, spikeState, spikePlantedAt])
-  const spikeRemainingSec = (() => {
-    if (!isSpikeActive || spikeState !== 'planted' || !spikePlantedAt) return null
-    return Math.max(0, 45 - Math.floor((spikeNow - Number(spikePlantedAt)) / 1000))
-  })()
   // Endround: keep the plain clock in the timer slot (the banner tells the
   // story — no ELIMINATED/SPIKE DETONATED words crowding the scoreline).
   const displayTimerText = isRoundOver
@@ -1201,9 +1280,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
       : isSpikeActive
         ? (spikeState === 'defusing'
             ? 'DEFUSING'
-            : spikeRemainingSec != null
-              ? `${Math.floor(spikeRemainingSec / 60)}:${String(spikeRemainingSec % 60).padStart(2, '0')}`
-              : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
+            : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
         : timerText
   const displayTimerColor = isSpikeActive || isSpikeDetonatedOrDefused ? '#FF3549' : timerColor
 
@@ -1404,10 +1481,21 @@ export function IngameHudScene(props: IngameHudSceneProps) {
                     {showBombTimer && (
                       <div className={scoreLineSmall ? 'flex h-full w-[100px] shrink-0 items-center justify-center tabular-nums' : ''}>
                       <h1 className="translate-y-1 flex items-center gap-2 text-[40px]" style={{ color: displayTimerColor }}>
-                        {isSpikeActive && spikeState === 'planted' ? (
-                          // Planted: pulsing red spike icon ONLY — no 45s countdown
-                          // (operator request, live 2026-10-18). Blink rate still
-                          // accelerates as detonation approaches.
+                        {spikeState === 'detonated' || roundEnd?.reason === 'detonation' ? (
+                          <img
+                            src="/game/val/misc/Spike_Icon.svg"
+                            alt="spike detonated"
+                            className="h-[36px] w-auto object-contain"
+                            style={{ filter: 'drop-shadow(0 0 12px #FF3549)' }}
+                          />
+                        ) : spikeState === 'defused' || roundEnd?.reason === 'defusion' ? (
+                          <img
+                            src="/game/val/misc/Spike_Icon.svg"
+                            alt="spike defused"
+                            className="h-[36px] w-auto object-contain brightness-0 invert"
+                            style={{ filter: 'drop-shadow(0 0 10px rgba(255,255,255,0.95))' }}
+                          />
+                        ) : isSpikeActive && spikeState === 'planted' ? (
                           <img
                             src="/game/val/misc/Spike_Icon.svg"
                             alt="spike"
