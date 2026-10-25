@@ -416,7 +416,9 @@ function KitPanel({
     player.activeAbility === 'ultimate' ||
     player.ultimate === 'active' ||
     player.abilityState?.ultimate === 'active' ||
+    player.abilityState?.ultimate === true ||
     player.abilityState?.X === 'active' ||
+    player.abilityState?.X === true ||
     player.abilityState?.X === 'using' ||
     player.abilityState?.X === 'cast' ||
     st?.X === 'active' ||
@@ -555,7 +557,7 @@ function KitPanel({
             <img
               src={headArt}
               alt="agent portrait"
-              className="size-full object-cover object-[center_18%]"
+              className="size-full object-cover object-top"
               style={{
                 transform: isRight ? 'scaleX(-1)' : undefined,
               }}

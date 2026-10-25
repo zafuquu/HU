@@ -625,7 +625,9 @@ function IngamePlayerCard({
   const isUltActiveFlag = Boolean(
     player?.isUsingUlt ||
     player?.abilityState?.X === 'active' ||
+    player?.abilityState?.X === true ||
     player?.abilityState?.ultimate === 'active' ||
+    player?.abilityState?.ultimate === true ||
     player?.activeAbility === 'X' ||
     player?.activeAbility === 'ultimate'
   )
@@ -857,7 +859,7 @@ function IngamePlayerCard({
               <img
                 src={headArt}
                 alt="agent portrait"
-                className="size-full object-cover object-[center_18%]"
+                className="size-full object-cover object-top"
                 style={{
                   transform: isRight ? 'scaleX(-1)' : undefined,
                 }}
@@ -1273,15 +1275,7 @@ export function IngameHudScene(props: IngameHudSceneProps) {
   const spikeBlinkOn = useSpikeBlink(spikeState === 'planted' && isSpikeActive)
   // Endround: keep the plain clock in the timer slot (the banner tells the
   // story — no ELIMINATED/SPIKE DETONATED words crowding the scoreline).
-  const displayTimerText = isRoundOver
-    ? (roundEndReasonText || '0:00')
-    : isSpikeDetonatedOrDefused
-      ? (spikeState === 'defused' ? 'DEFUSED' : 'DETONATED')
-      : isSpikeActive
-        ? (spikeState === 'defusing'
-            ? 'DEFUSING'
-            : (spikeSite ? `SITE ${spikeSite}` : 'SPIKE'))
-        : timerText
+  const displayTimerText = isRoundOver ? '0:00' : timerText
   const displayTimerColor = isSpikeActive || isSpikeDetonatedOrDefused ? '#FF3549' : timerColor
 
   const showScoreLine = isToggled('score-line')

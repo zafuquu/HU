@@ -144,6 +144,18 @@ export default function OverlayPopout() {
     : livePhase === 'shopping' ? 'buy-round'
     : livePhase === 'game_start' ? 'agent-select'
     : null
+  // A post-game result is terminal for this match. Providers can briefly emit
+  // stale buy/combat frames while the next session initializes; do not let
+  // those transient frames bounce the OBS source away from post-game.
+  const matchSceneState = (liveScores?.snapshot?.state || liveScores?.snapshot || {}) as any
+  const completedMatchSceneRef = useRef(false)
+  const hasFreshAgentSelect = livePhase === 'game_start' || liveScene === 'agent-select'
+  const hasTerminalMatchEvidence = livePhase === 'game_end' ||
+    liveScene === 'post-game' ||
+    matchSceneState.matchEnd === true ||
+    matchSceneState.matchWinner != null
+  if (hasFreshAgentSelect) completedMatchSceneRef.current = false
+  else if (hasTerminalMatchEvidence) completedMatchSceneRef.current = true
   // Map Veto persistence (production operator requirement): when the browser
   // source IS the veto scene, the veto sequence completing must NEVER auto-
   // advance — hold Map Veto until genuine agent-select evidence arrives or
@@ -156,6 +168,7 @@ export default function OverlayPopout() {
     if (isVetoSource) {
       return (livePhase === 'game_start' || liveScene === 'agent-select') ? 'agent-select' : 'map-ban'
     }
+    if (completedMatchSceneRef.current) return 'post-game'
     if (liveScene && ['agent-select', 'buy-round', 'ingame-hud', 'post-game', 'map-interstitial'].includes(String(liveScene))) return String(liveScene)
     // Prefer the desktop's stabilized scene when available. Derive from phase
     // only for producers that do not publish an explicit scene.
