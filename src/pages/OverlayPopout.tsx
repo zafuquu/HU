@@ -156,41 +156,47 @@ export default function OverlayPopout() {
     if (isVetoSource) {
       return (livePhase === 'game_start' || liveScene === 'agent-select') ? 'agent-select' : 'map-ban'
     }
-    if (phaseDerivedScene) return phaseDerivedScene
     if (liveScene && ['agent-select', 'buy-round', 'ingame-hud', 'post-game', 'map-interstitial'].includes(String(liveScene))) return String(liveScene)
+    // Prefer the desktop's stabilized scene when available. Derive from phase
+    // only for producers that do not publish an explicit scene.
+    if (phaseDerivedScene) return phaseDerivedScene
     return 'ingame-hud'
   })()
   const [scale, setScale] = useState(1)
-  // Professional scene cross-fade transitions — guard against initial mount flicker
+  // Shared by source selection and the transparent-until-live-data gate below.
   const hasEverHadDataRef = useRef(false)
+  const hasLiveSnapshot = Boolean(liveScores?.snapshot)
+  const lastTransitionSceneRef = useRef<string | null>(null)
+  const sceneTransitionsReadyAtRef = useRef<number | null>(null)
+  const [transitioningSceneKey, setTransitioningSceneKey] = useState<string | null>(null)
+  const sceneTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const animateCurrentScene = transitioningSceneKey === sceneKey || (
+    hasLiveSnapshot && lastTransitionSceneRef.current !== null && lastTransitionSceneRef.current !== sceneKey
+  )
   useEffect(() => {
-    if (liveScores) {
-      hasEverHadDataRef.current = true
-    }
-  }, [liveScores])
-
-  const prevSceneKeyRef = useRef<string | null>(null)
-  const [sceneTransitioning, setSceneTransitioning] = useState(false)
-  const sceneTransitionRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => {
-    if (prevSceneKeyRef.current === null) {
-      prevSceneKeyRef.current = sceneKey
+    if (!hasLiveSnapshot) return
+    const previous = lastTransitionSceneRef.current
+    if (previous === null) {
+      // First data frame sets the baseline without animating the OBS source in.
+      lastTransitionSceneRef.current = sceneKey
+      sceneTransitionsReadyAtRef.current = Date.now() + 900
       return
     }
-    if (sceneKey !== prevSceneKeyRef.current) {
-      const prev = prevSceneKeyRef.current
-      prevSceneKeyRef.current = sceneKey
-      const isV1HudBuyToggle = kit === 'version1' &&
-        (prev === 'ingame-hud' || prev === 'buy-round' || prev === 'default') &&
-        (sceneKey === 'ingame-hud' || sceneKey === 'buy-round' || sceneKey === 'default')
-      // Only run visual transition if we had prior data (avoid cold-mount flash)
-      if (hasEverHadDataRef.current && !isV1HudBuyToggle) {
-        setSceneTransitioning(true)
-        if (sceneTransitionRef.current) clearTimeout(sceneTransitionRef.current)
-        sceneTransitionRef.current = setTimeout(() => setSceneTransitioning(false), 300)
-      }
-    }
-  }, [sceneKey, kit])
+    if (previous === sceneKey) return
+    lastTransitionSceneRef.current = sceneKey
+    // Give the initial stream a moment to hydrate phase and scene fields before
+    // enabling transitions, so startup data settling is not shown as a scene cut.
+    if (sceneTransitionsReadyAtRef.current !== null && Date.now() < sceneTransitionsReadyAtRef.current) return
+    setTransitioningSceneKey(sceneKey)
+    if (sceneTransitionTimerRef.current) clearTimeout(sceneTransitionTimerRef.current)
+    sceneTransitionTimerRef.current = setTimeout(() => {
+      setTransitioningSceneKey(current => current === sceneKey ? null : current)
+      sceneTransitionTimerRef.current = null
+    }, 300)
+  }, [hasLiveSnapshot, sceneKey])
+  useEffect(() => () => {
+    if (sceneTransitionTimerRef.current) clearTimeout(sceneTransitionTimerRef.current)
+  }, [])
   // Sponsor cycler: rotate through the tournament's sponsors every 8s
   // (ValoSpectra sponsor-cycle parity). Logos are 1:1 square; backdrops 875x200.
   const sponsorList = (state.sponsors || []).map((s: any) => s?.imageUrl).filter((u: any): u is string => !!u)
@@ -622,6 +628,12 @@ export default function OverlayPopout() {
       alias: p.name || p.alias || p.agentName || `Player ${idx + 1}`,
       agentKey: p.agentKey ?? null,
       abilityState: p.abilityState ?? null,
+      // Preserve explicit cast/use telemetry when a producer supplies it; the
+      // GEP charge/points fields alone cannot time a duration ult's activation.
+      isUsingUlt: p.isUsingUlt ?? null,
+      usingUlt: p.usingUlt ?? null,
+      ultActive: p.ultActive ?? null,
+      activeAbility: p.activeAbility ?? null,
       riotId: p.tagline || '',
       agentName: p.agentName || p.character || p.agent || null,
       agent: p.agentName || p.character || p.agent || null,
@@ -641,8 +653,8 @@ export default function OverlayPopout() {
       spentCredits: p.spentCredits ?? p.spent ?? p.loadoutValue ?? null,
       weaponName: p.weaponName || p.scoreboardWeaponInternal || p.weapon || null,
       shieldType: p.shieldType,
-      currUltPoints: p.currUltPoints ?? p.ultPoints ?? p.ultimate ?? 0,
-      ultPoints: p.ultPoints ?? p.currUltPoints ?? p.ultimate ?? 0,
+      currUltPoints: p.currUltPoints ?? p.ultPoints ?? p.ultimate ?? null,
+      ultPoints: p.ultPoints ?? p.currUltPoints ?? p.ultimate ?? null,
       shield: liveArmor,
       maxUltPoints: Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p),
       hasSpike: Boolean(p.hasSpike),
@@ -659,7 +671,7 @@ export default function OverlayPopout() {
       score: p.score ?? null,
       // No fake weapon fallback — blank until GEP reports the real carried gun.
       weapon: p.weapon ?? p.weaponName ?? null,
-      ultimate: p.ultimate ?? p.currUltPoints ?? p.ultPoints ?? 0,
+      ultimate: p.ultimate ?? p.currUltPoints ?? p.ultPoints ?? null,
       ultimateMax: Number(p.ultimateMax ?? p.maxUltPoints ?? p.ultMax) || getAgentUltMax(p),
       isUltReady: p.isUltReady ?? ((p.currUltPoints ?? p.ultPoints ?? 0) >= (Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p)) && (Number(p.maxUltPoints ?? p.ultMax ?? p.ultimateMax) || getAgentUltMax(p)) > 0),
       abilities: p.abilities ?? [],
@@ -1051,8 +1063,8 @@ export default function OverlayPopout() {
   const PrimaryAgentSelect = kit === 'version1' ? Version1AgentSelectScene : AgentSelectScene
   return (
     <div data-source-of-truth={sourceOfTruth ?? ''} style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: 'transparent' }}>
-      {/* Scene-change cross-fade — must live OUTSIDE any conditional render */ }
-      <style>{`.scene-stage { position: relative; width: 1920px; height: 1080px; } .scene-wrap { position: absolute; inset: 0; opacity: 1; transition: opacity 350ms ease, transform 350ms ease; will-change: opacity; } .scene-wrap.scene-exit { opacity: 0; transform: translateY(8px); }`}</style>
+      {/* Scene transitions animate new scenes only; first live data is a direct paint. */}
+      <style>{`@keyframes huSceneEnter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } } .scene-stage { position: relative; width: 1920px; height: 1080px; } .scene-wrap { position: absolute; inset: 0; } .scene-wrap.scene-enter { animation: huSceneEnter 280ms cubic-bezier(0.2,0.7,0.2,1) both; }`}</style>
       {/* Spectator badge: shown while the desktop reports an observing role */}
       {spectating && (
         <div style={{
@@ -1093,7 +1105,10 @@ export default function OverlayPopout() {
         {(() => {
           const isV1Match = kit === 'version1' && (sceneKey === 'ingame-hud' || sceneKey === 'buy-round' || sceneKey === 'default')
           return (
-            <div key={isV1Match ? 'v1-match' : sceneKey} className={`scene-wrap ${sceneTransitioning ? 'scene-exit' : ''}`}>
+            <div
+              key={isV1Match ? 'v1-match' : sceneKey}
+              className={`scene-wrap${animateCurrentScene ? ' scene-enter' : ''}`}
+            >
               {isV1Match && (
                 <PrimaryHud
                   activeScene={sceneKey === 'buy-round' ? 'buy-round' : 'ingame-hud'}
