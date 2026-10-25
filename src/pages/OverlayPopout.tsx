@@ -587,6 +587,7 @@ export default function OverlayPopout() {
   const timerRoundRef = useRef<number | null>(null)
   const timerHoldUntilRef = useRef(0)
   const timerText = (function () {
+    if (livePhase === 'shopping' || sceneKey === 'buy-round') return ''
     // Round-clock hold: when the round number changes, the previous round's
     // last timer value may still be in flight — suppress the clock for 2s so
     // round 1 never shows a stale/unsynced time.
@@ -605,7 +606,7 @@ export default function OverlayPopout() {
   const snapPlayers = Array.isArray(snapState?.players) ? snapState.players : null
   // Buy phase: everyone is alive by definition — stale death evidence that
   // trails the round reset must never grey out the freshly mounted cards.
-  const snapShopping = (snapState as any)?.roundPhase === 'shopping'
+  const snapShopping = livePhase === 'shopping' || sceneKey === 'buy-round' || (snapState as any)?.roundPhase === 'shopping'
   const mapLivePlayers = (arr: any[]) => arr.map((p: any, idx: number) => {
     // Pistol rounds (1, 13, 25): 800 starting credits make heavy shield impossible, clamp to 0.
     const roundNow = Number((snapState as any)?.roundNumber ?? scores?.roundNumber ?? 0)
@@ -1096,6 +1097,7 @@ export default function OverlayPopout() {
               {isV1Match && (
                 <PrimaryHud
                   activeScene={sceneKey === 'buy-round' ? 'buy-round' : 'ingame-hud'}
+                  roundPhase={livePhase}
                   economy={liveEconomy}
                   roundHistory={hudRoundHistory}
                   leftTeamName={hudLeftName}
@@ -1144,6 +1146,7 @@ export default function OverlayPopout() {
               )}
               {!isV1Match && (sceneKey === 'default' || sceneKey === 'ingame-hud') && (
                 <PrimaryHud
+                  roundPhase={livePhase}
                   leftTeamName={hudLeftName}
                   rightTeamName={hudRightName}
                   leftTeamSeed={hudLeftSeed}

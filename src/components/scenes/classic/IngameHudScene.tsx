@@ -139,6 +139,10 @@ export interface IngameHudSceneProps {
   spikeSite?: string | null
   spikeState?: 'none' | 'planted' | 'defusing' | 'detonated' | 'defused' | null
   spikePlantedAt?: number | null
+  roundPhase?: string | null
+  activeScene?: 'ingame-hud' | 'buy-round'
+  economy?: any
+  roundHistory?: any[]
 }
 
 // ===== Scoreline helper pieces (mirroring the original VAL classic renderer) =====

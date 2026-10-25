@@ -19,12 +19,6 @@ export type GameEventResult =
   | null
 
 
-const OMEGA_SVG = (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="size-3.5">
-    <path d="M12 2C6.48 2 2 6.48 2 12c0 4.14 2.53 7.69 6.13 9.17l1.1-2.01C6.44 18.06 4.5 15.28 4.5 12c0-4.14 3.36-7.5 7.5-7.5s7.5 3.36 7.5 7.5c0 3.28-1.94 6.06-4.73 7.16l1.1 2.01C19.47 19.69 22 16.14 22 12c0-5.52-4.48-10-10-10zm-1 15h2v3h-2v-3z" />
-  </svg>
-)
-
 const CEREMONY_CSS = `
 /* Staged animation sequence:
    1. Tournament Logo 1st (0ms)
@@ -286,14 +280,10 @@ export function Version1RoundCeremony({
                   {sideLabel}
                 </span>
 
-                {/* Team icon / Omega-style badge */}
+                {/* Team icon */}
                 {winnerLogo ? (
                   <img src={winnerLogo} alt="" className="size-[17px] object-contain drop-shadow" />
-                ) : (
-                  <div className="text-yellow-400 drop-shadow">
-                    {OMEGA_SVG}
-                  </div>
-                )}
+                ) : null}
 
                 <span className="font-schabo text-[17px] uppercase tracking-[0.12em] text-white">
                   {winnerName}
@@ -357,7 +347,7 @@ export function GameEventsScene(props: GameEventsSceneProps) {
   if (!result) return null
 
   const title = RESULT_TITLES[result] || 'ROUND WIN'
-  const resolvedLogo = winnerLogo || (ceremonyWinner === 'red' ? rightTeamLogo : leftTeamLogo) || tournamentLogo
+  const resolvedLogo = winnerLogo || (ceremonyWinner === 'red' ? rightTeamLogo : leftTeamLogo) || null
 
   return (
     <Version1RoundCeremony

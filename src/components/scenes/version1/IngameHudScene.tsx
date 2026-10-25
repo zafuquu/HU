@@ -10,7 +10,6 @@ import { EconomyTracker } from '../EconomyTracker'
 import {
   BLANK_IMG,
   abilityImg,
-  agentBust,
   agentIcon,
   agentMasteryPortrait,
   agentPortrait,
@@ -321,6 +320,7 @@ function KitPanel({
       }
       setLocalUltActive(false)
       setUltStage('idle')
+      hadReadyRef.current = false
     }
   }, [alive])
 
@@ -337,25 +337,27 @@ function KitPanel({
     }
   }, [ready, ultPts, ultMax])
 
-  // Trigger 0: Ult Ready transitions from true to false (consumed ult on cast for any agent)
+  // Trigger 0: Ult Ready transitions from true to false (consumed ult on cast for instant agents; duration agents handled by Trigger 3/weapon)
   const prevReadyRef = React.useRef<boolean | null>(null)
   React.useEffect(() => {
     const prevReady = prevReadyRef.current
     prevReadyRef.current = ready
-    if (prevReady === true && !ready && alive) {
+    if (!isDuration && prevReady === true && !ready && alive && hadReadyRef.current) {
       triggerUltAnimation()
+      hadReadyRef.current = false
     }
-  }, [ready, alive, triggerUltAnimation])
+  }, [ready, alive, isDuration, triggerUltAnimation])
 
-  // Trigger 1: Ult points drop from max/ready (e.g. cast/spent ult for Sova, Viper, Breach, Killjoy, Fade, Gekko, etc.)
+  // Trigger 1: Ult points drop from max/ready (instant cast ult; duration agents only zero at duration end so guarded by !isDuration)
   const prevUltPts = React.useRef<number | null>(null)
   React.useEffect(() => {
     const prev = prevUltPts.current
     prevUltPts.current = ultPts
-    if (prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive) {
+    if (!isDuration && prev != null && prev >= ultMax && ultMax > 0 && ultPts < prev && alive && hadReadyRef.current) {
       triggerUltAnimation()
+      hadReadyRef.current = false
     }
-  }, [ultPts, ultMax, alive, triggerUltAnimation])
+  }, [ultPts, ultMax, alive, isDuration, triggerUltAnimation])
 
   // Trigger 2: Channeled / summoned ultimate weapons (Chamber Tour De Force, Jett Blade Storm, Neon Overdrive, Raze Showstopper, etc.)
   const currentWeapon = String(player.weapon || player.weaponName || '')
@@ -367,22 +369,21 @@ function KitPanel({
     const wasUltW = /tour\s*de\s*force|bladestorm|blade\s*storm|overdrive|showstopper|rocket\s*launcher|hunter.*fury|viper.*pit|empress|run\s*it\s*back|dimensional\s*drift|kill\s*contract|ability_x|abilityx|ultimate/i.test(prevW)
     if (isUltW && !wasUltW && alive) {
       triggerUltAnimation()
+      hadReadyRef.current = false
     }
   }, [currentWeapon, alive, triggerUltAnimation])
 
-  // Trigger 3: Local player abilityState.X turns from true (ready) to false (cast/spent)
-  // NEVER trigger on prev === false && abilityX === true (that is reaching 8 points!)
-  // ONLY for non-duration agents (duration agents keep abilityX true until expiration!)
+  // Trigger 3: Keypress activation — abilityState.X turns from true (ready) to false (cast/spent) for ALL agents
   const abilityX = Boolean(player.abilityState?.X ?? player.abilityState?.x ?? player.abilityState?.ultimate)
   const prevAbilityX = React.useRef<boolean | null>(null)
   React.useEffect(() => {
     const prev = prevAbilityX.current
     prevAbilityX.current = abilityX
-    if (!isDuration && prev === true && abilityX === false && alive && hadReadyRef.current) {
+    if (prev === true && abilityX === false && alive && hadReadyRef.current) {
       triggerUltAnimation()
       hadReadyRef.current = false
     }
-  }, [abilityX, alive, isDuration, triggerUltAnimation])
+  }, [abilityX, alive, triggerUltAnimation])
 
   // Trigger 4: Explicit active ult flag from telemetry
   const isUltActiveFlag = Boolean(
@@ -433,7 +434,7 @@ function KitPanel({
 
   // === "USING ULT" ACTIVE / EXITING STATE (Matches using ult1.jpg: 54px height, team color block, bust portrait) ===
   if (ultStage === 'active' || ultStage === 'exiting') {
-    const headArt = agentBust(player) || agentPortrait(player) || agentMasteryPortrait(player) || agentIcon(player) || BLANK_IMG
+    const headArt = agentMasteryPortrait(player) || agentIcon(player) || agentPortrait(player) || BLANK_IMG
     const iconArt = agentIcon(player) || BLANK_IMG
     const isExiting = ultStage === 'exiting'
     return (
@@ -511,7 +512,7 @@ function KitPanel({
             className="absolute inset-y-0 z-20 overflow-hidden flex items-start justify-center pointer-events-none"
             style={{
               [isRight ? 'left' : 'right']: '10px',
-              width: '150px',
+              width: '140px',
               animation: isExiting
                 ? undefined
                 : (isRight ? 'v1UltBustRevealRight 280ms ease-out 180ms both' : 'v1UltBustRevealLeft 280ms ease-out 180ms both'),
@@ -520,19 +521,19 @@ function KitPanel({
             <img
               src={headArt}
               alt=""
-              className="h-[340px] w-auto max-w-none object-cover"
+              className="h-[250px] w-auto max-w-none object-contain"
               style={{
                 transform: isRight ? 'scaleX(-1)' : undefined,
-                marginTop: '-44px',
+                marginTop: '-18px',
               }}
               onError={e => {
                 const el = e.currentTarget as HTMLImageElement
                 if (el.src !== iconArt) {
                   el.src = iconArt
-                  el.style.marginTop = '2px'
-                  el.style.height = '50px'
-                  el.style.width = '50px'
-                  el.style.objectFit = 'contain'
+                  el.style.marginTop = '0px'
+                  el.style.height = '54px'
+                  el.style.width = '54px'
+                  el.style.objectFit = 'cover'
                 }
               }}
             />
@@ -865,9 +866,11 @@ export function Scorebug(props: ScorebugProps) {
                 />
               ) : (
                 // Normal / Round Over: clean timer digits only, NEVER any text labels
-                <span className="font-schabo text-[36px] leading-none tabular-nums" style={{ color: timerColor }}>
-                  {timerText || '0:00'}
-                </span>
+                timerText ? (
+                  <span className="font-schabo text-[36px] leading-none tabular-nums" style={{ color: timerColor }}>
+                    {timerText}
+                  </span>
+                ) : null
               )}
             </div>
           )}
@@ -983,9 +986,11 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
   activeScene?: 'ingame-hud' | 'buy-round'
   economy?: any
   roundHistory?: any[]
+  roundPhase?: string | null
 }) {
   const {
     activeScene = 'ingame-hud',
+    roundPhase = null,
     economy = null,
     roundHistory = [],
     leftTeamName = 'Left Team',
@@ -1056,7 +1061,12 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
     teamStatsRightColor,
   } = props
 
-  const isBuyRound = activeScene === 'buy-round'
+  const isBuyRound =
+    activeScene === 'buy-round' ||
+    roundPhase === 'shopping' ||
+    roundPhase === 'buy' ||
+    roundPhase === 'buytime' ||
+    roundPhase === 'planning'
 
   // Interactive Ult state for testing / operator trigger
   const [toggledUlts, setToggledUlts] = React.useState<Record<string, boolean>>({})
@@ -1169,7 +1179,7 @@ export function BroadcastIngameHudScene(props: IngameHudSceneProps & {
   const spikeBlinkOn = useSpikeBlink(Boolean((spikeState === 'planted' || isSpikeActive) && !isSpikeDetonatedOrDefused))
 
   // Clean timer text: never text strings on the timer (no "ROUND WIN", no "SPIKE DETONATED", no "SPIKE DEFUSED")
-  const displayTimerText = isRoundOver ? '0:00' : (timerText || '1:40')
+  const displayTimerText = isBuyRound ? '' : isRoundOver ? '0:00' : (timerText || '')
   const displayTimerColor = isSpikeActive || isSpikeDetonatedOrDefused ? '#FF3549' : timerColor
 
   const showScoreLine = isToggled('score-line')
